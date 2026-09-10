@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>Ezynota — Your writing space</title>
+  <link rel="stylesheet" href="../dist/ezynota.css" />
+  <link rel="stylesheet" href="./writing.css" />
+</head>
+<body>
+  <a class="skip-link" href="#writing-workspace">Skip to your notes</a>
+  <header class="app-header">
+    <a class="brand" href="./index.html" aria-label="Ezynota home">Ezynota<span class="brand-dot" aria-hidden="true"></span></a>
+    <span class="app-tagline">A little space to think.</span>
+    <span class="app-note">Personal workspace <span class="app-note-divider" aria-hidden="true">/</span> Just you &amp; your ideas</span>
+  </header>
+  <main class="workspace">
+    <section class="writing-sheet" id="writing-workspace" tabindex="-1" aria-label="Writing workspace">
+      <!-- Declarative initialization: a full workspace editor with notes,
+           folders, trash, autosave, import/export and fullscreen. -->
+      <div
+        data-ezn-editor
+        data-ezn-mode="workspace"
+        data-ezn-theme="light"
+        data-ezn-autofocus="false"
+        data-ezn-placeholder="Every idea starts somewhere. Start writing…"
+        aria-label="Writing workspace">
+      </div>
+    </section>
+    <footer class="workspace-footer">
+      <p id="page-message" role="status" aria-live="polite">A space for everything on your mind.</p>
+      <p class="writing-shortcuts"><span><kbd>/</kbd> add a block</span><span><kbd>[[</kbd> link a note</span></p>
+    </footer>
+    <details class="developer-tools" id="developer-tools">
+      <summary>Developer tools <span>Editor events &amp; diagnostics</span></summary>
+      <div class="developer-header"><h2>Editor events</h2></div>
+      <pre id="event-log" tabindex="0" aria-label="Editor event log"></pre>
+    </details>
+  </main>
+  <script src="../dist/ezynota.umd.cjs"></script>
+  <script src="./writing.js"></script>
+</body>
+</html>
