@@ -27,14 +27,64 @@ const TAG_TO_MARK: Record<string, string> = {
 
 const BLOCKISH_TAGS = new Set(["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "UL", "OL"]);
 
+/**
+ * Render-safe href check: mirrors io/print.ts — internal `note:` links are
+ * allowed alongside the isSafeUrl protocol allowlist.
+ */
+export function isRenderableHref(href: unknown): boolean {
+  return typeof href === "string" && (isSafeUrl(href) || href.startsWith("note:"));
+}
+
+/**
+ * Defense-in-depth for rendering untrusted inline content (clipboard JSON,
+ * imported documents): link nodes with unsafe hrefs are unwrapped to their
+ * inner text and link marks carrying unsafe hrefs are stripped.
+ */
+function stripUnsafeLinks(content: InlineContent[] | undefined): InlineContent[] {
+  if (!content) return [];
+  const out: InlineContent[] = [];
+  for (const node of content) {
+    if (isLinkNode(node)) {
+      if (!isRenderableHref(node.href)) {
+        out.push(...stripUnsafeLinks(node.content));
+      } else {
+        out.push({ type: "link", href: node.href, content: stripUnsafeLinks(node.content) as TextNode[] });
+      }
+      continue;
+    }
+    if (isTextNode(node)) {
+      const marks = node.marks?.filter((mark) => {
+        if (mark.type !== "link") return true;
+        const href = (mark.attrs as { href?: unknown } | undefined)?.href ?? (mark as { href?: unknown }).href;
+        return isRenderableHref(href);
+      });
+      if (marks && marks.length !== (node.marks?.length ?? 0)) {
+        const cleaned: TextNode = { type: "text", text: node.text };
+        if (marks.length > 0) cleaned.marks = marks;
+        out.push(cleaned);
+        continue;
+      }
+    }
+    out.push(node);
+  }
+  return out;
+}
+
 /** Render inline JSON content into a detached DOM tree. */
 export function inlineToDom(content: InlineContent[] | undefined, doc: Document = document): DocumentFragment {
   const frag = doc.createDocumentFragment();
   if (!content) return frag;
-  for (const node of normalizeInline(content)) {
+  for (const node of normalizeInline(stripUnsafeLinks(content))) {
     if (isTextNode(node)) {
       frag.appendChild(buildMarked(node, node.marks ?? [], doc));
     } else if (isLinkNode(node)) {
+      // Unsafe hrefs never reach the DOM: the text survives, the link does not.
+      if (!isRenderableHref(node.href)) {
+        for (const child of node.content) {
+          frag.appendChild(buildMarked(child, child.marks ?? [], doc));
+        }
+        continue;
+      }
       const a = doc.createElement("a");
       a.setAttribute("href", node.href);
       a.setAttribute("rel", "noopener noreferrer");
@@ -144,7 +194,7 @@ function marksForElement(el: Element, marks: InlineMark[]): InlineMark[] {
   }
   if (tag === "A") {
     const href = el.getAttribute("href") ?? "";
-    if (isSafeUrl(href)) {
+    if (isRenderableHref(href)) {
       next = [...next, { type: "link", attrs: { href } }];
     }
     // Unsafe hrefs are dropped; text content is preserved.
@@ -154,7 +204,9 @@ function marksForElement(el: Element, marks: InlineMark[]): InlineMark[] {
     const attrs: Record<string, string> = {};
     for (const attr of Array.from(el.attributes)) {
       if (attr.name.startsWith("data-ez-") && attr.name !== "data-ez-mark") {
-        attrs[camel(attr.name.slice(7))] = attr.value;
+        // "data-ez-" is 8 characters — slice(8) avoids a leading dash that
+        // camel() would capitalize ("data-ez-href" → "Href").
+        attrs[camel(attr.name.slice(8))] = attr.value;
       }
     }
     next = [...next, { type: custom, attrs: Object.keys(attrs).length > 0 ? attrs : undefined } as InlineMark];
@@ -208,7 +260,7 @@ export function findLinkAtSelection(editable: HTMLElement): { href: string; elem
   while (node && node !== editable) {
     if (node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName === "A") {
       const href = (node as Element).getAttribute("href") ?? "";
-      if (isSafeUrl(href)) return { href, element: node as Element };
+      if (isRenderableHref(href)) return { href, element: node as Element };
     }
     node = node.parentNode;
   }

@@ -64,8 +64,10 @@ export class BlockToolbar {
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        const wasOpen = this.open;
         this.closeSettings();
-        if (this.activeBlockId) this.host.focusBlock(this.activeBlockId, "end");
+        if (wasOpen) this.settingsButton.focus();
+        else if (this.activeBlockId) this.host.focusBlock(this.activeBlockId, "end");
       }
       navigateControls(event, this.settingsPopover ?? this.root);
       event.stopPropagation();
@@ -143,6 +145,14 @@ export class BlockToolbar {
     this.settingsPopover = el("div", "ez-popover");
     this.settingsPopover.setAttribute("role", "dialog");
     this.settingsPopover.setAttribute("aria-label", this.host.i18n.t("toolbar.settings"));
+    // Keep keyboard focus contained: leaving the popover (or the toolbar
+    // that hosts it) closes it instead of stranding aria-expanded="true".
+    this.settingsPopover.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget as Node | null;
+      if (next && this.root.contains(next)) return;
+      this.closeSettings();
+      if (!next) this.settingsButton.focus();
+    });
     this.renderSettingsMenu(this.activeBlockId);
     const blockEl = this.host.holder.querySelector(`[data-ez-block-id="${CSS.escape(this.activeBlockId)}"]`) as HTMLElement | null;
     if (!blockEl) return;

@@ -1,5 +1,5 @@
 import type { WorkspaceState } from "../workspace";
-import type { SaveStatus, SearchHit, WorkspaceTheme } from "../types";
+import type { SaveStatus, SearchHit, WorkspaceEvent, WorkspaceTheme } from "../types";
 import type { NoteRecord, FolderRecord } from "../types";
 import { el, button, svgButton, clearChildren, navigateControls, placePopover } from "../../ui/dom";
 import { ICONS, renderIcon } from "../../ui/icons";
@@ -14,7 +14,8 @@ export interface WorkspaceUIDeps {
   renameFolder(id: string, name: string): void;
   moveNote(id: string, folderId: string | null): void;
   moveFolder(id: string, parentId: string | null): boolean;
-  openNote(id: string): void;
+  /** Returns a promise when the note load is asynchronous (used to queue goToBlock). */
+  openNote(id: string): void | Promise<void>;
   openFolder(id: string | null): void;
   duplicateNote(id: string): void;
   trashNote(id: string): void;
@@ -44,6 +45,13 @@ export interface WorkspaceUIDeps {
 }
 
 const THEME_LABELS: Record<WorkspaceTheme, string> = { light: "Light", dark: "Dark", system: "System" };
+
+/** The controller reports runtime failures with an extra event kind (typed
+ * via a structural read because WorkspaceEvent's union lives in types.ts). */
+function importErrorMessage(event: WorkspaceEvent): string | null {
+  const record = event as { type?: string; message?: string };
+  return record.type === "importError" ? record.message ?? "Import failed" : null;
+}
 
 function statusLabel(status: SaveStatus, error?: unknown): string {
   switch (status) {
@@ -89,6 +97,8 @@ export class WorkspaceUI {
   private importInput: HTMLInputElement | null = null;
   private errorPanel: HTMLElement | null = null;
   private legacyPanel: HTMLElement | null = null;
+  private noticeEl: HTMLElement | null = null;
+  private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private findDialog: HTMLElement | null = null;
   private findInput: HTMLInputElement | null = null;
   private replaceInput: HTMLInputElement | null = null;
@@ -119,6 +129,7 @@ export class WorkspaceUI {
     for (const dispose of this.disposers) dispose();
     this.disposers.length = 0;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
   }
 
   /** Public event entry point used by the controller. */
@@ -132,7 +143,12 @@ export class WorkspaceUI {
     this.renderSidebar();
   }
 
-  private handleEvent(event: import("../types").WorkspaceEvent): void {
+  private handleEvent(event: WorkspaceEvent): void {
+    const importError = importErrorMessage(event);
+    if (importError !== null) {
+      this.showNotice(importError);
+      return;
+    }
     if (event.type === "loadFailed") {
       this.showErrorPanel();
       return;
@@ -188,6 +204,10 @@ export class WorkspaceUI {
     const header = this.buildHeader();
     this.errorPanel = this.buildErrorPanel();
     this.legacyPanel = this.buildLegacyPanel();
+    this.noticeEl = el("p", "ez-workspace-notice");
+    this.noticeEl.setAttribute("role", "status");
+    this.noticeEl.setAttribute("aria-live", "polite");
+    this.noticeEl.hidden = true;
     const docWrap = el("div", "ez-doc-wrap");
     // The document surface (already mounted by the editor) moves into the shell.
     const surface = this.root.querySelector<HTMLElement>(".ez-editor");
@@ -231,7 +251,7 @@ export class WorkspaceUI {
     this.disposers.push(() => this.root.removeEventListener("keydown", onKey));
     const headerRow = el("div", "ez-header-row");
     headerRow.append(this.sidebarToggle, header);
-    main.append(headerRow, this.errorPanel, this.legacyPanel, docWrap);
+    main.append(headerRow, this.noticeEl, this.errorPanel, this.legacyPanel, docWrap);
     if (surface) {
       docWrap.appendChild(surface);
     } else {
@@ -553,9 +573,13 @@ export class WorkspaceUI {
       excerpt.textContent = hit.excerpt;
       item.append(title, excerpt);
       item.addEventListener("click", () => {
-        this.deps.openNote(hit.noteId);
+        const opened = this.deps.openNote(hit.noteId);
         this.closeMobileSidebar(false);
-        if (hit.blockId) this.deps.goToBlock(hit.blockId);
+        // Queue the block jump until the note has actually loaded: the
+        // fire-and-forget openNote used to focus the old document.
+        void Promise.resolve(opened).then(() => {
+          if (hit.blockId) this.deps.goToBlock(hit.blockId);
+        });
         if (this.searchInput) this.searchInput.value = "";
         if (this.searchResults) clearChildren(this.searchResults);
       });
@@ -919,6 +943,25 @@ export class WorkspaceUI {
 
   private showErrorPanel(): void {
     if (this.errorPanel) this.errorPanel.hidden = false;
+  }
+
+  /** Public entry point used when a load fails before the UI listener exists. */
+  showLoadError(): void {
+    this.showErrorPanel();
+  }
+
+  /** Transient status/banner message (e.g. import failures). */
+  showNotice(message: string): void {
+    if (!this.noticeEl) return;
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
+    this.noticeEl.textContent = message;
+    this.noticeEl.hidden = !message;
+    if (message) {
+      this.noticeTimer = setTimeout(() => {
+        this.noticeTimer = null;
+        if (this.noticeEl) this.noticeEl.hidden = true;
+      }, 6000);
+    }
   }
 
   private hideErrorPanel(): void {

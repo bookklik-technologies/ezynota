@@ -79,10 +79,29 @@ export class ToolRegistry {
     }
   }
 
+  /**
+   * Whether the tool CLASS is currently registered (matches get()).
+   * Loader-only registrations are NOT reflected here — use isLoadable()
+   * when a lazy loader should also count.
+   */
   has(name: string): boolean {
+    return this.blockTools.has(name);
+  }
+
+  /** Whether a lazy loader is registered for this tool but not yet run. */
+  hasLoader(name: string): boolean {
+    return this.blockToolLoaders.has(name);
+  }
+
+  /** Whether the tool is loaded OR loadable via a registered lazy loader. */
+  isLoadable(name: string): boolean {
     return this.blockTools.has(name) || this.blockToolLoaders.has(name);
   }
 
+  /**
+   * The registered tool class. Throws EZ_TOOL_NOT_FOUND when only a lazy
+   * loader is registered — call ensureLoaded(name) first (see isLoadable).
+   */
   get(name: string): RegisteredBlockTool {
     const tool = this.blockTools.get(name);
     if (!tool) throw toolNotFound(name);

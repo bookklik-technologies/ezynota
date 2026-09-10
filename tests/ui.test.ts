@@ -8,7 +8,7 @@ const editors: Ezynota[] = [];
 function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder: HTMLElement } {
   const holder = document.createElement("div");
   document.body.appendChild(holder);
-  const editor = new Ezynota({ holder, ui: { documentToolbar: true, inlineToolbar: false }, ...config });
+  const editor = new Ezynota({ holder, mode: "embedded", ui: { documentToolbar: true, inlineToolbar: false }, ...config });
   editors.push(editor);
   return { editor, holder };
 }

@@ -1,4 +1,5 @@
 import type { Host } from "../host";
+import { isImeKeyEvent } from "./composition";
 
 /**
  * Markdown typing shortcuts (spec §Experience): headings, lists, tasks,
@@ -8,18 +9,22 @@ import type { Host } from "../host";
  * - Conversions are undoable — block-level changes commit as one
  *   transaction; inline replacements mutate the DOM and dispatch an
  *   `input` event so the normal input → save → transaction flow runs.
- * - IME composition is respected: shortcuts are skipped while composing.
+ * - IME composition is respected: shortcuts are skipped while composing
+ *   AND shortly after compositionend (Safari confirms with a keydown).
  */
 
-type InlinePattern = { pattern: RegExp; mark: string };
+type InlinePattern = { pattern: RegExp; mark: string; open: string };
 
 const INLINE_PATTERNS: InlinePattern[] = [
-  { pattern: /\*\*([^*]+)\*\*$/, mark: "bold" },
-  { pattern: /__([^_]+)__$/, mark: "bold" },
-  { pattern: /(?<!\*)\*([^*\s][^*]*)\*$/, mark: "italic" },
-  { pattern: /~~([^~]+)~~$/, mark: "strike" },
-  { pattern: /`([^`]+)`$/, mark: "code" },
-  { pattern: /==([^=]+)==$/, mark: "mark" }
+  // The italic pattern avoids a regex lookbehind (`(?<!\*)`) which is a
+  // syntax error on Safari < 16.4 — the prefix is captured instead and the
+  // opening marker is located via the `open` string.
+  { pattern: /\*\*([^*]+)\*\*$/, mark: "bold", open: "**" },
+  { pattern: /__([^_]+)__$/, mark: "bold", open: "__" },
+  { pattern: /(?:^|[^*])\*([^*\s][^*]*)\*$/, mark: "italic", open: "*" },
+  { pattern: /~~([^~]+)~~$/, mark: "strike", open: "~~" },
+  { pattern: /`([^`]+)`$/, mark: "code", open: "`" },
+  { pattern: /==([^=]+)==$/, mark: "mark", open: "==" }
 ];
 
 const MARK_TAGS: Record<string, string> = { bold: "strong", italic: "em", code: "code", mark: "mark", strike: "span" };
@@ -38,8 +43,9 @@ export class MarkdownShortcuts {
     const onKeyDown = (event: Event): void => {
       const e = event as KeyboardEvent;
       if (this.host.readOnly || this.host.isDestroyed()) return;
-      // IME composition must never be interrupted.
-      if (e.isComposing || (e.target as HTMLElement).closest("[data-ez-ui]")) return;
+      // IME composition must never be interrupted — also skip the
+      // composition-confirming keydown (Safari fires it after compositionend).
+      if (isImeKeyEvent(e) || (e.target as HTMLElement).closest("[data-ez-ui]")) return;
       if (e.key !== " " && e.key !== "Enter") return;
       const handled = e.key === " " ? this.handleSpace() : this.handleEnter();
       if (handled) e.preventDefault();
@@ -82,7 +88,9 @@ export class MarkdownShortcuts {
     }
 
     // Block-level shortcuts require the marker to be all text so far.
-    const markerMatch = /^(#{1,6}|>|[-*+]|\d+[.)]|\[\]|\[x\]) $/.exec(textBefore);
+    // The space keydown fires BEFORE the space is inserted, so the marker
+    // must be matched WITHOUT a trailing space ("# " activates on "#").
+    const markerMatch = /^(#{1,6}|>|[-*+]|\d+[.)]|\[\]|\[x\])$/.exec(textBefore);
     if (!markerMatch || blockText !== textBefore) return false;
     const marker = markerMatch[1]!;
     if (marker.startsWith("#")) return this.convert(current.id, "heading", { level: marker.length, content: [] });
@@ -143,7 +151,7 @@ export class MarkdownShortcuts {
     const before = text.data.slice(0, caret);
     const match = pattern.pattern.exec(before);
     if (!match || match[1] === undefined) return false;
-    const start = before.length - match[0].length;
+    const start = before.length - match[1].length - pattern.open.length;
     const inner = match[1];
     const doc = text.ownerDocument;
     try {

@@ -152,16 +152,36 @@ export class ImageTool implements BlockTool<ImageData> {
 
   private applySrcToImg(src: string): void {
     if (!this.img) return;
+    this.clearBrokenImageState();
     if (typeof src !== "string" || src === "") return;
     if (src.startsWith("asset:")) {
       void resolveAssetSrc(src).then((url) => {
-        if (url && this.img?.isConnected) this.img.src = url;
+        if (!this.img?.isConnected) return;
+        if (url) this.img.src = url;
+        else this.showBrokenImage("This image could not be loaded.");
       });
       return;
     }
     if (isSafeImageUrl(src) || src.startsWith("data:image/")) {
       this.img.src = src;
+      return;
     }
+    this.showBrokenImage("This image could not be loaded.");
+  }
+
+  private showBrokenImage(message: string): void {
+    if (!this.img) return;
+    this.img.classList.add("ez-image-broken");
+    this.img.setAttribute("aria-label", `${this.img.alt || "Image"} — could not be loaded`);
+    this.showFeedback(message);
+  }
+
+  private clearBrokenImageState(): void {
+    if (this.img) {
+      this.img.classList.remove("ez-image-broken");
+      if (this.img.hasAttribute("aria-label")) this.img.removeAttribute("aria-label");
+    }
+    this.showFeedback("");
   }
 
   private buildToolbar(): HTMLElement {
@@ -249,6 +269,10 @@ export class ImageTool implements BlockTool<ImageData> {
           this.showFeedback("");
           return;
         }
+        // An asset store is configured but the write failed (e.g. quota):
+        // do NOT silently fall back to embedding a huge data URL.
+        this.showFeedback("Could not save this image to storage. Free up space and try again.");
+        return;
       }
       // No asset storage: inline the image as a data URL.
       const dataUrl = await fileToDataUrl(file);
@@ -320,7 +344,8 @@ export class ImageTool implements BlockTool<ImageData> {
           input.focus();
           return;
         }
-        this.applyImage(url, "");
+        // Preserve the existing alt text — inserting a URL must not reset it.
+        this.applyImage(url, this.save(this.figure).alt);
       } else {
         this.api.update({ ...this.save(this.figure), alt: input.value } as never);
         this.img.alt = input.value;

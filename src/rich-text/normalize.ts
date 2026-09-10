@@ -1,7 +1,7 @@
 import type { InlineContent, InlineMark, TextNode } from "./types";
 import { isLinkNode, isTextNode, textNode } from "./types";
 
-const MARK_ORDER = ["bold", "italic", "underline", "code", "mark"];
+const MARK_ORDER = ["bold", "italic", "underline", "strike", "code", "mark", "link", "color", "background"];
 
 function markKey(mark: InlineMark): string {
   return mark.attrs ? `${mark.type}:${JSON.stringify(mark.attrs)}` : mark.type;
@@ -94,10 +94,15 @@ export function splitInlineAtOffset(
       before.push(textNode(node.text.slice(0, splitAt), node.marks));
       after.push(textNode(node.text.slice(splitAt), node.marks));
     } else {
-      const beforeText = node.content.map((n) => n.text).join("").slice(0, splitAt);
-      const afterText = node.content.map((n) => n.text).join("").slice(splitAt);
-      before.push({ type: "link", href: node.href, content: [textNode(beforeText, node.content[0]?.marks)] });
-      after.push({ type: "link", href: node.href, content: [textNode(afterText, node.content[0]?.marks)] });
+      // Split the link's content recursively so per-node marks survive
+      // (previously only content[0].marks was kept).
+      const [linkBefore, linkAfter] = splitInlineAtOffset(node.content, splitAt);
+      if (linkBefore.length > 0) {
+        before.push({ type: "link", href: node.href, content: linkBefore as TextNode[] });
+      }
+      if (linkAfter.length > 0) {
+        after.push({ type: "link", href: node.href, content: linkAfter as TextNode[] });
+      }
     }
     consumed += text.length;
   }

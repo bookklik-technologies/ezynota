@@ -1,5 +1,6 @@
 import type { Host } from "../host";
 import type { EzynotaBlock, JsonValue } from "../types";
+import { salvageDocument } from "../core/schema";
 import { htmlToBlocks, textToBlocks, type ParsedBlock } from "./html-to-blocks";
 import { inlineToDom } from "../rich-text/dom";
 
@@ -33,40 +34,34 @@ export class ClipboardManager {
   }
 
   start(): void {
+    const targetInSurface = (target: EventTarget | null): boolean => {
+      const el = target as HTMLElement | null;
+      return !!el && this.holder.contains(el) && !el.closest?.("[data-ez-ui]");
+    };
+
     const onCopy = (event: Event): void => {
-      if (!this.holder.contains(event.target as Node)) return;
+      if (!targetInSurface(event.target)) return;
       const e = event as ClipboardEvent;
       const range = this.host.getRange();
       if (!range || range.collapsed) return;
-      const blocks = this.wholeBlocksInSelection(range);
-      e.preventDefault();
       const data = e.clipboardData;
       if (!data) return;
-      if (blocks && blocks.length > 0) {
-        const text = blocks.map((b) => textOf(b)).join("\n\n");
-        data.setData("text/plain", text);
-        data.setData("text/html", blocks.map((b) => htmlOf(b)).join(""));
-        try {
-          data.setData(EZYNOTA_JSON_TYPE, JSON.stringify({ blocks } satisfies EzynotaClipboardPayload));
-        } catch {
-          /* custom mime types are unsupported in some engines */
-        }
-        return;
-      }
-      // Precise selection copy: export exactly what is highlighted.
-      const text = range.toString().replace(/\u200B/g, "");
-      data.setData("text/plain", text);
-      try {
-        const fragment = range.cloneContents();
-        data.setData("text/html", fragmentToHtml(fragment));
-      } catch {
-        /* html serialization is best-effort */
-      }
-      try {
-        data.setData(EZYNOTA_JSON_TYPE, JSON.stringify({ text } satisfies EzynotaClipboardPayload));
-      } catch {
-        /* custom mime types are unsupported in some engines */
-      }
+      e.preventDefault();
+      this.writeClipboard(data, range);
+    };
+
+    /**
+     * Cut serializes the selection with full fidelity (same as copy) but
+     * does NOT preventDefault, so the browser performs the default delete.
+     */
+    const onCut = (event: Event): void => {
+      if (!targetInSurface(event.target)) return;
+      const e = event as ClipboardEvent;
+      const range = this.host.getRange();
+      if (!range || range.collapsed) return;
+      const data = e.clipboardData;
+      if (!data) return;
+      this.writeClipboard(data, range);
     };
 
     const onPaste = async (event: Event): Promise<void> => {
@@ -82,8 +77,20 @@ export class ClipboardManager {
     const onDrop = async (event: Event): Promise<void> => {
       const e = event as DragEvent;
       if (this.host.readOnly) return;
-      const files = e.dataTransfer?.files;
-      if (!files || files.length === 0) return;
+      const transfer = e.dataTransfer;
+      const files = transfer?.files;
+      if (!files || files.length === 0) {
+        // Text/HTML drops bypass the file router — route them through the
+        // normal paste pipeline so sanitization applies.
+        const text = transfer?.getData("text/plain") ?? "";
+        const html = transfer?.getData("text/html") ?? "";
+        if ((text === "" && html === "") || !transfer) return;
+        const selection = this.host.getSelectionInfo();
+        if (!selection) return;
+        e.preventDefault();
+        await this.paste(transfer as DataTransfer, selection.blockId);
+        return;
+      }
       const selection = this.host.getSelectionInfo();
       if (!selection) return;
       e.preventDefault();
@@ -91,11 +98,13 @@ export class ClipboardManager {
     };
 
     this.holder.addEventListener("copy", onCopy);
+    this.holder.addEventListener("cut", onCut);
     this.holder.addEventListener("paste", onPaste as EventListener);
     this.holder.addEventListener("drop", onDrop);
 
     this.disposers.push(() => {
       this.holder.removeEventListener("copy", onCopy);
+      this.holder.removeEventListener("cut", onCut);
       this.holder.removeEventListener("paste", onPaste as EventListener);
       this.holder.removeEventListener("drop", onDrop);
     });
@@ -166,6 +175,36 @@ export class ClipboardManager {
     return null;
   }
 
+  /** Serialize the selection (whole blocks or fragment) into a DataTransfer. */
+  private writeClipboard(data: DataTransfer, range: Range): void {
+    const blocks = this.wholeBlocksInSelection(range);
+    if (blocks && blocks.length > 0) {
+      const text = blocks.map((b) => textOf(b)).join("\n\n");
+      data.setData("text/plain", text);
+      data.setData("text/html", blocks.map((b) => htmlOf(b)).join(""));
+      try {
+        data.setData(EZYNOTA_JSON_TYPE, JSON.stringify({ blocks } satisfies EzynotaClipboardPayload));
+      } catch {
+        /* custom mime types are unsupported in some engines */
+      }
+      return;
+    }
+    // Precise selection copy: export exactly what is highlighted.
+    const text = range.toString().replace(/\u200B/g, "");
+    data.setData("text/plain", text);
+    try {
+      const fragment = range.cloneContents();
+      data.setData("text/html", fragmentToHtml(fragment));
+    } catch {
+      /* html serialization is best-effort */
+    }
+    try {
+      data.setData(EZYNOTA_JSON_TYPE, JSON.stringify({ text } satisfies EzynotaClipboardPayload));
+    } catch {
+      /* custom mime types are unsupported in some engines */
+    }
+  }
+
   /** Paste priority: Ezynota JSON → files → sanitized HTML → plain text. */
   private async paste(data: DataTransfer, currentBlockId: string): Promise<void> {
     const json = data.getData(EZYNOTA_JSON_TYPE);
@@ -173,8 +212,14 @@ export class ClipboardManager {
       try {
         const parsed = JSON.parse(json) as EzynotaClipboardPayload;
         if (Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
-          this.insertClipboardBlocks(parsed.blocks as { type?: unknown; data?: unknown }[], currentBlockId);
-          return;
+          // Untrusted clipboard JSON: schema-validate and salvage before
+          // inserting so invalid/unsafe content (e.g. javascript: links)
+          // can never reach the document.
+          const sanitized = sanitizeClipboardBlocks(parsed.blocks);
+          if (sanitized.length > 0) {
+            this.insertClipboardBlocks(sanitized, currentBlockId);
+            return;
+          }
         }
         if (typeof parsed.text === "string" && parsed.text !== "") {
           this.insertTextAtCaret(parsed.text, currentBlockId);
@@ -288,6 +333,17 @@ export class ClipboardManager {
   }
 }
 
+/**
+ * Untrusted clipboard JSON is validated through the document salvage path:
+ * invalid blocks are dropped or converted, ids de-duplicated and unsafe
+ * link payloads stripped by the normalizer's link sanitizer.
+ */
+export function sanitizeClipboardBlocks(blocks: unknown[]): { type: string; data: JsonValue }[] {
+  const result = salvageDocument({ blocks });
+  const document = result.document ?? { schemaVersion: "1.0.0", blocks: [] };
+  return document.blocks.map((block) => ({ type: block.type, data: block.data }));
+}
+
 function textOf(block: EzynotaBlock): string {
   const data = block.data as Record<string, unknown>;
   if (typeof data.code === "string") return data.code;
@@ -326,7 +382,15 @@ function htmlOf(block: EzynotaBlock): string {
     }
     div.appendChild(list);
   } else if (Array.isArray(data.content)) {
-    const tag = block.type === "heading" ? `h${(data.level as number) ?? 2}` : block.type === "quote" ? "blockquote" : "p";
+    // A crafted payload with a non-numeric level must not throw inside the
+    // copy handler — clamp to a valid heading tag.
+    let tag = "p";
+    if (block.type === "heading") {
+      const level = Number(data.level ?? 2);
+      tag = Number.isInteger(level) && level >= 1 && level <= 6 ? `h${level}` : "p";
+    } else if (block.type === "quote") {
+      tag = "blockquote";
+    }
     const node = doc.createElement(tag);
     node.appendChild(renderInlineNodes(data.content as unknown[], doc));
     div.appendChild(node);

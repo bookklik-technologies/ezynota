@@ -54,21 +54,7 @@ export class ListTool implements BlockTool<ListData> {
     items.forEach((item, index) => {
       const li = doc.createElement("li");
       if (this.style === "task") {
-        const checkbox = doc.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.className = "ez-task-checkbox";
-        checkbox.checked = item?.checked === true;
-        checkbox.setAttribute("aria-label", `Task ${index + 1}`);
-        if (!this.api.readOnly) {
-          checkbox.addEventListener("change", () => {
-            checkbox.disabled = false;
-            li.classList.toggle("ez-task-checked", checkbox.checked);
-            this.api.update(this.save(this.editable) as never);
-          });
-        } else {
-          checkbox.disabled = true;
-        }
-        li.appendChild(checkbox);
+        li.appendChild(this.createCheckbox(item?.checked === true, index, li));
         li.classList.toggle("ez-task-checked", item?.checked === true);
       }
       if (item?.content && !isEmptyInlineValue(item.content)) {
@@ -77,20 +63,55 @@ export class ListTool implements BlockTool<ListData> {
       list.appendChild(li);
     });
     wrapper.appendChild(list);
+    // Browser-created <li> (Enter key) has no checkbox; inject one so
+    // save() pairs items and checkboxes correctly in task lists.
+    wrapper.addEventListener("input", () => this.ensureCheckboxes());
     this.editable = wrapper;
     this.listEl = list;
     return wrapper;
   }
 
+  private createCheckbox(checked: boolean, index: number, li: HTMLElement): HTMLInputElement {
+    const doc = li.ownerDocument;
+    const checkbox = doc.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "ez-task-checkbox";
+    checkbox.checked = checked;
+    checkbox.setAttribute("aria-label", `Task ${index + 1}`);
+    if (!this.api.readOnly) {
+      checkbox.addEventListener("change", () => {
+        checkbox.disabled = false;
+        li.classList.toggle("ez-task-checked", checkbox.checked);
+        this.api.update(this.save(this.editable) as never);
+      });
+    } else {
+      checkbox.disabled = true;
+    }
+    return checkbox;
+  }
+
+  /** Inject a checkbox into every task <li> that is missing one. */
+  private ensureCheckboxes(): void {
+    if (this.style !== "task" || this.api.readOnly || !this.listEl) return;
+    let index = 0;
+    for (const li of Array.from(this.listEl.children)) {
+      if (li.tagName !== "LI") continue;
+      index++;
+      if (li.querySelector(".ez-task-checkbox")) continue;
+      (li as HTMLElement).prepend(this.createCheckbox(false, index - 1, li as HTMLElement));
+      (li as HTMLElement).classList.remove("ez-task-checked");
+    }
+  }
+
   save(_element: HTMLElement): ListData {
     const items: ListItem[] = [];
-    const checkboxes = Array.from(this.listEl.querySelectorAll<HTMLInputElement>(".ez-task-checkbox"));
-    let checkboxIndex = 0;
     for (const li of Array.from(this.listEl.children)) {
       if (li.tagName !== "LI") continue;
       const item: ListItem = { content: domToInline(li) };
       if (this.style === "task") {
-        const checkbox = checkboxes[checkboxIndex++];
+        // Per-li lookup: a browser-created li may lack its own checkbox,
+        // so positional pairing with a shared checkbox list misassigns.
+        const checkbox = li.querySelector<HTMLInputElement>(".ez-task-checkbox");
         item.checked = checkbox?.checked === true;
       }
       items.push(item);
@@ -113,10 +134,11 @@ export class ListTool implements BlockTool<ListData> {
 
   /** Toggle between ordered and unordered (block settings entry). */
   renderSettings(): HTMLElement | null {
-    const wrap = document.createElement("div");
+    const doc = this.editable?.ownerDocument ?? document;
+    const wrap = doc.createElement("div");
     wrap.className = "ez-inline-group";
     for (const style of ["unordered", "ordered", "task"]) {
-      const toggle = document.createElement("button");
+      const toggle = doc.createElement("button");
       toggle.type = "button";
       toggle.className = "ez-inline-btn";
       toggle.textContent = style === "ordered" ? "Numbered" : style === "task" ? "Tasks" : "Bulleted";

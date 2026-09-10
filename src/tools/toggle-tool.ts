@@ -131,6 +131,13 @@ export class ToggleTool implements BlockTool<ToggleData> {
   }
 
   destroy(): void {
+    for (const tool of this.childTools.values()) {
+      try {
+        tool.destroy?.();
+      } catch {
+        /* child cleanup errors must not break destruction */
+      }
+    }
     this.childTools.clear();
   }
 
@@ -156,9 +163,16 @@ export class ToggleTool implements BlockTool<ToggleData> {
         return;
       }
     }
-    // Structural change: rebuild.
+    // Structural change: rebuild, destroying the tools of removed children.
     for (const child of Array.from(this.childrenHost.childNodes)) {
       this.childrenHost.removeChild(child);
+    }
+    for (const tool of this.childTools.values()) {
+      try {
+        tool.destroy?.();
+      } catch {
+        /* child cleanup errors must not break rendering */
+      }
     }
     this.childTools.clear();
     children.forEach((child, index) => {
@@ -182,7 +196,7 @@ export class ToggleTool implements BlockTool<ToggleData> {
     for (const child of children) {
       const tool = this.childTools.get(child.id);
       if (!tool) continue;
-      const editable = this.nestedEditable(tool);
+      const editable = this.nestedEditable(child.id, tool);
       if (!editable) continue;
       const current = domToInline(editable);
       const state = (child.data as { content?: InlineContent[] }).content ?? [];
@@ -194,19 +208,36 @@ export class ToggleTool implements BlockTool<ToggleData> {
     }
   }
 
-  private nestedEditable(tool: BlockTool): HTMLElement | null {
+  private nestedEditable(childId: string, tool: BlockTool): HTMLElement | null {
     const editable = (tool as unknown as { getEditable?: () => HTMLElement | undefined }).getEditable?.();
     if (editable) return editable;
-    return tool.render().querySelector<HTMLElement>("[data-ez-editable]");
+    return this.childrenHost.querySelector<HTMLElement>(`[data-ez-nested-id="${CSS.escape(childId)}"] [data-ez-editable]`) ?? null;
   }
 
   private saveChild(child: EzynotaBlock): void {
     const tool = this.childTools.get(child.id);
     if (!tool) return;
-    const editable = this.nestedEditable(tool);
+    const editable = this.nestedEditable(child.id, tool);
     if (!editable) return;
     const data = tool.save(editable);
     this.nested?.update(child.id, data as JsonValue);
+  }
+
+  /**
+   * Input flow entry point for nested children (routed from InputManager
+   * via the host). Saves direct children; unknown ids delegate to nested
+   * toggles among the children so deep grandchildren reach their owner.
+   */
+  requestSaveChild(childId: string): void {
+    if (this.childTools.has(childId)) {
+      const child = this.nested?.getBlocks().find((b) => b.id === childId);
+      if (child) this.saveChild(child);
+      return;
+    }
+    for (const tool of this.childTools.values()) {
+      const delegate = (tool as unknown as { requestSaveChild?: (id: string) => void }).requestSaveChild;
+      if (typeof delegate === "function") delegate.call(tool, childId);
+    }
   }
 
   /** Nested child BlockAPI routed through the children:update transaction. */

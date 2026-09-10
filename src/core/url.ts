@@ -9,9 +9,16 @@ export function isSafeUrl(input: unknown): boolean {
   if (typeof input !== "string") return false;
   const url = input.trim();
   if (url === "") return false;
-  // Relative URLs (fragments, paths) are safe.
-  if (url.startsWith("#") || url.startsWith("/") || url.startsWith("./") || url.startsWith("../")) {
+  // Relative URLs (fragments, dot paths) are safe.
+  if (url.startsWith("#") || url.startsWith("./") || url.startsWith("../")) {
     return true;
+  }
+  // WHATWG normalizes "/\" and "\" to "/", so "/\evil.com" is actually
+  // protocol-relative. Protocol-relative URLs ("//host") inherit the page
+  // protocol and flip to http on insecure pages — reject them outright;
+  // explicit http/https absolute URLs remain allowed by the allowlist.
+  if (/^[\\/][\\/]/.test(url)) {
+    return false;
   }
   try {
     const parsed = new URL(url, "https://ezynota.invalid");

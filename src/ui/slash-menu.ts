@@ -233,13 +233,15 @@ export class SlashMenu {
     if (!blockId || this.host.readOnly) return;
     const data = this.host.getBlockData(blockId) as Record<string, unknown> | undefined;
     const text = this.host.getEditableElement(blockId)?.textContent ?? "";
+    // The typed slash query ("/head", "/") lives in the block's saved
+    // content; strip it so it never leaks into the converted block.
+    if (text.trim().startsWith("/") && Array.isArray(data?.content)) {
+      this.host.updateBlockData(blockId, { ...data, content: [] } as never);
+    }
     if (insert && !(this.host.getBlockType(blockId) === "paragraph" && text.trim() === "")) {
       this.host.insertBlock(entry.name, undefined, { after: blockId, focus: true });
       this.host.announce(`${entry.title} added`);
       return;
-    }
-    if (!insert && text.trim() === "/" && Array.isArray(data?.content)) {
-      this.host.updateBlockData(blockId, { ...data, content: [] } as never);
     }
     this.host.convertBlock(blockId, entry.name);
     this.host.focusBlock(blockId, "end");

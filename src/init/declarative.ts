@@ -49,10 +49,18 @@ export function mountElement(element: HTMLElement): Ezynota | undefined {
   if (element.hasAttribute(MOUNT_FLAG) || element.hasAttribute(DESTROY_FLAG)) return undefined;
   const existing = listInstances().find((instance) => (instance as unknown as { holderEl: Element }).holderEl === element);
   if (existing) return existing;
-  element.setAttribute(MOUNT_FLAG, "");
   const config = configFromAttributes(element);
-  const instance = new Ezynota(config);
+  let instance: Ezynota;
+  try {
+    instance = new Ezynota(config);
+  } catch (error) {
+    // Never leave the element flagged as mounted when construction failed —
+    // it would be permanently skipped on retry.
+    element.removeAttribute(MOUNT_FLAG);
+    throw error;
+  }
   instance.declarative = true;
+  element.setAttribute(MOUNT_FLAG, "");
   return instance;
 }
 
@@ -94,9 +102,6 @@ export function getInstance(elementOrSelector: Element | string): Ezynota | unde
 function startGlobalObserver(): void {
   if (started || typeof MutationObserver === "undefined") return;
   started = true;
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => initAll());
-  }
   observer = new MutationObserver((mutations) => {
     const added: HTMLElement[] = [];
     for (const mutation of mutations) {
@@ -111,6 +116,16 @@ function startGlobalObserver(): void {
     }
     scheduleDetachedCleanup();
   });
+  // document.body is null for classic scripts running in <head> — defer
+  // both the scan and the observation to DOMContentLoaded.
+  if (typeof document === "undefined") return;
+  if (document.readyState === "loading" || !document.body) {
+    document.addEventListener("DOMContentLoaded", () => {
+      if (observer && document.body) observer.observe(document.body, { childList: true, subtree: true });
+      initAll();
+    });
+    return;
+  }
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
@@ -127,7 +142,12 @@ function scheduleDetachedCleanup(): void {
       setTimeout(() => {
         if (holder.isConnected || instance.isDestroyed()) return;
         instance.destroy();
+        // destroy() stamps data-ezn-destroyed to suppress automatic
+        // remounting, but a confirmed detach cleanup must allow the
+        // element to mount again later (frameworks reparent/virtualize
+        // elements constantly) — clear both flags.
         holder.removeAttribute(MOUNT_FLAG);
+        holder.removeAttribute(DESTROY_FLAG);
       }, 100);
     }
   }, 200);

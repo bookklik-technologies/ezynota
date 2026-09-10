@@ -1,88 +1,136 @@
 import type { Host } from "../host";
-import { inlineToPlainText } from "../rich-text/types";
+import type { EzynotaChange } from "../core/types";
 
 /**
- * Document find/replace. Matches are located across block text; replacing
- * commits through transactions (undoable, one entry per replace-all).
- * Current matches are highlighted with a `data-ez-find` attribute when a
- * match sits under the caret, and the host is scrolled to the block.
+ * Document find/replace. Matches are located across block text — including
+ * list items, table cells, toggle headings and image captions — and every
+ * replacement commits as ONE transaction (one undo entry).
+ *
+ * LIMITATION (best effort): matching operates per text node, so a query
+ * that SPANS an inline boundary (e.g. across "</strong><em>") is not
+ * found. A per-block plain-text scan with offset mapping is required to
+ * fix that and is intentionally out of scope here.
+ *
+ * Replacements use literal string splicing (split/join), so `$&`, `$\``
+ * etc. in the replacement text are never expanded.
  */
 export function createFindReplace(host: Host, holder: HTMLElement) {
   return (query: string, replaceWith: string, replaceAll: boolean): void => {
     if (!query) return;
     void holder;
+    // Document-order first-match budget: "replace one" replaces exactly the
+    // FIRST match in the document, not one match in every block.
+    let budget = replaceAll ? Number.POSITIVE_INFINITY : 1;
     let replacedCount = 0;
-    const changes: { id: string; data: Record<string, unknown> }[] = [];
+    const changes: EzynotaChange[] = [];
     for (const block of host.blocks.blocks) {
-      const result = replaceInBlock(block, query, replaceWith, replaceAll);
-      if (result) {
-        changes.push({ id: block.id, data: result });
-        replacedCount += countMatches(block, query);
+      if (budget <= 0) break;
+      const previous = cloneJson(block.data);
+      const next = cloneJson(previous);
+      const used = replaceInData(next, query, replaceWith, budget);
+      if (used > 0) {
+        budget -= used;
+        replacedCount += used;
+        changes.push({ type: "block:update", id: block.id, previous, current: next });
       }
     }
     if (changes.length === 0) {
       host.announce(`No matches for "${query}"`);
       return;
     }
-    for (const change of changes) {
-      host.updateBlockData(change.id, change.data as never, "user");
-    }
+    // ONE transaction for the whole operation (single undo entry).
+    host.commitChanges("user", changes);
     host.announce(replaceAll ? `Replaced ${replacedCount} match(es)` : "Replaced match");
-    if (!replaceAll && changes.length > 0) {
+    if (!replaceAll) {
       // Focus the first replaced block so the user sees the change.
-      host.focusBlock(changes[0]!.id, "start");
+      const first = changes[0] as { id: string };
+      host.focusBlock(first.id, "start");
     }
   };
 }
 
-/** Replace inline content matches within one block. Returns new data or null. */
-function replaceInBlock(block: { id: string; type: string; data: unknown }, query: string, replaceWith: string, replaceAll: boolean): Record<string, unknown> | null {
-  const data = block.data as Record<string, unknown>;
-  if (block.type === "code") {
-    const code = String(data.code ?? "");
-    if (!code.includes(query)) return null;
-    return { ...data, code: replaceAll ? code.split(query).join(replaceWith) : code.replace(query, replaceWith) };
+/**
+ * Replace matches within one block's data IN PLACE (the caller passes a
+ * clone). Returns the number of replacements performed.
+ */
+function replaceInData(data: unknown, query: string, replaceWith: string, budget: number): number {
+  if (!data || typeof data !== "object") return 0;
+  let used = 0;
+  const d = data as Record<string, unknown>;
+  if (typeof d.code === "string") {
+    const { text, count } = replaceString(d.code, query, replaceWith, budget);
+    d.code = text;
+    used += count;
   }
-  if (block.type === "toggle" || block.type === "callout") {
-    const content = data.content as { text?: string }[] | undefined;
-    if (Array.isArray(content)) {
-      const replaced = replaceInlineList(content as never, query, replaceWith, replaceAll);
-      if (replaced) return { ...data, content: content };
+  if (Array.isArray(d.content)) {
+    used += replaceInInlineList(d.content as unknown[], query, replaceWith, budget - used);
+  }
+  if (Array.isArray(d.heading)) {
+    used += replaceInInlineList(d.heading as unknown[], query, replaceWith, budget - used);
+  }
+  if (Array.isArray(d.items)) {
+    for (const item of d.items as Record<string, unknown>[]) {
+      if (budget - used <= 0) break;
+      if (Array.isArray(item?.content)) {
+        used += replaceInInlineList(item.content as unknown[], query, replaceWith, budget - used);
+      }
     }
-    return null;
   }
-  const content = data.content as { text?: string }[] | undefined;
-  if (!Array.isArray(content)) return null;
-  const replaced = replaceInlineList(content, query, replaceWith, replaceAll);
-  return replaced ? { ...data, content } : null;
+  if (Array.isArray(d.rows)) {
+    for (const row of d.rows as unknown[]) {
+      if (!Array.isArray(row)) continue;
+      for (const cell of row as Record<string, unknown>[]) {
+        if (budget - used <= 0) break;
+        if (Array.isArray(cell?.content)) {
+          used += replaceInInlineList(cell.content as unknown[], query, replaceWith, budget - used);
+        }
+      }
+    }
+  }
+  if (typeof d.caption === "string") {
+    const { text, count } = replaceString(d.caption, query, replaceWith, budget - used);
+    d.caption = text;
+    used += count;
+  }
+  return used;
 }
 
-function replaceInlineText(nodes: { text?: string }[], query: string, replaceWith: string, replaceAll: boolean): boolean {
-  let replaced = false;
+function replaceInInlineList(nodes: unknown[], query: string, replaceWith: string, budget: number): number {
+  let used = 0;
   for (const node of nodes) {
-    if (typeof node.text === "string" && node.text.includes(query)) {
-      node.text = replaceAll ? node.text.split(query).join(replaceWith) : node.text.replace(query, replaceWith);
-      replaced = true;
-      if (!replaceAll) return true;
+    if (budget - used <= 0) break;
+    if (!node || typeof node !== "object") continue;
+    const n = node as Record<string, unknown>;
+    if (typeof n.text === "string") {
+      const { text, count } = replaceString(n.text, query, replaceWith, budget - used);
+      n.text = text;
+      used += count;
+    }
+    // Link nodes carry nested text nodes.
+    if (Array.isArray(n.content)) {
+      used += replaceInInlineList(n.content as unknown[], query, replaceWith, budget - used);
     }
   }
-  return replaced;
+  return used;
 }
 
-function replaceInlineList(content: unknown, query: string, replaceWith: string, replaceAll: boolean): boolean {
-  return replaceInlineText(content as { text?: string }[], query, replaceWith, replaceAll);
-}
-
-function countMatches(block: { type: string; data: unknown }, query: string): number {
-  const data = block.data as Record<string, unknown>;
-  const content = data.content as { text?: string }[] | undefined;
-  const text = block.type === "code" ? String(data.code ?? "") : Array.isArray(content) ? inlineToPlainText(content as never) : "";
-  if (!text) return 0;
+/** Literal (non-expanding, non-regex) replace of up to `budget` occurrences. */
+function replaceString(text: string, query: string, replaceWith: string, budget: number): { text: string; count: number } {
+  if (budget <= 0) return { text, count: 0 };
+  let out = text;
   let count = 0;
-  let index = text.indexOf(query);
-  while (index >= 0) {
+  let from = 0;
+  while (count < budget) {
+    const index = out.indexOf(query, from);
+    if (index < 0) break;
+    out = out.slice(0, index) + replaceWith + out.slice(index + query.length);
     count++;
-    index = text.indexOf(query, index + query.length);
+    // Continue past the inserted replacement (it may itself contain the query).
+    from = index + replaceWith.length;
   }
-  return count;
+  return { text: out, count };
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }

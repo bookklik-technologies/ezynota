@@ -98,6 +98,12 @@ export function toInlineContent(data: unknown): InlineContent[] {
   return [];
 }
 
+/** First list item's inline content (Notion-style merge: never flatten all items). */
+function firstItemContent(data: unknown): InlineContent[] {
+  const items = (data as { items?: { content?: InlineContent[] }[] })?.items;
+  return items?.[0]?.content ?? [];
+}
+
 /**
  * Merge `current` block data into `prev` block data (state-level), used by
  * Backspace/Delete merges committed as a single transaction.
@@ -108,7 +114,9 @@ export function mergeData(prevType: string, prevData: unknown, curType: string, 
     case "heading":
     case "quote": {
       const content = toInlineContent(prevData);
-      const incoming = toInlineContent(curData);
+      // Merging a list INTO a textual block keeps only the first item's
+      // content — flattening every item destroyed the list structure.
+      const incoming = curType === "list" ? firstItemContent(curData) : toInlineContent(curData);
       const needsBreak = content.length > 0 && incoming.length > 0;
       const merged = needsBreak ? [...content, { type: "text", text: "\n" }, ...incoming] : [...content, ...incoming];
       const result: Record<string, unknown> = { content: merged };

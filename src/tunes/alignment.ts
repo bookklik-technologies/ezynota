@@ -66,15 +66,21 @@ export class AlignmentTune implements BlockTune {
     return element;
   }
 
-  private applyWrap(): void {
-    this.applyTo(this.api.element);
-  }
-
-  private applyTo(element: HTMLElement): void {
+  /** Re-apply the current alignment to a wrap element (non-destructive update). */
+  applyTo(element: HTMLElement): void {
     element.classList.remove("ez-align-left", "ez-align-center", "ez-align-right");
     if (this.value !== "left") {
       element.classList.add(`ez-align-${this.value}`);
     }
+  }
+
+  /** Accept an externally committed tune value (e.g. undo/redo) without a rebuild. */
+  setValue(value: JsonValue): void {
+    this.value = (VALID as readonly string[]).includes(value as string) ? (value as string) : "left";
+  }
+
+  private applyWrap(): void {
+    this.applyTo(this.api.element);
   }
 
   destroy(): void {}

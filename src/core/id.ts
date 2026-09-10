@@ -22,6 +22,11 @@ export function createDefaultIdGenerator(): IdGenerator {
 }
 
 export function createIdFactory(custom?: IdGenerator): IdGenerator {
-  if (custom) return custom;
-  return createDefaultIdGenerator();
+  const fallback = createDefaultIdGenerator();
+  if (!custom) return fallback;
+  // A custom generator must return a non-empty string; fall back otherwise.
+  return () => {
+    const id = custom();
+    return typeof id === "string" && id !== "" ? id : fallback();
+  };
 }

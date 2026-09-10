@@ -120,6 +120,7 @@ export type EzynotaErrorCode =
   | "EZ_MIGRATION_FAILED"
   | "EZ_COLLAB_FAILED"
   | "EZ_DESTROYED"
+  | "EZ_EDITING_LOCKED"
   | "EZ_UNKNOWN_ERROR";
 
 export interface EzynotaEventsMapInit {

@@ -3,6 +3,8 @@ import { el, placePopover } from "../../ui/dom";
 export interface NoteLinkSuggesterDeps {
   listNotes(): { id: string; title: string }[];
   openNote?(noteId: string): void;
+  /** Active note id so the current note is excluded from suggestions. */
+  getActiveNoteId?(): string | null;
 }
 
 /**
@@ -127,7 +129,10 @@ export class WorkspaceLinkSuggester {
   }
 
   private openPopover(): void {
-    const notes = this.deps.listNotes().filter((note) => note.id !== this.blockId);
+    // Exclude the note currently being edited (fall back to the block id
+    // when the host does not provide the active note id).
+    const selfId = this.deps.getActiveNoteId?.() ?? this.blockId;
+    const notes = this.deps.listNotes().filter((note) => note.id !== selfId);
     const query = this.query.toLowerCase();
     this.items = (query ? notes.filter((note) => note.title.toLowerCase().includes(query)) : notes).slice(0, 8);
     this.focusedIndex = 0;
@@ -141,7 +146,9 @@ export class WorkspaceLinkSuggester {
       };
       document.addEventListener("mousedown", outside, true);
       this.disposers.push(() => document.removeEventListener("mousedown", outside, true));
-      this.surface.addEventListener("ez-close-popovers", () => this.closePopover());
+      const closeOnSignal = (): void => this.closePopover();
+      this.surface.addEventListener("ez-close-popovers", closeOnSignal);
+      this.disposers.push(() => this.surface.removeEventListener("ez-close-popovers", closeOnSignal));
       this.surface.appendChild(this.popover);
     }
     for (const child of Array.from(this.popover.childNodes)) {

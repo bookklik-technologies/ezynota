@@ -2,7 +2,7 @@ import type { EzynotaBlock, InlineContent, JsonValue } from "../types";
 import { isLinkNode, isTextNode, textNode } from "../rich-text/types";
 import type { InlineMark } from "../rich-text/types";
 import type { ParsedBlock } from "../input/html-to-blocks";
-import { isSafeUrl } from "../core/url";
+import { isSafeUrl, isSafeImageUrl } from "../core/url";
 
 /**
  * Markdown interchange. Export covers headings, nested lists (including
@@ -17,6 +17,20 @@ function escapeText(text: string): string {
   return text.replace(/([\\`*_[\]])/g, "\\$1");
 }
 
+/**
+ * Escape an href for Markdown link/image destinations. A ")" or newline
+ * truncates `[text](href)`, so percent-encode parens, whitespace and
+ * angle brackets (plain percent-encoded destinations still round trip
+ * through the import parser).
+ */
+function escapeMarkdownHref(href: string): string {
+  if (!/[\s()<>]/.test(href)) return href;
+  return href.replace(/%/g, "%25").replace(/[\s()<>]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+}
+
+/** Known callout variants (mirrors src/tools/callout-tool.ts). */
+const CALLOUT_VARIANTS = new Set(["info", "warning", "success", "danger"]);
+
 function marksToString(marks: InlineMark[], text: string): string {
   let out = escapeText(text);
   for (const mark of marks) {
@@ -28,7 +42,7 @@ function marksToString(marks: InlineMark[], text: string): string {
       case "mark": out = `==${out}==`; break;
       case "link": {
         const href = String((mark.attrs as { href?: string } | undefined)?.href ?? "");
-        out = `[${out}](${href})`;
+        out = `[${out}](${escapeMarkdownHref(href)})`;
         break;
       }
       case "color": {
@@ -55,9 +69,9 @@ function inlineToMarkdown(content: InlineContent[] | undefined, noteLinkTitles?:
       if (href.startsWith("note:")) {
         const noteId = href.slice("note:".length);
         const label = noteLinkTitles?.get(noteId) ?? text;
-        out += `[${label}](note:${noteId})`;
+        out += `[${label}](${escapeMarkdownHref(`note:${noteId}`)})`;
       } else if (isSafeUrl(href)) {
-        out += `[${escapeText(text)}](${href})`;
+        out += `[${escapeText(text)}](${escapeMarkdownHref(href)})`;
       } else {
         out += escapeText(text);
       }
@@ -100,7 +114,8 @@ export function blocksToMarkdown(
         break;
       case "list": {
         const style = data.style === "ordered" ? "ordered" : (data as { style?: string }).style === "task" ? "task" : "unordered";
-        const items = (data.items as { content: InlineContent[]; checked?: boolean }[]) ?? [];
+        const rawItems: unknown = data.items;
+        const items = Array.isArray(rawItems) ? (rawItems as { content: InlineContent[]; checked?: boolean }[]) : [];
         items.forEach((item, i) => {
           const marker = style === "ordered" ? `${i + 1}. ` : style === "task" ? (item.checked ? "- [x] " : "- [ ] ") : "- ";
           lines.push(`${indent}${marker}${inlineToMarkdown(item.content, options?.noteLinkTitles)}`);
@@ -109,7 +124,8 @@ export function blocksToMarkdown(
       }
       case "table": {
         const table = data as { rows?: JsonValue; header?: boolean };
-        const rows = (table.rows as InlineContent[][][]) ?? [];
+        const rawRows: unknown = table.rows;
+        const rows = Array.isArray(rawRows) ? (rawRows as InlineContent[][][]) : [];
         if (rows.length > 0) {
           rows.forEach((row, rowIndex) => {
             const cells = (row as { content?: InlineContent[] }[]).map((cell) => inlineToMarkdown(cell.content as InlineContent[], options?.noteLinkTitles));
@@ -124,14 +140,15 @@ export function blocksToMarkdown(
       case "image": {
         const src = String(data.src ?? "");
         const alt = String(data.alt ?? "");
-        if (isSafeUrl(src) || src.startsWith("asset:") || src.startsWith("data:")) {
-          lines.push(`${indent}![${escapeText(alt)}](${src})`);
+        if (isSafeImageUrl(src) || src.startsWith("asset:")) {
+          lines.push(`${indent}![${escapeText(alt)}](${escapeMarkdownHref(src)})`);
         }
         if (typeof data.caption === "string" && data.caption !== "") lines.push(`${indent}*${escapeText(data.caption)}*`);
         break;
       }
       case "callout": {
-        const variant = String(data.variant ?? "info");
+        const rawVariant = String(data.variant ?? "info");
+        const variant = CALLOUT_VARIANTS.has(rawVariant) ? rawVariant : "info";
         lines.push(`${indent}> [!${variant.toUpperCase()}]`);
         for (const line of inlineToMarkdown(data.content as InlineContent[], options?.noteLinkTitles).split("\n")) {
           lines.push(`${indent}> ${line}`);
@@ -406,6 +423,14 @@ export function markdownToBlocks(markdown: string, baseUrl?: string): ParsedBloc
       paragraphLines.push(lines[i]!.trim());
       i++;
     }
+    if (paragraphLines.length === 0) {
+      // The line matched a rejection pattern but no specialized branch
+      // consumed it (e.g. "*", "-", "1.", "*a", "| x"). Consume it
+      // unconditionally as plain text — otherwise `i` never advances and
+      // the parser hangs forever.
+      paragraphLines.push(trimmed);
+      i++;
+    }
     if (paragraphLines.length > 0) {
       blocks.push({ type: "paragraph", data: { content: parseMarkdownInline(paragraphLines.join(" "), baseUrl) } });
     }
@@ -422,10 +447,11 @@ function parseTable(tableLines: string[], baseUrl?: string): ParsedBlock | null 
   const bodyLines = hasSeparator ? tableLines.slice(2) : tableLines.slice(1);
   const rows: { content: InlineContent[] }[][] = [];
   const headerRow = headerCells.map((cell) => ({ content: parseMarkdownInline(cell, baseUrl) }));
-  if (hasSeparator) rows.push(headerRow);
+  // With a separator the first row is a real header; without one the first
+  // line is still content — emit it as a body row instead of dropping it.
+  rows.push(headerRow);
   for (const line of bodyLines) {
     rows.push(cellsOf(line).map((cell) => ({ content: parseMarkdownInline(cell, baseUrl) })));
   }
-  if (rows.length === 0) return null;
   return { type: "table", data: { header: hasSeparator, rows } };
 }

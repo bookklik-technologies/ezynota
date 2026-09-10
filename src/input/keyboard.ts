@@ -1,6 +1,7 @@
 import type { Host } from "../host";
 import type { TextBlockToolLike } from "./tool-interfaces";
 import { canMerge, dataIsEmpty } from "./tool-interfaces";
+import { isImeKeyEvent } from "./composition";
 
 /**
  * KeyboardManager implements the default keyboard behavior (spec §16):
@@ -23,7 +24,7 @@ export class KeyboardManager {
     const onKeyDown = (event: Event): void => {
       const e = event as KeyboardEvent;
       if (this.host.readOnly || this.host.isDestroyed()) return;
-      if (e.isComposing || (e.target as HTMLElement).closest("[data-ez-ui]")) return;
+      if (isImeKeyEvent(e) || (e.target as HTMLElement).closest("[data-ez-ui]")) return;
       if (this.handle(e)) e.preventDefault();
     };
     this.holder.addEventListener("keydown", onKeyDown);
@@ -53,7 +54,7 @@ export class KeyboardManager {
         case "u":
           return this.inline("underline");
         case "k":
-          return this.inline("link");
+          return this.handleLinkShortcut();
         case "z":
           this.host.undo();
           this.host.announce("Undo");
@@ -100,11 +101,18 @@ export class KeyboardManager {
         return e.shiftKey ? this.handleSoftBreak() : this.handleEnter();
       case "Backspace":
         return this.handleBackspace();
+      case "Delete":
+        return this.handleDelete();
       case "Tab":
         return this.handleTab(e);
       case "Escape":
-        this.host.closeMenus();
-        return true;
+        // Consume only when something was actually closed; otherwise the
+        // key must reach other handlers (dialogs, browser defaults).
+        if (this.somethingOpen()) {
+          this.host.closeMenus();
+          return true;
+        }
+        return false;
       default:
         return false;
     }
@@ -115,6 +123,49 @@ export class KeyboardManager {
     if (!selection || (selection.collapsed && !["bold", "italic", "underline", "link"].includes(toolName))) return false;
     this.host.dispatchInlineTool(toolName);
     return true;
+  }
+
+  /**
+   * Ctrl/Cmd+K: activate the link tool directly (preserving the selection)
+   * so a collapsed caret outside a link still opens the link popover
+   * instead of being swallowed as a no-op.
+   */
+  private handleLinkShortcut(): boolean {
+    const selection = this.host.getSelectionInfo();
+    if (!selection) return false;
+    const editable = this.host.getEditableElement(selection.blockId);
+    const type = this.host.getBlockType(selection.blockId);
+    if (!editable || !type || type === "code") return false;
+    if (this.host.registry.get(type).toolClass.enableInlineTools === false) return false;
+    const range = this.host.getRange()?.cloneRange();
+    if (!range) return false;
+    if (!this.host.registry.listInlineTools().some((t) => t.name === "link")) return false;
+    const tool = this.host.registry.createInlineTool("link", {
+      config: {},
+      closeToolbar: () => undefined,
+      t: (key) => this.host.i18n.t(key)
+    });
+    if (!tool) return false;
+    editable.focus();
+    this.host.setSelectionFromRange(range);
+    tool.apply(range, {
+      blockId: selection.blockId,
+      blockElement: editable,
+      range,
+      requestSave: () => this.host.requestSaveBlock(selection.blockId, "user"),
+      closeToolbar: () => undefined
+    });
+    return true;
+  }
+
+  /** True when a menu/popover is currently visible inside the surface. */
+  private somethingOpen(): boolean {
+    for (const el of Array.from(this.holder.querySelectorAll<HTMLElement>(".ez-popover, .ez-slash-menu"))) {
+      if (!el.isConnected) continue;
+      if (el.style.display === "none") continue;
+      return true;
+    }
+    return false;
   }
 
   /** Enter: split the block, or create a new one below for empty blocks. */
@@ -181,6 +232,20 @@ export class KeyboardManager {
     }
     const range = this.host.getRange();
     if (!range) return false;
+    // A non-collapsed selection must be deleted first so Enter REPLACES it
+    // (one transaction) instead of splitting at the far boundary. Cross-block
+    // selections are clamped to the anchor block's editable.
+    if (!range.collapsed) {
+      const doc = editable.ownerDocument;
+      const clamped = doc.createRange();
+      clamped.setStart(range.startContainer, range.startOffset);
+      if (editable.contains(range.endContainer)) {
+        clamped.setEnd(range.endContainer, range.endOffset);
+      } else {
+        clamped.setEnd(editable, editable.childNodes.length);
+      }
+      clamped.deleteContents();
+    }
     const split = splitter.splitAtRange(range);
     if (!split) return false;
     const [before, after] = split as [unknown, unknown];
@@ -206,12 +271,45 @@ export class KeyboardManager {
 
     if (dataIsEmpty(curType, this.host.getBlockData(selection.blockId))) {
       this.host.removeBlock(selection.blockId, "user");
-      this.host.focusPrevBlock(selection.blockId, "end");
+      // Resolve the previous block BEFORE removal — afterwards getIndex()
+      // returns -1 and focusPrevBlock() can no longer find the target.
+      this.host.focusBlock(prevBlock.id, "end");
       return true;
     }
 
     if (canMerge(prevBlock.type, curType)) {
       this.host.mergeBlocks(prevBlock.id, selection.blockId, "user");
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Delete mirrors Backspace at the caret's END: an empty block is removed
+   * (focusing the next block) and a non-empty caret-at-end block merges
+   * with the next block.
+   */
+  private handleDelete(): boolean {
+    const selection = this.host.getSelectionInfo();
+    if (!selection || !selection.collapsed) return false;
+    const editable = this.host.getEditableElement(selection.blockId);
+    if (!editable) return false;
+    if (!caretAtEnd(editable, this.host.getRange())) return false;
+
+    const index = this.host.getBlockIndex(selection.blockId);
+    if (index < 0) return false;
+    const nextBlock = this.host.blocks.blocks[index + 1];
+    if (!nextBlock) return false;
+    const curType = this.host.getBlockType(selection.blockId) ?? "";
+
+    if (dataIsEmpty(curType, this.host.getBlockData(selection.blockId))) {
+      this.host.removeBlock(selection.blockId, "user");
+      this.host.focusBlock(nextBlock.id, "start");
+      return true;
+    }
+
+    if (canMerge(curType, nextBlock.type)) {
+      this.host.mergeBlocks(selection.blockId, nextBlock.id, "user");
       return true;
     }
     return false;
@@ -226,6 +324,8 @@ export class KeyboardManager {
     const selection = this.host.getSelectionInfo();
     if (!selection) return false;
     if (this.host.getBlockType(selection.blockId) !== "code") return false;
+    const editable = this.host.getEditableElement(selection.blockId);
+    if (!editable) return false;
     if (e.shiftKey) {
       const moved = this.host.focusNextBlock(selection.blockId, "start");
       if (!moved) {
@@ -234,12 +334,10 @@ export class KeyboardManager {
       this.host.announce("Left code block");
       return true;
     }
-    document.execCommand("insertText", false, "  ");
+    (editable.ownerDocument ?? document).execCommand("insertText", false, "  ");
     this.host.requestSaveBlock(selection.blockId, "user");
     return true;
-  }
-
-  private handleMoveBlock(direction: number): boolean {
+  }  private handleMoveBlock(direction: number): boolean {
     const selection = this.host.getSelectionInfo();
     if (!selection) return false;
     const index = this.host.getBlockIndex(selection.blockId);
@@ -259,6 +357,19 @@ export function caretAtStart(editable: HTMLElement, range: Range | null): boolea
   probe.selectNodeContents(editable);
   try {
     probe.setEnd(range.startContainer, range.startOffset);
+  } catch {
+    return false;
+  }
+  return probe.toString().replace(/\u200B/g, "").length === 0;
+}
+
+/** True when the caret sits at the logical end of the editable content. */
+export function caretAtEnd(editable: HTMLElement, range: Range | null): boolean {
+  if (!range || !range.collapsed) return false;
+  const probe = editable.ownerDocument.createRange();
+  probe.selectNodeContents(editable);
+  try {
+    probe.setStart(range.endContainer, range.endOffset);
   } catch {
     return false;
   }

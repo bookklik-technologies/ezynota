@@ -1,5 +1,6 @@
 import { domToInline } from "../rich-text/dom";
 import type { InlineContent } from "../rich-text/types";
+import { isSafeImageUrl, isSafeUrl } from "../core/url";
 
 /**
  * HTML → blocks conversion for paste import. HTML is parsed with
@@ -29,7 +30,26 @@ const INLINE_TAGS = new Set([
 
 const HEADINGS: Record<string, number> = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 };
 
-/** Sanitize in place: remove dangerous elements and all attributes. */
+/**
+ * Attribute allowlist: the DOM→JSON walk reads `href` (A) and `src` (IMG),
+ * which were previously stripped before they could be read — losing all
+ * links and images in pasted HTML. Values are validated here AND again
+ * downstream (marksForElement / collectBlocks).
+ */
+const SAFE_ATTRIBUTES: Record<string, Set<string>> = {
+  A: new Set(["href"]),
+  IMG: new Set(["src", "alt"])
+};
+
+function keepAttribute(tag: string, name: string, value: string): boolean {
+  const allowed = SAFE_ATTRIBUTES[tag]?.has(name) ?? false;
+  if (!allowed) return false;
+  if (name === "href") return isSafeUrl(value) || value.startsWith("note:");
+  if (name === "src") return isSafeImageUrl(value);
+  return true; // alt
+}
+
+/** Sanitize in place: remove dangerous elements and non-allowlisted attributes. */
 export function sanitizeParsedTree(root: Element): void {
   for (const node of Array.from(root.querySelectorAll("*"))) {
     if (DROP_TAGS.has(node.tagName)) {
@@ -38,7 +58,9 @@ export function sanitizeParsedTree(root: Element): void {
       continue;
     }
     for (const attr of Array.from(node.attributes)) {
-      node.removeAttribute(attr.name);
+      if (!keepAttribute(node.tagName, attr.name, attr.value)) {
+        node.removeAttribute(attr.name);
+      }
     }
   }
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_COMMENT);
@@ -113,10 +135,22 @@ function collectBlocks(body: Element): ParsedBlock[] {
         }
       }
     } else if (tag === "IMG" || tag === "PICTURE") {
+      const img = tag === "IMG" ? elm : elm.querySelector("img");
+      const src = img?.getAttribute("src") ?? "";
+      if (img && isSafeImageUrl(src)) {
+        blocks.push({ type: "image", data: { src, alt: img.getAttribute("alt") ?? "" } });
+      }
       continue;
     } else {
       const content = domToInline(elm);
       if (content.length > 0) blocks.push({ type: "paragraph", data: { content } });
+      // Images nested inside container elements still become image blocks.
+      for (const img of Array.from(elm.querySelectorAll("img"))) {
+        const src = img.getAttribute("src") ?? "";
+        if (isSafeImageUrl(src)) {
+          blocks.push({ type: "image", data: { src, alt: img.getAttribute("alt") ?? "" } });
+        }
+      }
     }
   }
   flushInline();

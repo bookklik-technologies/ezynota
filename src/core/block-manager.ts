@@ -71,7 +71,14 @@ export class BlockManager {
 
   insert(type: string, data: JsonValue, origin: ChangeOrigin = "api", index = -1, opts?: { withId?: string }): string {
     const blocks = this.blocks;
-    const id = opts?.withId ?? this.generateId();
+    let id = opts?.withId ?? this.generateId();
+    // Regenerate deterministically on collision with an existing block id.
+    if (blocks.some((b) => b.id === id)) {
+      const base = id;
+      let suffix = 2;
+      while (blocks.some((b) => b.id === `${base}_${suffix}`)) suffix++;
+      id = `${base}_${suffix}`;
+    }
     const block: EzynotaBlock = { id, type, data };
     const at = index >= 0 ? Math.max(0, Math.min(index, blocks.length)) : blocks.length;
     this.run(origin, () => [{ type: "block:insert", block, index: at }]);
@@ -81,7 +88,8 @@ export class BlockManager {
   update(id: string, data: JsonValue, origin: ChangeOrigin = "api"): void {
     const block = this.getById(id);
     if (!block) return;
-    if (JSON.stringify(block.data) === JSON.stringify(data)) return;
+    // Key-order-insensitive equality so re-serialized equal data is a no-op.
+    if (stableStringify(block.data) === stableStringify(data)) return;
     const previous = cloneJsonData(block.data);
     const current = cloneJsonData(data);
     this.run(origin, () => [{ type: "block:update", id, previous, current }]);
@@ -108,12 +116,13 @@ export class BlockManager {
       to = target;
     } else if ("before" in target) {
       const i = blocks.findIndex((b) => b.id === target.before);
-      if (i < 0) to = blocks.length;
-      else to = i > from ? i - 1 : i;
+      // Unknown anchor: leave the document unchanged instead of moving to the end.
+      if (i < 0) return;
+      to = i > from ? i - 1 : i;
     } else if ("after" in target) {
       const i = blocks.findIndex((b) => b.id === target.after);
-      if (i < 0) to = blocks.length;
-      else to = i > from ? i : i + 1;
+      if (i < 0) return;
+      to = i > from ? i : i + 1;
     } else {
       to = target.at === "start" ? 0 : blocks.length;
     }
@@ -153,13 +162,21 @@ export class BlockManager {
     const block = this.getById(id);
     if (!block) return;
     const previous = cloneJsonData(block.tunes?.[tune] ?? null);
-    if (JSON.stringify(previous) === JSON.stringify(value)) return;
+    if (stableStringify(previous) === stableStringify(value)) return;
     this.run(origin, () => [{ type: "tune:update", id, tune, previous, value: cloneJsonData(value) }]);
   }
 }
 
 function cloneJsonData<T extends JsonValue>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/** JSON.stringify with object keys sorted, so comparisons are key-order-insensitive. */
+function stableStringify(value: JsonValue): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, JsonValue>)[k]!)}`).join(",")}}`;
 }
 
 /** Assign fresh IDs to every descendant block of a duplicated subtree. */

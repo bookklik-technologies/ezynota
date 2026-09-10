@@ -18,6 +18,10 @@
   "main": "./dist/ezynota.umd.cjs",
   "module": "./dist/ezynota.esm.js",
   "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ezynota/ezynota.git"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -26,8 +30,7 @@
     },
     "./core": {
       "types": "./dist/core-entry.d.ts",
-      "import": "./dist/core.esm.js",
-      "require": "./dist/core.umd.cjs"
+      "import": "./dist/core.esm.js"
     },
     "./dist/ezynota.css": "./dist/ezynota.css",
     "./package.json": "./package.json"
@@ -39,7 +42,7 @@
   ],
   "sideEffects": [
     "*.css",
-    "./src/index.ts"
+    "./dist/ezynota.esm.js"
   ],
   "scripts": {
     "build": "vite build && vite build --config vite.umd.config.ts && npm run build:types",
@@ -55,13 +58,11 @@
     "@types/node": "^20.14.0",
     "eslint": "^9.9.0",
     "happy-dom": "^15.7.4",
+    "lucide-static": "^1.43.0",
     "prettier": "^3.3.3",
     "typescript": "^5.5.4",
     "typescript-eslint": "^8.70.0",
     "vite": "^5.4.2",
     "vitest": "^2.0.5"
-  },
-  "dependencies": {
-    "lucide-static": "^1.43.0"
   }
 }

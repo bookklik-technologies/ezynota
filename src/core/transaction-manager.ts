@@ -37,8 +37,18 @@ export class TransactionManager {
   commit(origin: ChangeOrigin, changes: EzynotaChange[]): CommitResult {
     if (changes.length === 0) return { batch: this.emptyBatch(origin), changed: false };
     const doc = this.state.raw();
-    for (const change of changes) {
-      this.applyChange(doc, change);
+    // All-or-nothing: snapshot the mutable document so a mid-batch failure
+    // can be rolled back instead of leaving half-applied state behind.
+    const snapshot = cloneJson({ blocks: doc.blocks, meta: doc.meta ?? null }) as { blocks: EzynotaBlock[]; meta: EzynotaDocument["meta"] };
+    try {
+      for (const change of changes) {
+        this.applyChange(doc, change);
+      }
+    } catch (err) {
+      doc.blocks = snapshot.blocks;
+      doc.meta = snapshot.meta ?? undefined;
+      if (err instanceof EzynotaError) throw err;
+      throw new EzynotaError("EZ_UNKNOWN_ERROR", "Transaction failed and was rolled back", { origin, changes: changes.length }, err);
     }
     this.state.updatedAt();
     this.state.bump();
@@ -79,6 +89,8 @@ export class TransactionManager {
         break;
       }
       case "tune:update": {
+        // Guard against prototype-pollution tune keys, mirroring sanitizeJsonValue.
+        if (change.tune === "__proto__" || change.tune === "constructor" || change.tune === "prototype") break;
         const block = doc.blocks.find((b) => b.id === change.id);
         if (block) {
           const tunes = block.tunes ?? (block.tunes = {});

@@ -44,6 +44,11 @@ export interface Host {
   focusNextBlock(id: string, at?: "start" | "end"): boolean;
   focusPrevBlock(id: string, at?: "start" | "end"): boolean;
   requestSaveBlock(id: string, origin?: ChangeOrigin): void;
+  /**
+   * Save a nested child block (e.g. a toggle section's children) through
+   * the parent tool that owns its lifecycle.
+   */
+  requestSaveNestedChild(parentId: string, childId: string): void;
 
   getEditableElement(id: string): HTMLElement | null;
   getTool(id: string): BlockTool | undefined;

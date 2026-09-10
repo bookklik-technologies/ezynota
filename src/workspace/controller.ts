@@ -7,16 +7,15 @@ import type {
   WorkspaceBackup,
   WorkspaceTheme
 } from "./types";
-import { WorkspaceState, defaultWorkspaceId } from "./workspace";
+import { WorkspaceState, defaultWorkspaceId, encodeBackupForExport } from "./workspace";
 import { IndexedDbStorage } from "./storage";
-import { registerAssetStore, registerAssetLoader, unregisterAssetHandlers } from "./asset-registry";
+import { registerAssetStore, registerAssetLoader } from "./asset-registry";
 import { WorkspaceUI, resolveTheme } from "./ui/workspace-ui";
 import type { HistoryState } from "../core/history";
 import { exportDocumentToString, downloadTextFile, safeFilename, blocksToHtml, resolveDocumentAssets } from "../io/export";
 import { parseImportFile, blocksToDocument } from "../io/import";
 import { printDocument } from "../io/print";
 import { WorkspaceLinkSuggester } from "./ui/note-links";
-import { EzynotaError } from "../core/errors";
 import { createDefaultIdGenerator } from "../core/id";
 import { GENERATOR_VERSION } from "../core/schema";
 
@@ -89,10 +88,13 @@ export class WorkspaceController {
     this.ui = new WorkspaceUI(surface, this.state, deps, options.showSidebar !== false);
     this.suggester = new WorkspaceLinkSuggester(surface, {
       listNotes: () => this.state.listNotes().map((note) => ({ id: note.id, title: note.title })),
-      openNote: (id) => this.depsBridge?.openNote(id) ?? void this.loadNoteIntoEditor(id)
+      openNote: (id) => this.depsBridge?.openNote(id) ?? void this.loadNoteIntoEditor(id),
+      getActiveNoteId: () => this.state.activeNoteId
     });
-    registerAssetStore(this.storeFile.bind(this));
-    registerAssetLoader((assetId) => this.state.loadAsset(assetId));
+    // Per-instance asset registration tokens: destroying one controller
+    // must not rip out another controller's handlers.
+    this.disposers.push(registerAssetStore(this.storeFile.bind(this)));
+    this.disposers.push(registerAssetLoader((assetId) => this.state.loadAsset(assetId)));
     this.disposers.push(
       this.state.on((event) => {
         options.onEvent?.(event);
@@ -118,7 +120,15 @@ export class WorkspaceController {
 
   /** Load stored notes and open the first one. Resolves when the workspace is usable. */
   async start(): Promise<void> {
-    await this.state.load();
+    try {
+      await this.state.load();
+    } catch (error) {
+      // Mount the UI even when the load fails so the recovery panel is
+      // reachable and the user can retry.
+      this.ui?.mount();
+      this.ui?.showLoadError();
+      throw error;
+    }
     if (this.destroyed) return;
     this.ui?.mount();
     // Explicit initial data opens as a NEW note instead of replacing stored notes.
@@ -147,7 +157,6 @@ export class WorkspaceController {
     this.ui?.destroy();
     this.suggester?.destroy();
     this.removeFullscreenListeners();
-    unregisterAssetHandlers();
     this.state.destroy();
   }
 
@@ -167,9 +176,14 @@ export class WorkspaceController {
     await this.state.flush();
   }
 
+  private loadGeneration = 0;
+
   private async loadNoteIntoEditor(noteId: string, preserveFocus = true): Promise<void> {
     const note = this.state.getNote(noteId);
     if (!note) return;
+    // Generation token: overlapping loads (rapid note clicks) must not
+    // interleave — only the latest generation may mutate the session.
+    const generation = ++this.loadGeneration;
     this.switching = true;
     try {
       // Retain independent in-memory history and selection per note.
@@ -179,6 +193,7 @@ export class WorkspaceController {
         this.histories.set(previous, this.host.exportHistoryState());
       }
       await this.host.render(cloneDoc(note.document));
+      if (generation !== this.loadGeneration) return;
       const restored = this.histories.get(noteId);
       if (restored) this.host.importHistoryState(restored);
       this.state.activeNoteId = noteId;
@@ -186,7 +201,7 @@ export class WorkspaceController {
       if (preserveFocus) this.host.focus({ at: "start" });
       this.emit({ type: "activeNote:changed", noteId });
     } finally {
-      this.switching = false;
+      if (generation === this.loadGeneration) this.switching = false;
     }
   }
 
@@ -337,7 +352,9 @@ export class WorkspaceController {
       moveFolder: (id, parentId) => this.state.moveFolder(id, parentId),
       openNote: (id) => {
         if (id === this.state.activeNoteId) return;
-        void this.loadNoteIntoEditor(id);
+        // Resolves when the note is fully loaded, so callers (e.g. the
+        // search results) can queue follow-up actions like goToBlock.
+        return this.loadNoteIntoEditor(id);
       },
       openFolder: (id) => {
         this.state.activeFolderId = id;
@@ -411,6 +428,8 @@ export class WorkspaceController {
   }
 
   async importFiles(files: File[]): Promise<void> {
+    // Per-file error handling: one bad file must not abort the rest, and
+    // failures are reported through events instead of an unhandled rejection.
     for (const file of files) {
       try {
         const parsed = await parseImportFile(file);
@@ -434,33 +453,52 @@ export class WorkspaceController {
   }
 
   private reportImportError(error: unknown): void {
-    if (error instanceof EzynotaError) throw error;
-    throw new EzynotaError("EZ_IMPORT_FAILED", "Import failed", undefined, error);
+    const message = error instanceof Error ? error.message : "Import failed";
+    this.reportRuntimeError(message, error);
+  }
+
+  /** Report a runtime failure to the UI banner and the host event listener. */
+  private reportRuntimeError(message: string, cause?: unknown): void {
+    const event = { type: "importError", message, cause } as unknown as import("./types").WorkspaceEvent;
+    this.ui?.notifyEvent(event);
+    this.options.onEvent?.(event);
   }
 
   async createBackup(): Promise<void> {
-    await this.saveActiveNote();
-    const backup = await this.state.createBackup();
-    downloadTextFile(`ezynota-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backup, null, 2), "application/json");
+    try {
+      await this.saveActiveNote();
+      const backup = await this.state.createBackup();
+      // Assets are exported with base64 bytes: a raw Uint8Array would be
+      // serialized as an object index map and silently corrupted.
+      const payload = encodeBackupForExport(backup);
+      downloadTextFile(`ezynota-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(payload, null, 2), "application/json");
+    } catch (error) {
+      this.reportRuntimeError("Could not create the workspace backup.", error);
+    }
   }
 
   async restoreBackupFile(file: File): Promise<void> {
-    const text = await file.text();
+    let text = "";
     try {
+      text = await file.text();
       const backup = JSON.parse(text) as WorkspaceBackup;
       await this.restoreBackup(backup);
     } catch (error) {
       if (error instanceof SyntaxError) {
         // Retain the malformed original for recovery.
         downloadTextFile("malformed-backup.json", text, "application/json");
-        throw new EzynotaError("EZ_IMPORT_FAILED", "Backup file is not valid JSON; the original was downloaded for recovery");
+        this.reportRuntimeError("Backup file is not valid JSON; the original was downloaded for recovery", error);
+        return;
       }
-      throw error;
+      this.reportRuntimeError("Could not restore the workspace backup.", error);
     }
   }
 
   /** Restore a workspace backup under a new workspace ID by default. */
   async restoreBackup(backup: WorkspaceBackup): Promise<{ workspaceId: string }> {
+    // Flush the current workspace (including the live editor snapshot)
+    // before the restored envelope replaces it.
+    await this.saveActiveNote();
     this.histories.clear();
     const result = await this.state.restoreBackup(backup, { newWorkspaceId: true });
     const first = this.state.listNotes()[0];
@@ -472,7 +510,12 @@ export class WorkspaceController {
   }
 
   async retryLoad(): Promise<void> {
-    await this.state.retryLoad();
+    try {
+      await this.state.retryLoad();
+    } catch (error) {
+      this.reportRuntimeError("The workspace still could not be loaded.", error);
+      return;
+    }
     const first = this.state.listNotes()[0];
     if (first) await this.loadNoteIntoEditor(first.id, false);
   }

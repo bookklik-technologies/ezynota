@@ -5,6 +5,9 @@ import { isSafeImageUrl } from "../core/url";
 
 export type ExportFormat = "json" | "md" | "html" | "txt";
 
+/** Known callout variants (mirrors src/tools/callout-tool.ts). */
+const CALLOUT_VARIANTS = new Set(["info", "warning", "success", "danger"]);
+
 /**
  * Portable saves: local `asset:<id>` references are resolved into image
  * data URLs so a downloaded document renders outside the workspace.
@@ -104,7 +107,8 @@ function renderBlocksInto(blocks: EzynotaBlock[], parts: string[]): void {
         break;
       case "list": {
         const style = data.style === "ordered" ? "ordered" : (data as { style?: string }).style === "task" ? "task" : "unordered";
-        const items = (data.items as { content?: never; checked?: boolean }[]) ?? [];
+        const rawItems: unknown = data.items;
+        const items = Array.isArray(rawItems) ? (rawItems as { content?: never; checked?: boolean }[]) : [];
         const listTag = style === "ordered" ? "ol" : "ul";
         const lis = items
           .map((item) => {
@@ -119,7 +123,8 @@ function renderBlocksInto(blocks: EzynotaBlock[], parts: string[]): void {
         break;
       }
       case "table": {
-        const rows = ((data as { rows?: unknown }).rows as { content?: unknown }[][]) ?? [];
+        const rawRows: unknown = (data as { rows?: unknown }).rows;
+        const rows = Array.isArray(rawRows) ? (rawRows as { content?: unknown }[][]) : [];
         const header = (data as { header?: boolean }).header !== false;
         const trs = rows
           .map((row, index) => {
@@ -135,14 +140,17 @@ function renderBlocksInto(blocks: EzynotaBlock[], parts: string[]): void {
         const alt = String(data.alt ?? "");
         const img = document.createElement("img");
         img.alt = alt;
-        if (isSafeImageUrl(src) || src.startsWith("asset:") || src.startsWith("data:")) img.setAttribute("src", src);
+        if (isSafeImageUrl(src) || src.startsWith("asset:")) img.setAttribute("src", src);
         parts.push(img.outerHTML);
         if (typeof data.caption === "string" && data.caption !== "") parts.push(`<figcaption>${escapeHtml(data.caption)}</figcaption>`);
         break;
       }
       case "callout": {
-        const variant = String(data.variant ?? "info");
-        parts.push(`<div class="ez-md-callout" data-ezn-variant="${variant}">${inlineToHtml(data.content as never)}</div>`);
+        const rawVariant = String(data.variant ?? "info");
+        // Malformed/hostile docs (e.g. via .json import) may carry an
+        // arbitrary variant — normalize it and escape the attribute value.
+        const variant = CALLOUT_VARIANTS.has(rawVariant) ? rawVariant : "info";
+        parts.push(`<div class="ez-md-callout" data-ezn-variant="${escapeHtml(variant)}">${inlineToHtml(data.content as never)}</div>`);
         break;
       }
       case "toggle": {

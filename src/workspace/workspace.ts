@@ -1,5 +1,4 @@
 import type { EzynotaBlock, EzynotaDocument, JsonValue } from "../types";
-import { isLinkNode } from "../rich-text/types";
 import type {
   FolderRecord,
   NoteRecord,
@@ -25,6 +24,12 @@ export interface WorkspaceStateOptions {
   autosaveMs?: number;
 }
 
+/**
+ * Default workspace id. NOTE: this binds to `location.pathname`, so every
+ * editor on the same page path (and the same holder id) shares one
+ * workspace; host apps wanting per-page isolation should pass an explicit
+ * workspace id instead.
+ */
 export function defaultWorkspaceId(holderId: string | null): string {
   let path = "/default";
   try {
@@ -59,6 +64,15 @@ export class WorkspaceState {
   private unsubscribeCrossTab: (() => void) | null = null;
   private lastStatus: SaveStatus = "idle";
   private destroyed = false;
+  /** Storage key the state currently saves under (restore can retarget it). */
+  private activeWorkspaceId: string;
+  /** Cached object URLs per asset id, revoked on destroy. */
+  private objectUrls = new Map<string, string>();
+  /** pagehide/visibilitychange listeners, removed on destroy. */
+  private unloadDisposers: (() => void)[] = [];
+  /** Remote revision observed while dirty, applied by the next explicit retrySave. */
+  private conflictRemoteRevision: number | null = null;
+  private conflictRetryRevision: number | null = null;
 
   /** The note currently open in the document surface. */
   activeNoteId: string | null = null;
@@ -70,6 +84,8 @@ export class WorkspaceState {
     this.storage = options.storage;
     this.generateId = options.generateId;
     this.autosaveMs = options.autosaveMs ?? 500;
+    this.activeWorkspaceId = options.workspaceId;
+    this.registerUnloadListeners();
   }
 
   /* ---------- lifecycle ---------- */
@@ -77,11 +93,9 @@ export class WorkspaceState {
   async load(): Promise<void> {
     try {
       await this.storage.init();
-      this.unsubscribeCrossTab = this.storage.subscribe(this.workspaceId, () => {
-        this.emit({ type: "remoteChange" });
-      });
-      const stored = await this.storage.loadWorkspace(this.workspaceId);
-      this.envelope = normalizeEnvelope(stored, this.workspaceId);
+      this.subscribeCrossTab();
+      const stored = await this.storage.loadWorkspace(this.activeWorkspaceId);
+      this.envelope = normalizeEnvelope(stored, this.activeWorkspaceId);
       this.revision = stored?.storageRevision ?? 0;
       this.loaded = true;
       this.loadError = null;
@@ -110,13 +124,108 @@ export class WorkspaceState {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     this.destroyed = true;
-    this.flushSave();
     this.cancelSaveTimer();
+    for (const dispose of this.unloadDisposers) dispose();
+    this.unloadDisposers.length = 0;
     this.unsubscribeCrossTab?.();
     this.unsubscribeCrossTab = null;
+    // Best-effort final write of unsaved edits before the adapter closes:
+    // queued behind anything already in flight so close() cannot kill a
+    // pending commit. destroy() stays synchronous — the write fires now and
+    // the storage is closed once it settles.
+    const finalWrite = this.dirty
+      ? this.saveQueue.then(() => this.persistFinal(cloneEnvelope(this.envelope), this.mutationVersion))
+      : this.saveQueue;
+    this.dirty = false;
     this.listeners.clear();
-    void this.storage.close();
+    void finalWrite
+      .catch(() => undefined)
+      .then(() => {
+        this.revokeObjectUrls();
+        void this.storage.close();
+      });
+  }
+
+  /** Final write on destroy — never rolls back and never checks `destroyed`. */
+  private async persistFinal(snapshot: WorkspaceEnvelope, version: number): Promise<void> {
+    try {
+      const result = await this.storage.commit(this.activeWorkspaceId, snapshot, this.revision);
+      if (result.ok) {
+        this.revision = result.revision;
+        if (version === this.mutationVersion) this.unsavedSnapshot = null;
+      } else {
+        // Keep the payload for download recovery.
+        this.unsavedSnapshot = cloneEnvelope(this.envelope);
+      }
+    } catch {
+      this.unsavedSnapshot = cloneEnvelope(this.envelope);
+    }
+  }
+
+  /** Best-effort flush on page unload / tab hide. */
+  private registerUnloadListeners(): void {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    const onPageHide = (): void => this.flushSave();
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "hidden") this.flushSave();
+    };
+    try {
+      window.addEventListener("pagehide", onPageHide);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      this.unloadDisposers.push(
+        () => window.removeEventListener("pagehide", onPageHide),
+        () => document.removeEventListener("visibilitychange", onVisibilityChange)
+      );
+    } catch {
+      /* non-browser environment */
+    }
+  }
+
+  /** (Re)subscribe to cross-tab change notifications for the active id. */
+  private subscribeCrossTab(): void {
+    this.unsubscribeCrossTab?.();
+    this.unsubscribeCrossTab = null;
+    this.unsubscribeCrossTab = this.storage.subscribe(this.activeWorkspaceId, () => this.handleRemoteChange());
+  }
+
+  /**
+   * Another tab committed to this workspace. When nothing is dirty, reload
+   * the stored envelope and revision so the UI renders fresh data and the
+   * next commit is not stale forever. While dirty, keep the local edits
+   * (conflict state) but remember the remote revision so an explicit
+   * retrySave can succeed.
+   */
+  private handleRemoteChange(): void {
+    if (this.destroyed) return;
+    if (!this.dirty) {
+      void this.reloadFromStorage();
+      return;
+    }
+    void this.storage
+      .loadWorkspace(this.activeWorkspaceId)
+      .then((stored) => {
+        if (this.destroyed || !this.dirty) return;
+        this.conflictRemoteRevision = stored?.storageRevision ?? 0;
+        this.emit({ type: "remoteChange" });
+      })
+      .catch(() => {
+        this.emit({ type: "remoteChange" });
+      });
+  }
+
+  private async reloadFromStorage(): Promise<void> {
+    try {
+      const stored = await this.storage.loadWorkspace(this.activeWorkspaceId);
+      if (this.destroyed || this.dirty) return;
+      this.envelope = normalizeEnvelope(stored, this.activeWorkspaceId);
+      this.revision = stored?.storageRevision ?? 0;
+      this.emit({ type: "remoteChange" });
+      this.emit({ type: "notes:changed" });
+    } catch {
+      /* keep the current in-memory state */
+    }
   }
 
   /* ---------- events ---------- */
@@ -244,11 +353,15 @@ export class WorkspaceState {
     const source = this.getNote(id);
     if (!source) return null;
     const now = Date.now();
+    const title = `${source.title} (copy)`;
+    const document = cloneJson(source.document) as EzynotaDocument;
+    // Keep meta.title in sync so the "(copy)" title survives the first edit.
+    document.meta = { ...(document.meta ?? {}), title };
     const copy: NoteRecord = {
       ...source,
       id: this.generateId(),
-      title: `${source.title} (copy)`,
-      document: cloneJson(source.document) as EzynotaDocument,
+      title,
+      document,
       createdAt: now,
       updatedAt: now,
       revision: 0,
@@ -355,10 +468,11 @@ export class WorkspaceState {
   }
 
   emptyTrash(): void {
-    const before = this.envelope.notes.length;
+    const notesBefore = this.envelope.notes.length;
+    const foldersBefore = this.envelope.folders.length;
     this.envelope.notes = this.envelope.notes.filter((note) => !note.trashed);
     this.envelope.folders = this.envelope.folders.filter((folder) => !folder.trashed);
-    if (this.envelope.notes.length !== before || this.envelope.folders.length !== before) {
+    if (this.envelope.notes.length !== notesBefore || this.envelope.folders.length !== foldersBefore) {
       this.markDirty();
       this.emit({ type: "trash:changed" });
       this.emit({ type: "notes:changed" });
@@ -437,8 +551,7 @@ export class WorkspaceState {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const hits: SearchHit[] = [];
-    for (const note of this.listNotes(!options?.includeTrash === true ? false : true)) {
-      if (note.trashed) continue;
+    for (const note of this.listNotes(options?.includeTrash === true)) {
       const titleIndex = note.title.toLowerCase().indexOf(q);
       if (titleIndex >= 0) {
         hits.push({ noteId: note.id, title: note.title, excerpt: note.title, offset: titleIndex, inTitle: true });
@@ -501,8 +614,12 @@ export class WorkspaceState {
   private async persist(snapshot: WorkspaceEnvelope, version: number): Promise<void> {
     if (this.destroyed) return;
     this.emitStatus("saving");
+    // A retry after a cross-tab conflict applies the remote revision the
+    // user explicitly accepted; otherwise use the loaded revision.
+    const expected = this.conflictRetryRevision ?? this.revision;
+    this.conflictRetryRevision = null;
     try {
-      const result = await this.storage.commit(this.workspaceId, snapshot, this.revision);
+      const result = await this.storage.commit(this.activeWorkspaceId, snapshot, expected);
       if (result.ok) {
         this.revision = result.revision;
         if (version === this.mutationVersion) {
@@ -533,6 +650,12 @@ export class WorkspaceState {
   /** Retry the last failed write. */
   retrySave(): void {
     if (this.unsavedSnapshot) this.dirty = true;
+    if (this.conflictRemoteRevision !== null) {
+      // The user explicitly retries after a cross-tab change: target the
+      // revision observed remotely instead of the stale one.
+      this.conflictRetryRevision = this.conflictRemoteRevision;
+      this.conflictRemoteRevision = null;
+    }
     this.flushSave();
   }
 
@@ -549,18 +672,41 @@ export class WorkspaceState {
   /* ---------- assets ---------- */
 
   async saveAsset(asset: WorkspaceAsset): Promise<boolean> {
-    return this.storage.saveAsset(this.workspaceId, asset);
+    return this.storage.saveAsset(this.activeWorkspaceId, asset);
   }
 
   async loadAsset(assetId: string): Promise<WorkspaceAsset | null> {
-    return this.storage.loadAsset(this.workspaceId, assetId);
+    return this.storage.loadAsset(this.activeWorkspaceId, assetId);
   }
 
-  /** Asset bytes as an object URL — temporary, for rendering only. */
+  /** Asset bytes as an object URL — cached one per asset id and revoked on destroy. */
   async assetObjectUrl(assetId: string): Promise<string | null> {
+    const cached = this.objectUrls.get(assetId);
+    if (cached) return cached;
     const asset = await this.loadAsset(assetId);
     if (!asset) return null;
-    return URL.createObjectURL(new Blob([asset.bytes as unknown as BlobPart], { type: asset.mime }));
+    try {
+      const url = URL.createObjectURL(new Blob([asset.bytes as unknown as BlobPart], { type: asset.mime }));
+      if (this.destroyed) {
+        URL.revokeObjectURL(url);
+        return null;
+      }
+      this.objectUrls.set(assetId, url);
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  private revokeObjectUrls(): void {
+    for (const url of this.objectUrls.values()) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        /* already revoked */
+      }
+    }
+    this.objectUrls.clear();
   }
 
   /* ---------- backup / restore ---------- */
@@ -587,7 +733,10 @@ export class WorkspaceState {
 
   /**
    * Restore a backup. By default a NEW workspace ID is generated so the
-   * current workspace is never clobbered. The backup is validated before
+   * current workspace is never clobbered: pending autosaves for the current
+   * workspace are flushed first and the restored envelope is committed under
+   * the target ID through the serialized save queue, so no queued persist
+   * can resurrect stale state afterwards. The backup is validated before
    * commit; a malformed or newer envelope is retained for recovery.
    */
   async restoreBackup(
@@ -608,15 +757,35 @@ export class WorkspaceState {
     }
     const targetId = options?.newWorkspaceId === false ? parsed.id : this.generateId();
     const envelope: WorkspaceEnvelope = { ...parsed, id: targetId, savedAt: Date.now() };
-    if (isBackupWithAssets(backup)) {
-      for (const asset of backup.assets) {
-        await this.saveAsset({ ...asset, bytes: new Uint8Array(asset.bytes) });
+    delete (envelope as { storageRevision?: number }).storageRevision;
+    // Flush + cancel any pending autosave first, then run the restore inside
+    // the serialized save queue: a queued autosave persist executing after
+    // the restore commit would otherwise revert it (it reads this.revision
+    // at execution time).
+    this.cancelSaveTimer();
+    this.saveQueue = this.flush().then(async () => {
+      if (isBackupWithAssets(backup)) {
+        for (const asset of backup.assets) {
+          await this.storage.saveAsset(targetId, { ...asset, bytes: decodeAssetBytes(asset.bytes) });
+        }
       }
-    }
-    this.envelope = envelope;
-    await this.storage.commit(this.workspaceId, envelope, 0);
-    this.revision = 1;
-    this.loaded = true;
+      const expected = targetId === this.activeWorkspaceId ? this.revision : 0;
+      const result = await this.storage.commit(targetId, envelope, expected);
+      if (!result.ok) {
+        throw new EzynotaError("EZ_IMPORT_FAILED", `Restoring the backup failed (${result.reason})`, {
+          reason: result.reason,
+          workspaceId: targetId
+        });
+      }
+      this.revision = result.revision;
+      this.activeWorkspaceId = targetId;
+      this.envelope = envelope;
+      this.loaded = true;
+      this.dirty = false;
+      this.unsavedSnapshot = null;
+      this.subscribeCrossTab();
+    });
+    await this.saveQueue;
     this.emit({ type: "notes:changed" });
     this.emit({ type: "folders:changed" });
     return { workspaceId: targetId };
@@ -664,6 +833,62 @@ function isBackupWithAssets(backup: unknown): backup is WorkspaceBackup {
   return typeof backup === "object" && backup !== null && Array.isArray((backup as { assets?: unknown }).assets);
 }
 
+/**
+ * Base64 encode/decode for asset bytes in exported backups. A raw
+ * Uint8Array survives `JSON.stringify` as `{"0":65,...}`, which silently
+ * corrupts the payload — backups therefore carry base64 strings, and
+ * restore also accepts plain byte arrays (older backups) and Uint8Array
+ * (in-memory consumers).
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+export function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function decodeAssetBytes(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === "string") return base64ToBytes(value);
+  if (Array.isArray(value)) return new Uint8Array(value as number[]);
+  throw new EzynotaError("EZ_IMPORT_FAILED", "Backup asset bytes are malformed");
+}
+
+/** Serialized asset record for portable backup files (bytes as base64). */
+export interface SerializedWorkspaceAsset {
+  id: string;
+  mime: string;
+  name?: string;
+  bytes: string;
+  createdAt: number;
+}
+
+export type SerializedWorkspaceBackup = Omit<WorkspaceBackup, "assets"> & { assets: SerializedWorkspaceAsset[] };
+
+/** Convert a backup into a JSON-safe payload for export/download. */
+export function encodeBackupForExport(backup: WorkspaceBackup): SerializedWorkspaceBackup {
+  const { assets, ...envelope } = backup;
+  return {
+    ...envelope,
+    assets: assets.map((asset) => ({
+      id: asset.id,
+      mime: asset.mime,
+      name: asset.name,
+      bytes: bytesToBase64(asset.bytes),
+      createdAt: asset.createdAt
+    }))
+  };
+}
+
 function walkBlocks(blocks: EzynotaBlock[], visit: (block: EzynotaBlock) => void): void {
   for (const block of blocks) {
     visit(block);
@@ -678,21 +903,22 @@ function collectLinkTargets(data: unknown, out: Set<string>): void {
   }
   if (typeof data !== "object" || data === null) return;
   const record = data as Record<string, unknown>;
+  // Links also appear as MARKS on text nodes: { type: "link", attrs: { href } }.
+  if (Array.isArray(record.marks)) {
+    for (const mark of record.marks as { type?: unknown; attrs?: { href?: unknown } }[]) {
+      const href = mark?.type === "link" ? mark.attrs?.href : undefined;
+      if (typeof href === "string" && href.startsWith("note:")) out.add(href.slice("note:".length));
+    }
+  }
   if (record.type === "link" && typeof record.href === "string" && record.href.startsWith("note:")) {
     out.add(record.href.slice("note:".length));
-    return;
   }
   if (Array.isArray(record.content)) {
-    for (const node of record.content as unknown[]) {
-      if (isLinkNode(node as never) && String((node as { href?: string }).href ?? "").startsWith("note:")) {
-        out.add(String((node as { href: string }).href).slice("note:".length));
-      } else {
-        collectLinkTargets(node, out);
-      }
-    }
+    for (const node of record.content as unknown[]) collectLinkTargets(node, out);
   }
   if (record.rows) collectLinkTargets(record.rows, out);
   if (record.items) collectLinkTargets(record.items, out);
+  if (record.heading) collectLinkTargets(record.heading, out);
 }
 
 function collectAssetIds(data: unknown, out: Set<string>): void {
@@ -736,6 +962,18 @@ function validateBackup(backup: unknown): { ok: true; envelope: WorkspaceEnvelop
     const document = (note as { document?: unknown }).document;
     if (typeof document !== "object" || document === null || typeof (document as { schemaVersion?: string }).schemaVersion !== "string") {
       return { ok: false, reason: "Backup contains an invalid note document" };
+    }
+  }
+  if (record.assets !== undefined && !Array.isArray(record.assets)) {
+    return { ok: false, reason: "Backup assets must be an array" };
+  }
+  for (const asset of (record.assets as unknown[] | undefined) ?? []) {
+    if (typeof asset !== "object" || asset === null || typeof (asset as { id?: unknown }).id !== "string") {
+      return { ok: false, reason: "Backup contains an invalid asset record" };
+    }
+    const bytes = (asset as { bytes?: unknown }).bytes;
+    if (!(bytes instanceof Uint8Array) && !Array.isArray(bytes) && typeof bytes !== "string") {
+      return { ok: false, reason: "Backup asset bytes are malformed" };
     }
   }
   return { ok: true, envelope: record as unknown as WorkspaceEnvelope };

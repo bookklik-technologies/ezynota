@@ -73,6 +73,16 @@
   position: absolute;
 }
 
+/* Note placeholder: only on a fresh note (the document's single block,
+   managed by the renderer via data-ez-note-placeholder). */
+.ez-text-input[data-ez-note-placeholder]:empty::before,
+.ez-text-input[data-ez-note-placeholder][data-ez-empty="true"]::before {
+  content: attr(data-ez-note-placeholder);
+  color: var(--ez-muted);
+  pointer-events: none;
+  position: absolute;
+}
+
 .ez-editor .ez-empty-hint::before {
   content: attr(data-ez-placeholder);
   color: var(--ez-muted);

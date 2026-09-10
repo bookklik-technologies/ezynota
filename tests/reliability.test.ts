@@ -10,7 +10,7 @@ function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder:
   const holder = document.createElement("div");
   document.body.appendChild(holder);
   holders.push(holder);
-  const editor = new Ezynota({ holder, ...config });
+  const editor = new Ezynota({ holder, mode: "embedded", ...config });
   editors.push(editor);
   return { editor, holder };
 }

@@ -3,17 +3,17 @@ import { el, button, placePopover } from "../ui/dom";
 
 /** --- DOM helpers for inline formatting in contenteditable blocks --- */
 
-export function exec(command: string, value?: string): void {
+export function exec(target: { ownerDocument: Document | null }, command: string, value?: string): void {
   try {
-    document.execCommand(command, false, value);
+    target.ownerDocument?.execCommand(command, false, value);
   } catch {
     /* unsupported command in some engines */
   }
 }
 
-export function queryState(command: string): boolean {
+export function queryState(target: { ownerDocument: Document | null }, command: string): boolean {
   try {
-    return document.queryCommandState(command);
+    return target.ownerDocument?.queryCommandState(command) ?? false;
   } catch {
     return false;
   }
@@ -37,9 +37,9 @@ export function activeMarks(editable: HTMLElement): Set<string> {
   if (!sel || sel.rangeCount === 0) return active;
   const range = sel.getRangeAt(0);
   if (!editable.contains(range.commonAncestorContainer)) return active;
-  if (queryState("bold")) active.add("bold");
-  if (queryState("italic")) active.add("italic");
-  if (queryState("underline")) active.add("underline");
+  if (queryState(editable, "bold")) active.add("bold");
+  if (queryState(editable, "italic")) active.add("italic");
+  if (queryState(editable, "underline")) active.add("underline");
   let node: Node | null = range.startContainer;
   while (node && node !== editable) {
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -58,12 +58,13 @@ export function activeMarks(editable: HTMLElement): Set<string> {
 
 /** Wrap a range in a new element and keep the content selected. */
 export function wrapRange(range: Range, wrapper: HTMLElement): void {
+  const doc = range.startContainer.ownerDocument ?? wrapper.ownerDocument;
   const frag = range.extractContents();
   wrapper.appendChild(frag);
   range.insertNode(wrapper);
   const sel = window.getSelection();
   if (sel) {
-    const after = document.createRange();
+    const after = doc.createRange();
     after.selectNodeContents(wrapper);
     sel.removeAllRanges();
     sel.addRange(after);
@@ -74,14 +75,15 @@ export function wrapRange(range: Range, wrapper: HTMLElement): void {
 export function unwrapElement(elm: Element): void {
   const parent = elm.parentNode;
   if (!parent) return;
+  const doc = elm.ownerDocument;
   const first = elm.firstChild;
   const last = elm.lastChild;
-  const frag = document.createDocumentFragment();
+  const frag = doc.createDocumentFragment();
   while (elm.firstChild) frag.appendChild(elm.firstChild);
   parent.insertBefore(frag, elm);
   const sel = window.getSelection();
   if (sel && first && last) {
-    const range = document.createRange();
+    const range = doc.createRange();
     range.setStartBefore(first);
     range.setEndAfter(last);
     sel.removeAllRanges();
@@ -91,16 +93,71 @@ export function unwrapElement(elm: Element): void {
 }
 
 /**
+ * Unwrap a mark element for a selection that only PARTIALLY overlaps it:
+ * the wrapper is split at the selection bounds so the outside parts keep
+ * their formatting (a full unwrap removed the mark from the whole element).
+ * Best effort — falls back to a full unwrap when the bounds are unclear.
+ */
+export function unwrapPartial(elm: Element, range: Range): void {
+  const parent = elm.parentNode;
+  if (!parent) return;
+  const doc = elm.ownerDocument;
+  const startInside = elm.contains(range.startContainer);
+  const endInside = elm.contains(range.endContainer);
+  const startNode = startInside ? range.startContainer : elm;
+  const startOffset = startInside ? range.startOffset : 0;
+  const endNode = endInside ? range.endContainer : elm;
+  const endOffset = endInside ? range.endOffset : elm.childNodes.length;
+  // Selection covers the whole element → plain unwrap.
+  const startsAtEdge = !startInside || (startNode === elm && startOffset === 0);
+  const endsAtEdge = !endInside || (endNode === elm && endOffset === elm.childNodes.length);
+  if (startsAtEdge && endsAtEdge) {
+    unwrapElement(elm);
+    return;
+  }
+  try {
+    const before = doc.createRange();
+    before.setStart(elm, 0);
+    before.setEnd(startNode, startOffset);
+    const inner = doc.createRange();
+    inner.setStart(startNode, startOffset);
+    inner.setEnd(endNode, endOffset);
+    const after = doc.createRange();
+    after.setStart(endNode, endOffset);
+    after.setEnd(elm, elm.childNodes.length);
+    const beforeFrag = before.extractContents();
+    const innerFrag = inner.extractContents();
+    const afterFrag = after.extractContents();
+    const beforeClone = beforeFrag.firstChild ? (elm.cloneNode(false) as Element) : null;
+    const afterClone = afterFrag.firstChild ? (elm.cloneNode(false) as Element) : null;
+    if (beforeClone) {
+      beforeClone.appendChild(beforeFrag);
+      parent.insertBefore(beforeClone, elm);
+    }
+    parent.insertBefore(innerFrag, elm);
+    if (afterClone) {
+      afterClone.appendChild(afterFrag);
+      parent.insertBefore(afterClone, elm);
+    }
+    parent.removeChild(elm);
+  } catch {
+    unwrapElement(elm);
+  }
+}
+
+/**
  * Simple accessible popover anchored to an element. Returns the popover and
  * a close function; Escape and outside click close it.
  */
 export function openPopover(content: HTMLElement, anchor: Range | HTMLElement, onClose?: () => void): { close: () => void } {
-  const pop = el("div", "ez-popover");
+  const source = anchor instanceof HTMLElement ? anchor : anchor.commonAncestorContainer;
+  const doc = (source instanceof Element ? source : source.parentElement)?.ownerDocument ?? document;
+  const pop = doc.createElement("div");
+  pop.className = "ez-popover";
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-label", content.getAttribute("aria-label") ?? "Link");
   pop.setAttribute("data-ez-ui", "true");
   pop.appendChild(content);
-  const source = anchor instanceof HTMLElement ? anchor : anchor.commonAncestorContainer;
   const parent = (source instanceof Element ? source : source.parentElement)?.closest(".ez-editor") ?? document.body;
   parent.appendChild(pop);
   const reposition = (): void => placePopover(pop, anchor.getBoundingClientRect());
@@ -208,12 +265,12 @@ export class ToggleMarkTool extends MarkInlineTool {
       (e) => e.tagName === this.tag.toUpperCase() || e.getAttribute?.("data-ez-mark") === this.markType
     );
     if (existing) {
-      unwrapElement(existing);
+      unwrapPartial(existing, range);
     } else if (this.markType === "code" || this.markType === "mark") {
-      const wrapper = document.createElement(this.tag);
+      const wrapper = context.blockElement.ownerDocument.createElement(this.tag);
       wrapRange(range, wrapper);
     } else {
-      const wrapper = document.createElement("span");
+      const wrapper = context.blockElement.ownerDocument.createElement("span");
       wrapper.setAttribute("data-ez-mark", this.markType);
       wrapRange(range, wrapper);
     }
@@ -229,12 +286,14 @@ export class BoldTool extends MarkInlineTool {
   }
 
   apply(_range: Range, context: InlineToolContext): void {
-    exec("bold");
+    exec(context.blockElement, "bold");
     context.requestSave();
   }
 
   isActive(): boolean {
-    return queryState("bold");
+    // Query state needs a document; the toolbar passes the editable's
+    // document where possible. isActive has no element — use the global one.
+    return queryState(document, "bold");
   }
 }
 
@@ -246,12 +305,12 @@ export class ItalicTool extends MarkInlineTool {
   }
 
   apply(_range: Range, context: InlineToolContext): void {
-    exec("italic");
+    exec(context.blockElement, "italic");
     context.requestSave();
   }
 
   isActive(): boolean {
-    return queryState("italic");
+    return queryState(document, "italic");
   }
 }
 
@@ -263,12 +322,12 @@ export class UnderlineTool extends MarkInlineTool {
   }
 
   apply(_range: Range, context: InlineToolContext): void {
-    exec("underline");
+    exec(context.blockElement, "underline");
     context.requestSave();
   }
 
   isActive(): boolean {
-    return queryState("underline");
+    return queryState(document, "underline");
   }
 }
 
@@ -293,9 +352,9 @@ export class StrikethroughTool extends ToggleMarkTool {
   apply(range: Range, context: InlineToolContext): void {
     const existing = findAncestor(range, context.blockElement, (e) => e.tagName === "S" || e.getAttribute?.("data-ez-mark") === "strike");
     if (existing) {
-      unwrapElement(existing);
+      unwrapPartial(existing, range);
     } else {
-      const wrapper = document.createElement("s");
+      const wrapper = context.blockElement.ownerDocument.createElement("s");
       wrapRange(range, wrapper);
     }
     context.requestSave();
@@ -351,10 +410,10 @@ export abstract class ColorInlineToolBase extends MarkInlineTool {
         restore();
         const existing = findColorSpan(range, context.blockElement, this.markType);
         if (existing) {
-          unwrapElement(existing);
+          unwrapPartial(existing, range);
         }
         if (color !== "transparent") {
-          const wrapper = document.createElement("span");
+          const wrapper = context.blockElement.ownerDocument.createElement("span");
           wrapper.setAttribute("data-ez-mark", this.markType);
           wrapper.setAttribute(`data-ez-${this.markType}`, color);
           wrapper.style.setProperty(this.markType === "color" ? "color" : "background-color", color);
@@ -399,7 +458,8 @@ export class LinkTool extends MarkInlineTool {
 
   apply(range: Range, context: InlineToolContext): void {
     const existing = findAncestor(range, context.blockElement, (e) => e.tagName === "A");
-    if (range.collapsed && !existing) return;
+    // A collapsed caret outside a link still opens the popover (Ctrl+K
+    // preserved-selection activation); the popover restores the caret.
     this.promptForUrl(range.cloneRange(), context, existing);
   }
 
@@ -449,10 +509,25 @@ export class LinkTool extends MarkInlineTool {
       if (existing) {
         existing.setAttribute("href", url);
       } else {
-        const a = document.createElement("a");
+        const a = context.blockElement.ownerDocument.createElement("a");
         a.setAttribute("href", url);
         a.setAttribute("rel", "noopener noreferrer");
-        wrapRange(range, a);
+        if (range.collapsed) {
+          // No selection to wrap: insert the link with the URL as its text.
+          const doc = context.blockElement.ownerDocument;
+          a.textContent = url;
+          range.insertNode(a);
+          const sel = window.getSelection();
+          if (sel) {
+            const after = doc.createRange();
+            after.setStartAfter(a);
+            after.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(after);
+          }
+        } else {
+          wrapRange(range, a);
+        }
       }
       context.requestSave();
       close();

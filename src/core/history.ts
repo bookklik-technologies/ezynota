@@ -5,14 +5,25 @@ export interface HistoryEntry {
   changes: EzynotaChange[];
   inverse: EzynotaChange[];
   origin: ChangeOrigin;
+  /** Selection BEFORE the change was applied (restored by undo). */
   selection?: EditorSelection | null;
+  /** Selection captured AFTER the change was applied (restored by redo). */
+  postSelection?: EditorSelection | null;
   time: number;
+  /** Timestamp of the first change in the coalesced group. */
+  groupStart?: number;
 }
 
 export interface HistoryCallbacks {
   /** Runs before undo applies, to restore caret/selection. */
   onRestoreSelection?: (selection: EditorSelection | null) => void;
+  /** Runs after a batch is recorded, to capture the post-change selection for redo. */
+  onCaptureSelection?: () => EditorSelection | null;
 }
+
+/** Coalescing limits: stop merging after 50 changes or 20s per group. */
+const MAX_COALESCED_CHANGES = 50;
+const MAX_COALESCE_GROUP_MS = 20_000;
 
 /**
  * HistoryManager stores inverse transactions, not DOM snapshots (spec §21).
@@ -38,15 +49,21 @@ export class HistoryManager {
     // Collaborative history is owned by adapters; remote changes skip local undo.
     if (batch.origin === "remote") return;
     const inverse = this.tm.invert(batch.changes);
+    const postSelection = this.callbacks.onCaptureSelection ? this.callbacks.onCaptureSelection() : selection ?? null;
 
     const top = this.undoStack[this.undoStack.length - 1];
     const isTextLikeEdit =
       batch.changes.every(
-        (c) => c.type === "block:update" || c.type === "tune:update"
+        (c) => c.type === "block:update" || c.type === "tune:update" || c.type === "title:update"
       );
+    const groupStart = top?.groupStart ?? top?.time ?? 0;
+    const groupFull = (top?.changes.length ?? 0) + batch.changes.length > MAX_COALESCED_CHANGES;
+    const groupExpired = batch.timestamp - groupStart >= MAX_COALESCE_GROUP_MS;
     if (
       top &&
       isTextLikeEdit &&
+      !groupFull &&
+      !groupExpired &&
       top.origin === "user" &&
       batch.origin === "user" &&
       batch.timestamp - top.time < this.coalesceWindowMs &&
@@ -56,6 +73,7 @@ export class HistoryManager {
       top.changes = top.changes.concat(batch.changes);
       top.inverse = this.tm.invert(top.changes);
       top.time = batch.timestamp;
+      top.postSelection = postSelection;
       this.redoStack.length = 0;
       return;
     }
@@ -65,10 +83,18 @@ export class HistoryManager {
       inverse,
       origin: batch.origin,
       selection: selection ?? null,
-      time: batch.timestamp
+      postSelection,
+      time: batch.timestamp,
+      groupStart: batch.timestamp
     });
     if (this.undoStack.length > 300) this.undoStack.shift();
     this.redoStack.length = 0;
+  }
+
+  /** Refresh the post-change selection of the newest entry (after the DOM applied the change). */
+  updatePostSelection(selection: EditorSelection | null): void {
+    const top = this.undoStack[this.undoStack.length - 1];
+    if (top) top.postSelection = selection;
   }
 
   undo(): boolean {
@@ -86,7 +112,7 @@ export class HistoryManager {
     // Re-apply the forward changes to reach the post-change state again.
     this.tm.commit("history", entry.changes);
     this.undoStack.push(entry);
-    this.callbacks.onRestoreSelection?.(entry.selection ?? null);
+    this.callbacks.onRestoreSelection?.(entry.postSelection ?? entry.selection ?? null);
     return true;
   }
 
@@ -130,8 +156,11 @@ export interface HistoryState {
 
 function sameSubject(a: EzynotaChange[], b: EzynotaChange[]): boolean {
   const idsOf = (list: EzynotaChange[]) =>
-    list
-      .map((c) => ("id" in c ? c.id : "block" in c ? c.block.id : ""))
+    Array.from(
+      new Set(
+        list.map((c) => (c.type === "title:update" ? "title" : "id" in c ? c.id : "block" in c ? c.block.id : ""))
+      )
+    )
       .sort()
       .join("|");
   return idsOf(a) === idsOf(b);

@@ -17,6 +17,9 @@ export interface ParsedImportFile {
   result: ImportResult;
 }
 
+/** Reject oversized payloads before reading them into memory. */
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
 /** Extension/content-type sniffing without trusting the payload. */
 export function detectFormat(name: string, mime: string): ParsedImportFile["format"] {
   const lower = name.toLowerCase();
@@ -32,6 +35,13 @@ export function detectFormat(name: string, mime: string): ParsedImportFile["form
  * throw with the original retained by the caller for recovery.
  */
 export async function parseImportFile(file: File): Promise<ParsedImportFile> {
+  if (file.size > MAX_IMPORT_BYTES) {
+    throw new EzynotaError(
+      "EZ_IMPORT_FAILED",
+      `File is larger than the ${MAX_IMPORT_BYTES / (1024 * 1024)} MB import limit`,
+      { size: file.size }
+    );
+  }
   const format = detectFormat(file.name, file.type);
   const text = await file.text();
   switch (format) {

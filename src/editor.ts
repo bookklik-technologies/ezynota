@@ -8,7 +8,7 @@ import { ToolRegistry } from "./core/tool-registry";
 import { MigrationManager, compareVersions } from "./core/migration-manager";
 import { I18n } from "./i18n/i18n";
 import { createIdFactory } from "./core/id";
-import { SCHEMA_VERSION, GENERATOR_VERSION } from "./core/schema";
+import { SCHEMA_VERSION, GENERATOR_VERSION, salvageDocument } from "./core/schema";
 import { EzynotaError, toolNotFound } from "./core/errors";
 import type {
   BlockPosition,
@@ -132,7 +132,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     // In workspace mode explicit document data opens as a new note (handled
     // by the workspace controller), so the engine starts empty.
     const initialDocument = this.mode === "workspace" || this.mode === "document" ? null : config.data;
-    this.state = new DocumentState(this.migrateInitialData(initialDocument), createIdFactory(config.idGenerator));
+    this.state = this.createState(this.migrateInitialData(initialDocument));
     // A document from a newer/unknown schema opens in protected read-only
     // recovery mode; content is preserved verbatim (spec §19).
     if (this.recoveryMode) {
@@ -187,10 +187,19 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
       this.resolveReady();
       this.bus.emit("ready");
       this.emitDomEvent("ezn:ready");
-      config.onReady?.(this);
+      this.fireReady();
       if (config.autofocus && !config.readOnly) {
         queueMicrotask(() => this.focus({ at: "end" }));
       }
+    }
+  }
+
+  /** Run the consumer onReady callback without letting it break the boot. */
+  private fireReady(): void {
+    try {
+      this.config.onReady?.(this);
+    } catch (err) {
+      this.bus.emit("error", new EzynotaError("EZ_UNKNOWN_ERROR", "An onReady handler threw", undefined, err));
     }
   }
 
@@ -274,7 +283,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
         this.resolveReady();
         this.bus.emit("ready");
         this.emitDomEvent("ezn:ready");
-        this.config.onReady?.(this);
+        this.fireReady();
         if (this.config.autofocus && !this.config.readOnly) {
           queueMicrotask(() => this.focus({ at: "end" }));
         }
@@ -282,6 +291,20 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   /* ===================== Public API (spec §8) ===================== */
+
+  /**
+   * Mutations are rejected while the initial workspace load is still in
+   * flight: anything committed before the note render would be silently
+   * wiped by the document replacement. Await `editor.ready` first.
+   */
+  private assertEditable(): void {
+    if (this.editingLocked) {
+      throw new EzynotaError(
+        "EZ_EDITING_LOCKED",
+        "Editing is locked until the initial workspace load completes; await editor.ready first"
+      );
+    }
+  }
 
   async save(): Promise<EzynotaDocument> {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
@@ -348,6 +371,8 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   clear(): void {
+    if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     const blocks = this.state.get().blocks.slice();
     if (blocks.length === 0) return;
     const changes = blocks.map((block) => ({ type: "block:remove" as const, id: block.id, index: 0, block }));
@@ -355,7 +380,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   focus(options?: FocusOptions): void {
-    if (this.destroyed || this.config.readOnly) return;
+    if (this.destroyed || this.readOnly) return;
     const raw = options?.at;
     const at = raw === "default" ? undefined : raw;
     if (options?.blockId) {
@@ -386,6 +411,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   insertBlock(type: string, data?: JsonValue, options?: InsertBlockOptions): string {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     if (!this.registry.has(type)) throw toolNotFound(type);
     const index =
       options?.index !== undefined
@@ -404,23 +430,28 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   updateBlock(id: string, data: JsonValue): void {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     this.blockManager.update(id, data, "api");
   }
 
   removeBlock(id: string): void {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     this.blockManager.remove(id, "api");
   }
 
   moveBlock(id: string, target: BlockPosition): void {
+    this.assertEditable();
     this.blockManager.move(id, target, "api");
   }
 
   duplicateBlock(id: string): string {
+    this.assertEditable();
     return this.blockManager.duplicate(id, "api");
   }
 
   convertBlock(id: string, targetType: string): void {
+    this.assertEditable();
     const block = this.blockManager.getById(id);
     if (!block) return;
     if (!this.registry.has(targetType)) throw toolNotFound(targetType);
@@ -483,20 +514,36 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.keyboardManager.stop();
-    this.inputManager.stop();
-    this.selectionManager.stop();
-    this.clipboardManager.stop();
-    this.dragManager?.stop();
-    this.surfaceEl.dispatchEvent(new Event("ez-close-popovers"));
-    this.slashMenu?.destroy();
-    this.blockToolbar?.destroy();
-    this.inlineToolbar?.destroy();
-    this.documentToolbar?.destroy();
-    this.renderer.destroy();
-    this.workspaceController?.destroy();
+    // Unblock `await editor.ready` for consumers waiting on a load that
+    // will never finish after destruction.
+    try {
+      this.resolveReady?.();
+    } catch {
+      /* resolveReady is always assigned after construction; guard partial init */
+    }
+    // Tolerant teardown: a constructor that threw part-way still leaves a
+    // partially initialized editor that must be destroyable.
+    const guarded = (step: () => void): void => {
+      try {
+        step();
+      } catch (err) {
+        this.bus.emit("error", new EzynotaError("EZ_UNKNOWN_ERROR", "Cleanup failed during destroy", undefined, err));
+      }
+    };
+    guarded(() => this.keyboardManager?.stop());
+    guarded(() => this.inputManager?.stop());
+    guarded(() => this.selectionManager?.stop());
+    guarded(() => this.clipboardManager?.stop());
+    guarded(() => this.dragManager?.stop());
+    guarded(() => this.surfaceEl?.dispatchEvent(new Event("ez-close-popovers")));
+    guarded(() => this.slashMenu?.destroy());
+    guarded(() => this.blockToolbar?.destroy());
+    guarded(() => this.inlineToolbar?.destroy());
+    guarded(() => this.documentToolbar?.destroy());
+    guarded(() => this.renderer?.destroy());
+    guarded(() => this.workspaceController?.destroy());
     this.workspaceController = null;
-    this.themeListenerDisposer?.();
+    guarded(() => this.themeListenerDisposer?.());
     this.themeListenerDisposer = null;
     for (const dispose of this.disposers) dispose();
     this.disposers.length = 0;
@@ -575,6 +622,8 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   updateBlockData(id: string, data: JsonValue, origin: ChangeOrigin = "api"): void {
+    if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     // Any newer edit supersedes async tool saves that are still in flight.
     this.invalidatePendingSave(id);
     this.blockManager.update(id, data, origin);
@@ -583,10 +632,12 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   /** Commit raw changes as one transaction (used by typed internal modules). */
   commitChanges(origin: ChangeOrigin, changes: EzynotaChange[]): void {
     if (this.destroyed || changes.length === 0) return;
+    this.assertEditable();
     this.tm.commit(origin, changes);
   }
 
   mergeBlocks(prevId: string, currentId: string, origin: ChangeOrigin = "user"): void {
+    this.assertEditable();
     const prevBlock = this.blockManager.getById(prevId);
     const curBlock = this.blockManager.getById(currentId);
     if (!prevBlock || !curBlock) return;
@@ -612,6 +663,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
    */
   splitBlock(id: string, before: JsonValue, after: JsonValue): string {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     const block = this.blockManager.getById(id);
     if (!block) return "";
     const previous = cloneDocument(block.data) as JsonValue;
@@ -637,6 +689,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
    */
   pasteBlocks(entries: { type: string; data: JsonValue }[], blockId: string, origin: ChangeOrigin = "paste"): void {
     if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
+    this.assertEditable();
     const usable = entries.filter((entry) => this.registry.has(entry.type));
     if (usable.length === 0) return;
     const changes: EzynotaChange[] = [];
@@ -782,6 +835,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   requestSaveBlock(id: string, origin: ChangeOrigin = "user"): void {
+    if (this.destroyed || this.editingLocked) return;
     const block = this.blockManager.getById(id);
     const tool = this.renderer.getTool(id);
     if (!block || !tool) return;
@@ -813,6 +867,20 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     const version = (this.blockSaveVersions.get(id) ?? 0) + 1;
     this.blockSaveVersions.set(id, version);
     return version;
+  }
+
+  /** Route a nested child save (e.g. toggle children) to the owning tool. */
+  requestSaveNestedChild(parentId: string, childId: string): void {
+    if (this.destroyed || this.editingLocked) return;
+    const tool = this.renderer.getTool(parentId);
+    const saveChild = (tool as unknown as { requestSaveChild?: (id: string) => void }).requestSaveChild;
+    if (typeof saveChild === "function") {
+      try {
+        saveChild.call(tool, childId);
+      } catch (err) {
+        this.bus.emit("error", new EzynotaError("EZ_SAVE_FAILED", `Save failed for nested block "${childId}"`, { blockId: childId }, err));
+      }
+    }
   }
 
   private applySavedBlock(id: string, data: JsonValue, tool: BlockTool, origin: ChangeOrigin, version: number): void {
@@ -950,7 +1018,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   /** Title changes route through an undoable transaction (document metadata). */
   setDocumentTitle(title: string): void {
-    if (this.destroyed) return;
+    if (this.destroyed || this.editingLocked) return;
     const previous = this.currentTitle();
     if (previous === title) return;
     this.tm.commit("user", [{ type: "title:update", previous, current: title }]);
@@ -1117,6 +1185,29 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     return this.migrateDocument(data);
   }
 
+  /**
+   * Build the document state without letting malformed payloads crash the
+   * host application: invalid blocks are salvaged into read-only
+   * "unknown" placeholders (or the editor starts empty when the envelope
+   * itself is unusable) instead of throwing out of the constructor.
+   */
+  private createState(document: EzynotaDocument | null): DocumentState {
+    try {
+      return new DocumentState(document, createIdFactory(this.config.idGenerator));
+    } catch (error) {
+      const result = salvageDocument(document, createIdFactory(this.config.idGenerator));
+      if (!result.document) {
+        this.bus.emit("error", new EzynotaError("EZ_INVALID_DOCUMENT", "The document payload is unusable; the editor started empty", undefined, error));
+        return new DocumentState(null, createIdFactory(this.config.idGenerator));
+      }
+      this.bus.emit(
+        "error",
+        new EzynotaError("EZ_INVALID_DOCUMENT", "Malformed blocks were converted to read-only placeholders", { dropped: result.dropped }, error)
+      );
+      return new DocumentState(result.document, createIdFactory(this.config.idGenerator));
+    }
+  }
+
   private migrateDocument(document: EzynotaDocument): EzynotaDocument {
     const version = document?.schemaVersion;
     if (!version || version === SCHEMA_VERSION) {
@@ -1234,15 +1325,30 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   /** Single post-commit path: history + DOM sync + events. */
   private handleCommit(batch: ChangeBatch): void {
+    // History restores supersede async tool saves that are still in flight,
+    // otherwise a slow save() re-applies pre-undo data over the restored
+    // state (undo race).
+    if (batch.origin === "history") {
+      for (const change of batch.changes) {
+        if (change.type === "block:update" || change.type === "block:remove" || change.type === "children:update") {
+          this.invalidatePendingSave(change.id);
+        }
+      }
+    }
     // Document replacements are handled explicitly (render/clear reset the
     // history) — they have no reversible payload for mechanical inversion.
     const replaceOnly = batch.changes.length > 0 && batch.changes.every((c) => c.type === "document:replace");
+    let recorded = false;
     if (batch.origin !== "history" && !replaceOnly) {
       this.history.record({ origin: batch.origin, changes: batch.changes, timestamp: batch.timestamp }, this.getSelectionInfo());
+      recorded = true;
     }
     for (const change of batch.changes) {
       this.applyToDom(change, batch.origin);
     }
+    // Capture the post-change caret for redo only after the DOM applied
+    // the change (record time is intentionally pre-change for undo).
+    if (recorded) this.history.updatePostSelection(this.getSelectionInfo());
     this.bus.emit("change", batch);
     this.emitDomEvent("ezn:change", { origin: batch.origin, batchId: batch.id });
     for (const change of batch.changes) {
@@ -1276,7 +1382,12 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
           break;
       }
     }
-    this.config.onChange?.(this, batch);
+    // A throwing consumer callback must never break transaction processing.
+    try {
+      this.config.onChange?.(this, batch);
+    } catch (err) {
+      this.bus.emit("error", new EzynotaError("EZ_UNKNOWN_ERROR", "An onChange handler threw", undefined, err));
+    }
     this.documentToolbar?.refresh();
     this.inlineToolbar?.refresh();
   }
@@ -1321,7 +1432,17 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   /** Full document replace. The caller owns history reset (undoable or not). */
   private blockManagerReplaceAll(next: EzynotaDocument): void {
-    this.state.replace(next, createIdFactory(this.config.idGenerator));
+    try {
+      this.state.replace(next, createIdFactory(this.config.idGenerator));
+    } catch (error) {
+      const result = salvageDocument(next, createIdFactory(this.config.idGenerator));
+      if (!result.document) throw error;
+      this.bus.emit(
+        "error",
+        new EzynotaError("EZ_INVALID_DOCUMENT", "Malformed blocks were converted to read-only placeholders", { dropped: result.dropped }, error)
+      );
+      this.state.replace(result.document, createIdFactory(this.config.idGenerator));
+    }
     this.tm.commit("api", [{ type: "document:replace" }]);
     this.renderer.renderAll(this.state.get().blocks);
   }

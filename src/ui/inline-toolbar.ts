@@ -196,7 +196,9 @@ export class InlineToolbar {
 
   private inlineEnabled(selection: EditorSelection): boolean {
     const type = this.host.getBlockType(selection.blockId);
-    return !!type && !!this.host.getEditableElement(selection.blockId)
+    // Lazy (loader-only) tools are not registered yet — get() would throw.
+    if (!type || !this.host.registry.has(type)) return false;
+    return !!this.host.getEditableElement(selection.blockId)
       && this.host.registry.get(type).toolClass.enableInlineTools !== false && type !== "code";
   }
 
@@ -232,7 +234,7 @@ export function applyInlineTool(host: Host, toolName: string, instance?: InlineT
   const editable = host.getEditableElement(selection.blockId);
   const range = host.getRange()?.cloneRange();
   const type = host.getBlockType(selection.blockId);
-  if (!editable || !range || !type || type === "code" || host.registry.get(type).toolClass.enableInlineTools === false) return;
+  if (!editable || !range || !type || type === "code" || !host.registry.has(type) || host.registry.get(type).toolClass.enableInlineTools === false) return;
   if (!host.registry.listInlineTools().some((tool) => tool.name === toolName)) return;
   if (range.collapsed && ["mark", "code"].includes(toolName)) return;
   if (range.collapsed && toolName === "link" && !findAncestor(range, editable, (element) => element.tagName === "A")) return;

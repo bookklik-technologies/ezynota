@@ -40,6 +40,7 @@ describe("Editor-level migration", () => {
     const holder = document.createElement("div");
     const editor = new Ezynota({
       holder,
+      mode: "embedded",
       data: { schemaVersion: "9.9.9", blocks: [{ id: "x", type: "paragraph", data: { content: [] } }] } as unknown as EzynotaDocument
     });
     const snapshot = editor.getSnapshot();

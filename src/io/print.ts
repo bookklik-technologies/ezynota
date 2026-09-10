@@ -8,7 +8,10 @@ import { isSafeImageUrl, isSafeUrl } from "../core/url";
  * never reaches innerHTML.
  */
 export function printDocument(document: EzynotaDocument): void {
-  const win = window.open("", "_blank", "noopener");
+  // "noopener" makes window.open() return null per spec, which silently
+  // disabled printing in every browser. The window contains only
+  // code-generated first-party content, so an opener handle is acceptable.
+  const win = window.open("", "_blank");
   if (!win) return;
   const doc = win.document;
   const title = String((document.meta as { title?: string } | undefined)?.title ?? "Ezynota document");
@@ -32,6 +35,7 @@ export function printDocument(document: EzynotaDocument): void {
   const container = doc.createElement("div");
   renderHtmlInto(container, blocksToHtml(document.blocks));
   doc.body.appendChild(container);
+  win.focus();
   win.print();
 }
 
@@ -51,7 +55,7 @@ function renderHtmlInto(target: Element, html: string): void {
     }
     if (tag === "IMG") {
       const src = node.getAttribute("src") ?? "";
-      if (!(isSafeImageUrl(src) || src.startsWith("asset:") || src.startsWith("data:image/"))) {
+      if (!(isSafeImageUrl(src) || src.startsWith("asset:"))) {
         node.remove();
         continue;
       }
@@ -63,7 +67,15 @@ function renderHtmlInto(target: Element, html: string): void {
       }
     }
     for (const attr of Array.from(node.attributes)) {
-      if (/^on/i.test(attr.name)) node.removeAttribute(attr.name);
+      const name = attr.name.toLowerCase();
+      if (/^on/i.test(name) || name === "style" || name === "formaction" || name === "xlink:href") {
+        node.removeAttribute(attr.name);
+        continue;
+      }
+      // Strip any non-image attribute that carries a scriptable URL scheme.
+      if (tag !== "IMG" && /^\s*(?:data|javascript|vbscript):/i.test(attr.value)) {
+        node.removeAttribute(attr.name);
+      }
     }
   }
   for (const child of Array.from(parsed.body.childNodes)) {

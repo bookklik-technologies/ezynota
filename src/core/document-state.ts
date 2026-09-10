@@ -31,6 +31,12 @@ export class DocumentState {
     return this.document;
   }
 
+  /**
+   * Frozen snapshot of the document. Blocks and the top-level document
+   * object are shallow-frozen (freezeDocument) — nested data/tunes objects
+   * stay mutable, so callers must treat the snapshot as read-only and
+   * never mutate nested values in place.
+   */
   snapshot(): Readonly<EzynotaDocument> {
     return freezeDocument(cloneJson(this.document));
   }

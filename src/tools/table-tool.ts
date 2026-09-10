@@ -32,7 +32,7 @@ export class TableTool implements BlockTool<TableData> {
   }
 
   render(): HTMLElement {
-    const doc = document;
+    const doc = this.wrapper?.ownerDocument ?? this.api.element.ownerDocument ?? document;
     const data = this.api.getData() as unknown as TableData;
     const header = data?.header !== false;
     const rows = Array.isArray(data?.rows) && data.rows.length > 0 ? data.rows : [[{ content: [] }, { content: [] }], [{ content: [] }, { content: [] }]];
@@ -106,9 +106,16 @@ export class TableTool implements BlockTool<TableData> {
     // External updates (undo/redo/paste) re-render the table.
     const data = this.api.getData() as unknown as TableData;
     if (!this.wrapper || !data?.rows) return;
+    this.swapWrapper();
+  }
+
+  /** render() reassigns this.wrapper, so capture the old element first. */
+  private swapWrapper(): HTMLElement {
+    const previous = this.wrapper;
     const fresh = this.render();
-    this.wrapper.replaceWith(fresh);
+    if (previous.parentElement) previous.replaceWith(fresh);
     this.wrapper = fresh as HTMLElement;
+    return fresh;
   }
 
   focus(at?: "start" | "end"): void {
@@ -130,16 +137,18 @@ export class TableTool implements BlockTool<TableData> {
     if (this.api.readOnly) return;
     if (event.key === "Tab") {
       event.preventDefault();
+      const doc = this.tableEl.ownerDocument;
       const cells = Array.from(this.tableEl.querySelectorAll<HTMLElement>("[data-ez-editable]"));
-      const index = cells.indexOf(document.activeElement as HTMLElement);
+      const index = cells.indexOf(doc.activeElement as HTMLElement);
       const next = event.shiftKey ? index - 1 : index + 1;
       if (next >= 0 && next < cells.length) {
         cells[next]!.focus();
-      } else {
-        // Tab past the edge creates a new row and continues.
+      } else if (!event.shiftKey) {
+        // Tab past the last cell creates a new row and continues;
+        // Shift+Tab before the first cell is a no-op.
         this.addRowAt(-1);
         const fresh = Array.from(this.tableEl.querySelectorAll<HTMLElement>("[data-ez-editable]"));
-        (event.shiftKey ? fresh[0] : fresh[fresh.length - 1])?.focus();
+        fresh[fresh.length - 1]?.focus();
       }
     }
   }
@@ -201,10 +210,20 @@ export class TableTool implements BlockTool<TableData> {
 
   /** Persist structural changes through the editor's transaction stream. */
   private commit(data: TableData): void {
+    // Keep the caret near the cell the user was working in when possible.
+    const active = this.activeCell();
     this.api.update(data as never);
-    const fresh = this.render();
-    this.wrapper.replaceWith(fresh);
-    this.wrapper = fresh as HTMLElement;
+    const fresh = this.swapWrapper();
+    if (active) {
+      const rows = fresh.querySelectorAll("tr");
+      const row = rows[Math.min(active.row, rows.length - 1)];
+      const cells = row ? Array.from(row.querySelectorAll<HTMLElement>("[data-ez-editable]")) : [];
+      const cell = cells[Math.min(active.column, cells.length - 1)];
+      if (cell) {
+        cell.focus();
+        return;
+      }
+    }
     this.api.focus("start");
   }
 }

@@ -44,21 +44,26 @@ export class IndexedDbStorage implements StorageAdapter {
   private listeners = new Map<string, Set<() => void>>();
   private channel: BroadcastChannel | null = null;
   private idb = isIdbAvailable();
+  private fallback: MemoryStorage | null = null;
 
   init(): Promise<void> {
     if (this.initPromise) return this.initPromise;
-    this.initPromise = (async () => {
+    const attempt = (async () => {
       if (this.idb) {
         try {
           this.db = await openDatabase();
         } catch {
-          // A broken IndexedDB must not crash the editor: fall back to
-          // memory-backed storage and surface the error through saves.
+          // A broken or blocked IndexedDB must not break the editor: fall
+          // back to memory-backed storage so saves keep working. The failed
+          // attempt is not cached permanently — close()/re-init retries
+          // IndexedDB.
           this.db = null;
-          this.idb = false;
+          if (!this.fallback) this.fallback = new MemoryStorage();
         }
+      } else if (!this.fallback) {
+        this.fallback = new MemoryStorage();
       }
-      if (typeof BroadcastChannel !== "undefined") {
+      if (!this.fallback && typeof BroadcastChannel !== "undefined") {
         this.channel = new BroadcastChannel("ezynota:workspace");
         this.channel.onmessage = (event: MessageEvent) => {
           const workspaceId = (event.data as { workspaceId?: string } | undefined)?.workspaceId;
@@ -66,7 +71,12 @@ export class IndexedDbStorage implements StorageAdapter {
         };
       }
     })();
-    return this.initPromise;
+    // Never cache a rejected init: a later init() retries.
+    attempt.catch(() => {
+      if (this.initPromise === attempt) this.initPromise = null;
+    });
+    this.initPromise = attempt;
+    return attempt;
   }
 
   private ensureDb(): IDBDatabase {
@@ -78,7 +88,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async loadWorkspace(workspaceId: string): Promise<WorkspaceEnvelope | null> {
     await this.init();
-    if (!this.idb || !this.db) return null;
+    if (this.fallback) return this.fallback.loadWorkspace(workspaceId);
+    if (!this.db) return null;
     const record = await this.getRecord(workspaceId);
     return record ? { ...cloneEnvelope(record.envelope), storageRevision: record.revision } : null;
   }
@@ -90,7 +101,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async commit(workspaceId: string, envelope: WorkspaceEnvelope, expectedRevision: number): Promise<CommitResult> {
     await this.init();
-    if (!this.idb || !this.db) return { ok: false, reason: "error" };
+    if (this.fallback) return this.fallback.commit(workspaceId, envelope, expectedRevision);
+    if (!this.db) return { ok: false, reason: "error" };
     try {
       const db = this.ensureDb();
       const tx = db.transaction(STORE_WORKSPACES, "readwrite");
@@ -130,7 +142,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async loadAsset(workspaceId: string, assetId: string): Promise<WorkspaceAsset | null> {
     await this.init();
-    if (!this.idb || !this.db) return null;
+    if (this.fallback) return this.fallback.loadAsset(workspaceId, assetId);
+    if (!this.db) return null;
     const key = assetKey(workspaceId, assetId);
     const record = await requestToPromise(
       this.ensureDb().transaction(STORE_ASSETS, "readonly").objectStore(STORE_ASSETS).get(key)
@@ -140,7 +153,8 @@ export class IndexedDbStorage implements StorageAdapter {
 
   async saveAsset(workspaceId: string, asset: WorkspaceAsset): Promise<boolean> {
     await this.init();
-    if (!this.idb || !this.db) return false;
+    if (this.fallback) return this.fallback.saveAsset(workspaceId, asset);
+    if (!this.db) return false;
     try {
       const tx = this.ensureDb().transaction(STORE_ASSETS, "readwrite");
       const store = tx.objectStore(STORE_ASSETS);
@@ -193,6 +207,11 @@ export class IndexedDbStorage implements StorageAdapter {
       this.db.close();
       this.db = null;
     }
+    if (this.fallback) {
+      await this.fallback.close();
+      this.fallback = null;
+      this.idb = isIdbAvailable();
+    }
     this.initPromise = null;
   }
 }
@@ -215,7 +234,7 @@ function openDatabase(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    request.onblocked = () => reject(new Error("IndexedDB open blocked"));
+    request.onblocked = () => reject(new Error("IndexedDB open blocked (another connection holds this database)"));
   });
 }
 

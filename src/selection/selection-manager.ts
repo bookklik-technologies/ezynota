@@ -77,7 +77,10 @@ export class SelectionManager {
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
     if (!sel || sel.rangeCount === 0) return this.uiRange();
     const range = sel.getRangeAt(0);
-    if (this.holder.contains(range.commonAncestorContainer) && this.findBlockElement(range.commonAncestorContainer)) return range;
+    // Any range contained in the holder is valid — including cross-block
+    // selections (previously those returned null and handlers fell through
+    // to browser defaults). Callers clamp to a block when they need one.
+    if (this.holder.contains(range.commonAncestorContainer)) return range;
     return this.uiRange();
   }
 
@@ -103,7 +106,10 @@ export class SelectionManager {
       this.bus.emit("selection", null);
       return null;
     }
-    const blockEl = this.findBlockElement(range.commonAncestorContainer);
+    // The anchor block comes from the range's START boundary, clamped to
+    // the holder — a multi-block selection's commonAncestorContainer is the
+    // holder itself and has no block ancestor of its own.
+    const blockEl = this.blockForBoundary(range.startContainer, range.startOffset);
     if (!blockEl) {
       this.current = null;
       this.bus.emit("selection", null);
@@ -113,15 +119,22 @@ export class SelectionManager {
     this.savedRange = range.cloneRange();
     const collapsed = range.collapsed;
     const text = range.toString();
-    const anchorBlock = this.findBlockElement(range.startContainer);
-    const focusBlock = this.findBlockElement(range.endContainer);
+    // Preserve the anchor/focus DIRECTION for backward selections by using
+    // the DOM selection's anchor/focus boundaries when available.
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    const anchorNode = sel && sel.anchorNode ? sel.anchorNode : range.startContainer;
+    const anchorOff = sel && sel.anchorNode ? sel.anchorOffset : range.startOffset;
+    const focusNode = sel && sel.focusNode ? sel.focusNode : range.endContainer;
+    const focusOff = sel && sel.focusNode ? sel.focusOffset : range.endOffset;
+    const anchorBlock = this.blockForBoundary(anchorNode, anchorOff);
+    const focusBlock = this.blockForBoundary(focusNode, focusOff);
     const regionEl = (range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement)?.closest("[data-ez-region]");
     const selection: EditorSelection = {
       blockId: id,
       index: this.host.getBlockIndex(id),
       collapsed,
-      anchorOffset: textOffsetOf(range, blockEl, false),
-      focusOffset: textOffsetOf(range, blockEl, true),
+      anchorOffset: textOffsetAt(anchorBlock ?? blockEl, anchorNode, anchorOff),
+      focusOffset: textOffsetAt(focusBlock ?? blockEl, focusNode, focusOff),
       text,
       anchorBlockId: anchorBlock?.getAttribute("data-ez-block-id") ?? id,
       focusBlockId: focusBlock?.getAttribute("data-ez-block-id") ?? id,
@@ -149,14 +162,29 @@ export class SelectionManager {
     }
     return null;
   }
+
+  /**
+   * Resolve the block element for a selection boundary point. A boundary on
+   * the holder itself (whole-document selections) is clamped to the child
+   * at the boundary offset.
+   */
+  private blockForBoundary(node: Node, offset: number): HTMLElement | null {
+    if (node === this.holder || node === this.holder.parentNode) {
+      const child = this.holder.childNodes[Math.min(offset, this.holder.childNodes.length - 1)];
+      if (child) return this.findBlockElement(child);
+      return null;
+    }
+    return this.findBlockElement(node);
+  }
 }
 
-/** Approximate plain-text offset of the range's boundary within its block. */
-function textOffsetOf(range: Range, block: HTMLElement, atEnd: boolean): number {
+/** Approximate plain-text offset of a boundary point within its block. */
+function textOffsetAt(block: HTMLElement, node: Node, offset: number): number {
   try {
-    const probe = range.cloneRange();
+    const doc = block.ownerDocument;
+    const probe = doc.createRange();
     probe.selectNodeContents(block.querySelector("[data-ez-editable]") ?? block);
-    probe.setEnd(atEnd ? range.endContainer : range.startContainer, atEnd ? range.endOffset : range.startOffset);
+    probe.setEnd(node, offset);
     return probe.toString().length;
   } catch {
     return 0;
@@ -165,9 +193,10 @@ function textOffsetOf(range: Range, block: HTMLElement, atEnd: boolean): number 
 
 /** Place the caret at a plain-text offset inside an editable element. */
 export function setCaretAtTextOffset(editable: HTMLElement, offset: number): void {
+  const doc = editable.ownerDocument;
   const sel = window.getSelection();
   if (!sel) return;
-  const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+  const walker = doc.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
   let remaining = offset;
   let node: Node | null = walker.nextNode();
   let target: Text | null = null;
@@ -183,14 +212,15 @@ export function setCaretAtTextOffset(editable: HTMLElement, offset: number): voi
     remaining -= len;
     node = walker.nextNode();
   }
-  const range = document.createRange();
+  const range = doc.createRange();
   if (target) {
     range.setStart(target, targetOffset);
+    range.collapse(true);
   } else {
+    // Offset beyond the content: caret at the END (never jump to start).
     range.selectNodeContents(editable);
     range.collapse(false);
   }
-  range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);
 }
