@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ezynota - Programmatic embed</title>
+  <link rel="stylesheet" href="../dist/ezynota.css" />
+</head>
+<body>
+  <div id="editor" aria-label="Text editor"></div>
+
+  <script src="../dist/ezynota.umd.cjs"></script>
+  <script>
+    // The UMD global is a namespace containing the Ezynota constructor.
+    const editor = new Ezynota.Ezynota({
+      holder: "#editor",
+      mode: "embedded",
+      placeholder: "Start writing..."
+    });
+  </script>
+</body>
+</html>

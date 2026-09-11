@@ -303,6 +303,14 @@ pnpm build       # ESM + UMD (.cjs) + TypeScript declarations + CSS into dist/
 
 Serve the playground via any static server (e.g. WAMP: `http://localhost/ezynota/examples/`).
 
+Minimal bare embed examples (build first with `pnpm build`):
+
+- [Declarative initialization](examples/declarative.html) uses HTML attributes and automatic mounting.
+- [Programmatic initialization](examples/programmatic.html) creates the editor in JavaScript.
+
+Both use `embedded` mode and the local `dist/` bundle. Content stays in memory;
+these minimal examples do not configure persistence.
+
 ## Status
 
 **v0.3.0** — the workspace release: browser-local multi-note workspaces
