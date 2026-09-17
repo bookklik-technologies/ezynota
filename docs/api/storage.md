@@ -8,18 +8,18 @@ Workspace persistence goes through a small async interface. Ezynota ships with t
 import { IndexedDbStorage, MemoryStorage, emptyWorkspace } from "@bookklik/ezynota";
 
 // Default — persists in the browser via IndexedDB
-const editor = new Ezynota({ holder: "#app", mode: "workspace" });
+const editor = new Ezynota({ target: "#app", mode: "workspace" });
 
 // Explicit
 const editor2 = new Ezynota({
-  holder: "#app",
+  target: "#app",
   mode: "workspace",
   storage: new IndexedDbStorage(),
 });
 
 // In-memory (tests, demos)
 const demo = new Ezynota({
-  holder: "#demo",
+  target: "#demo",
   mode: "workspace",
   storage: new MemoryStorage(emptyWorkspace("demo")),
 });
@@ -67,7 +67,7 @@ interface WorkspaceEnvelope {
 
 ### Default workspace id
 
-Without a custom id, the workspace is keyed by page location: `defaultWorkspaceId(holderId)` → `"<pathname>#<holderId|default>"`. So different pages can host different workspaces, and the same page shares one.
+Without a custom id, the workspace is keyed by page location: `defaultWorkspaceId(targetId)` → `"<pathname>#<targetId|default>"`. So different pages can host different workspaces, and the same page shares one.
 
 ## Assets
 

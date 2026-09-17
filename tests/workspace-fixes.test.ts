@@ -161,7 +161,7 @@ function createController(
   const surface = document.createElement("div");
   document.body.appendChild(surface);
   const controller = new WorkspaceController(makeHost(context), surface, {
-    holderId: "test-holder",
+    targetId: "test-target",
     explicitWorkspaceId: "fixes-regression",
     storage,
     onEvent: options.onEvent

@@ -37,9 +37,9 @@ describe("MigrationManager", () => {
 
 describe("Editor-level migration", () => {
   it("keeps documents with unknown schema instead of destroying data", () => {
-    const holder = document.createElement("div");
+    const target = document.createElement("div");
     const editor = new Ezynota({
-      holder,
+      target,
       mode: "embedded",
       data: { schemaVersion: "9.9.9", blocks: [{ id: "x", type: "paragraph", data: { content: [] } }] } as unknown as EzynotaDocument
     });

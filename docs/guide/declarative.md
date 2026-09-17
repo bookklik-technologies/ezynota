@@ -43,17 +43,17 @@ Each mount element bubbles these events, with data in `event.detail`:
 <div id="editor" data-ezn-editor></div>
 
 <script>
-  const holder = document.getElementById("editor");
+  const target = document.getElementById("editor");
 
-  holder.addEventListener("ezn:ready", (e) => {
+  target.addEventListener("ezn:ready", (e) => {
     console.log("ready", e.detail.instance);
   });
 
-  holder.addEventListener("ezn:change", (e) => {
+  target.addEventListener("ezn:change", (e) => {
     console.log("change", e.detail.payload); // ChangeBatch
   });
 
-  holder.addEventListener("ezn:error", (e) => {
+  target.addEventListener("ezn:error", (e) => {
     console.error(e.detail.payload); // EzynotaError
   });
 </script>
@@ -84,7 +84,7 @@ const same = Ezynota.getInstance(element);
 ## Lifecycle & cleanup
 
 - Detached declarative editors are cleaned up automatically after a double-tick confirmation (so brief reparenting in frameworks doesn't destroy them).
-- Calling `editor.destroy()` removes mount classes/attributes and empties the holder.
+- Calling `editor.destroy()` removes mount classes/attributes and empties the target.
 - A shared instance registry keeps track of every live editor (`register`/`unregister`/`list` internally; use `Ezynota.getInstance()` publicly).
 
 ## When to prefer programmatic init

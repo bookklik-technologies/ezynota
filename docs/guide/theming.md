@@ -7,7 +7,7 @@ Ezynota ships a single stylesheet (`ezynota.css`) driven by CSS custom propertie
 Set the theme via config or at runtime:
 
 ```ts
-const editor = new Ezynota({ holder: "#app", theme: "dark" });
+const editor = new Ezynota({ target: "#app", theme: "dark" });
 
 editor.workspace.setTheme("dark");      // workspace mode
 editor.workspace.getTheme();            // "light" | "dark" | "system"

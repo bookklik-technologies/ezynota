@@ -26,18 +26,18 @@ export interface WorkspaceStateOptions {
 
 /**
  * Default workspace id. NOTE: this binds to `location.pathname`, so every
- * editor on the same page path (and the same holder id) shares one
+ * editor on the same page path (and the same target id) shares one
  * workspace; host apps wanting per-page isolation should pass an explicit
  * workspace id instead.
  */
-export function defaultWorkspaceId(holderId: string | null): string {
+export function defaultWorkspaceId(targetId: string | null): string {
   let path = "/default";
   try {
     if (typeof location !== "undefined" && location.pathname) path = location.pathname;
   } catch {
     /* non-browser */
   }
-  return `${path}#${holderId ?? "default"}`;
+  return `${path}#${targetId ?? "default"}`;
 }
 
 /**

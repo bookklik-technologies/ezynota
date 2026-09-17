@@ -14,10 +14,10 @@ import type { EzynotaChange } from "../core/types";
  * Replacements use literal string splicing (split/join), so `$&`, `$\``
  * etc. in the replacement text are never expanded.
  */
-export function createFindReplace(host: Host, holder: HTMLElement) {
+export function createFindReplace(host: Host, target: HTMLElement) {
   return (query: string, replaceWith: string, replaceAll: boolean): void => {
     if (!query) return;
-    void holder;
+    void target;
     // Document-order first-match budget: "replace one" replaces exactly the
     // FIRST match in the document, not one match in every block.
     let budget = replaceAll ? Number.POSITIVE_INFINITY : 1;

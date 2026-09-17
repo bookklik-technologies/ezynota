@@ -12,12 +12,12 @@ import { isImeKeyEvent } from "./composition";
  */
 export class KeyboardManager {
   private host: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private disposers: (() => void)[] = [];
 
-  constructor(host: Host, holder: HTMLElement) {
+  constructor(host: Host, target: HTMLElement) {
     this.host = host;
-    this.holder = holder;
+    this.target = target;
   }
 
   start(): void {
@@ -27,8 +27,8 @@ export class KeyboardManager {
       if (isImeKeyEvent(e) || (e.target as HTMLElement).closest("[data-ez-ui]")) return;
       if (this.handle(e)) e.preventDefault();
     };
-    this.holder.addEventListener("keydown", onKeyDown);
-    this.disposers.push(() => this.holder.removeEventListener("keydown", onKeyDown));
+    this.target.addEventListener("keydown", onKeyDown);
+    this.disposers.push(() => this.target.removeEventListener("keydown", onKeyDown));
   }
 
   stop(): void {
@@ -160,7 +160,7 @@ export class KeyboardManager {
 
   /** True when a menu/popover is currently visible inside the surface. */
   private somethingOpen(): boolean {
-    for (const el of Array.from(this.holder.querySelectorAll<HTMLElement>(".ez-popover, .ez-slash-menu"))) {
+    for (const el of Array.from(this.target.querySelectorAll<HTMLElement>(".ez-popover, .ez-slash-menu"))) {
       if (!el.isConnected) continue;
       if (el.style.display === "none") continue;
       return true;

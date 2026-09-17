@@ -70,8 +70,8 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   ready: Promise<void> = Promise.resolve();
 
   private config: EzynotaConfig;
-  private holderEl: HTMLElement;
-  /** The document surface: inner element in workspace modes, otherwise the holder. */
+  private targetEl: HTMLElement;
+  /** The document surface: inner element in workspace modes, otherwise the target. */
   private surfaceEl!: HTMLElement;
   private bus = new EventBus();
   private state: DocumentState;
@@ -118,7 +118,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     }
     this.config = config;
     this.mode = resolveMode(config);
-    this.holderEl = this.resolveHolder(config.holder);
+    this.targetEl = this.resolveTarget(config.target);
     this.i18nInstance = new I18n(config.locale ?? "en", config.i18n?.messages ?? {});
     this.defaultBlockName = config.defaultBlock ?? "paragraph";
 
@@ -178,7 +178,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
     if (this.mode === "workspace" || this.mode === "document") {
       this.editingLocked = true;
-      this.holderEl.classList.add("ez-loading");
+      this.targetEl.classList.add("ez-loading");
       this.initializeWorkspace();
     } else {
       this.ready = new Promise<void>((resolve) => {
@@ -245,12 +245,12 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   /** Async workspace boot: load notes, then unlock editing and fire ready. */
   private initializeWorkspace(): void {
-    const holderId = this.holderEl.id || null;
+    const targetId = this.targetEl.id || null;
     this.workspaceController = new WorkspaceController(
       this,
-      this.holderEl,
+      this.targetEl,
       {
-        holderId,
+        targetId,
         explicitWorkspaceId: this.config.workspace,
         storage: this.config.storage,
         theme: this.config.theme,
@@ -278,7 +278,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
         // true. Rebuild its tools and empty input after releasing the lock
         // so their edit controls match the configured read-only setting.
         this.renderer.renderAll(this.state.get().blocks);
-        this.holderEl.classList.remove("ez-loading");
+        this.targetEl.classList.remove("ez-loading");
         if (this.config.theme) this.applyTheme(this.config.theme);
         this.resolveReady();
         this.bus.emit("ready");
@@ -360,7 +360,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     this.blockManagerReplaceAll(migrated);
     if (this.recoveryMode) {
       this.config = { ...this.config, readOnly: true };
-      this.holderEl.classList.add("ez-readonly");
+      this.targetEl.classList.add("ez-readonly");
       this.renderer.setReadOnly(true);
       this.closeMenus();
     }
@@ -549,18 +549,18 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     this.disposers.length = 0;
     unregisterInstance(this);
     // Suppress immediate automatic remounting for declarative mounts.
-    if (this.declarative) this.holderEl.setAttribute("data-ezn-destroyed", "");
+    if (this.declarative) this.targetEl.setAttribute("data-ezn-destroyed", "");
     this.bus.emit("destroyed");
     this.bus.destroy();
-    this.holderEl.classList.remove("ez-editor-mount", "ez-editor", "ez-readonly", "ez-has-block-toolbar", "ez-loading");
-    this.holderEl.removeAttribute("data-ez-mode");
-    this.holderEl.removeAttribute("data-ez-theme");
-    this.holderEl.innerHTML = "";
+    this.targetEl.classList.remove("ez-editor-mount", "ez-editor", "ez-readonly", "ez-has-block-toolbar", "ez-loading");
+    this.targetEl.removeAttribute("data-ez-mode");
+    this.targetEl.removeAttribute("data-ez-theme");
+    this.targetEl.innerHTML = "";
   }
 
   /* ===================== Host implementation ===================== */
 
-  get holder(): HTMLElement {
+  get target(): HTMLElement {
     return this.surfaceEl;
   }
 
@@ -997,7 +997,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     if (this.blockToolbar) this.blockToolbar.hide();
     this.inlineToolbar?.hide();
     this.documentToolbar?.hide();
-    this.holderEl.dispatchEvent(new Event("ez-close-popovers"));
+    this.targetEl.dispatchEvent(new Event("ez-close-popovers"));
   }
 
   undoInternal(): void {
@@ -1067,18 +1067,18 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   /* ===================== Internals ===================== */
 
   private toolElement(id: string): HTMLElement {
-    return this.renderer.getBlockElement(id) ?? this.holderEl;
+    return this.renderer.getBlockElement(id) ?? this.targetEl;
   }
 
   /** Emit a bubbling, composed DOM event carrying the instance + payload. */
   private emitDomEvent(name: string, payload?: JsonValue): void {
     const detail = { instance: this, ...(payload !== undefined ? { payload } : {}) };
-    this.holderEl.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true, detail }));
+    this.targetEl.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true, detail }));
   }
 
   /** Apply the UI theme (light/dark/system) and track system changes. */
   private applyTheme(theme: WorkspaceTheme): void {
-    this.holderEl.setAttribute("data-ez-theme", theme);
+    this.targetEl.setAttribute("data-ez-theme", theme);
     let resolved: "light" | "dark" = theme === "dark" ? "dark" : theme === "light" ? "light" : "light";
     try {
       if (theme === "system") {
@@ -1086,7 +1086,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
         resolved = media.matches ? "dark" : "light";
         const listener = (): void => {
           const next = media.matches ? "dark" : "light";
-          this.holderEl.setAttribute("data-ez-resolved-theme", next);
+          this.targetEl.setAttribute("data-ez-resolved-theme", next);
         };
         media.addEventListener("change", listener);
         this.themeListenerDisposer?.();
@@ -1095,13 +1095,13 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     } catch {
       /* matchMedia unavailable */
     }
-    this.holderEl.setAttribute("data-ez-resolved-theme", resolved);
+    this.targetEl.setAttribute("data-ez-resolved-theme", resolved);
   }
 
-  private resolveHolder(holder: HTMLElement | string): HTMLElement {
-    const el = typeof holder === "string" ? document.querySelector<HTMLElement>(holder) : holder;
+  private resolveTarget(target: HTMLElement | string): HTMLElement {
+    const el = typeof target === "string" ? document.querySelector<HTMLElement>(target) : target;
     if (!el) {
-      throw new EzynotaError("EZ_RENDER_FAILED", `Holder not found: ${typeof holder === "string" ? holder : "element"}`);
+      throw new EzynotaError("EZ_RENDER_FAILED", `Target not found: ${typeof target === "string" ? target : "element"}`);
     }
     return el;
   }
@@ -1235,18 +1235,18 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   private setupDom(): void {
-    this.holderEl.classList.add("ez-editor-mount");
+    this.targetEl.classList.add("ez-editor-mount");
     if (this.mode === "workspace" || this.mode === "document") {
-      // The engine mounts into an inner surface; the holder becomes the
+      // The engine mounts into an inner surface; the target becomes the
       // workspace shell root (sidebar + header are built by the controller).
-      this.holderEl.setAttribute("data-ez-mode", this.mode);
+      this.targetEl.setAttribute("data-ez-mode", this.mode);
       this.surfaceEl = document.createElement("div");
       this.surfaceEl.className = "ez-editor";
-      this.holderEl.appendChild(this.surfaceEl);
+      this.targetEl.appendChild(this.surfaceEl);
     } else {
-      this.holderEl.classList.add("ez-editor");
-      this.holderEl.setAttribute("data-ez-mode", this.mode);
-      this.surfaceEl = this.holderEl;
+      this.targetEl.classList.add("ez-editor");
+      this.targetEl.setAttribute("data-ez-mode", this.mode);
+      this.surfaceEl = this.targetEl;
     }
     if (this.config.readOnly) this.surfaceEl.classList.add("ez-readonly");
     if (this.config.minHeight) this.surfaceEl.style.minHeight = `${this.config.minHeight}px`;

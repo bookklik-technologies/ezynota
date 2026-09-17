@@ -9,7 +9,7 @@ import type { BlockTool, ChangeOrigin, EditorSelection, JsonValue } from "./type
  * Ezynota class to avoid circular imports.
  */
 export interface Host {
-  readonly holder: HTMLElement;
+  readonly target: HTMLElement;
   readonly readOnly: boolean;
   readonly i18n: I18n;
   readonly registry: ToolRegistry;

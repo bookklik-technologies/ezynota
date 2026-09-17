@@ -250,8 +250,8 @@ export class SlashMenu {
 
   private position(): void {
     if (!this.isOpen || !this.blockId) return;
-    const anchor = this.host.holder.querySelector(`[data-ez-block-id="${CSS.escape(this.blockId)}"]`);
-    placePopover(this.root, (anchor ?? this.host.holder).getBoundingClientRect());
+    const anchor = this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(this.blockId)}"]`);
+    placePopover(this.root, (anchor ?? this.host.target).getBoundingClientRect());
   }
 
   destroy(): void { this.close(); this.root.remove(); }

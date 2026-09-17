@@ -18,7 +18,7 @@ The full note-taking experience: sidebar with folders and search, document toolb
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   mode: "workspace",
 });
 
@@ -37,7 +37,7 @@ A clean writing surface: the document toolbar and editor surface without the sid
 
 ```ts
 const editor = new Ezynota({
-  holder: "#writing",
+  target: "#writing",
   mode: "document",
   placeholder: "Start writing…",
 });
@@ -49,7 +49,7 @@ A compact editor for comments, chat inputs, and inline forms. Minimal chrome, fl
 
 ```ts
 const editor = new Ezynota({
-  holder: "#comment",
+  target: "#comment",
   mode: "embedded",
   minHeight: 96,
 });
@@ -61,7 +61,7 @@ No UI at all — a document engine you drive programmatically. Useful for server
 
 ```ts
 const engine = new Ezynota({
-  holder: "#hidden",
+  target: "#hidden",
   mode: "headless",
 });
 

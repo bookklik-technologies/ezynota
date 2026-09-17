@@ -135,7 +135,7 @@ export interface I18nMessages {
 export type EzynotaMode = "workspace" | "document" | "embedded" | "headless";
 
 export interface EzynotaConfig {
-  holder: HTMLElement | string;
+  target: HTMLElement | string;
   data?: EzynotaDocument | null;
   tools?: Record<string, BlockToolConstructor | ToolDefinition>;
   inlineTools?: (InlineToolConstructor | InlineToolDefinition)[];
@@ -155,7 +155,7 @@ export interface EzynotaConfig {
    * shorthand for "headless".
    */
   mode?: EzynotaMode;
-  /** Explicit workspace id; defaults to pathname + holder id. */
+  /** Explicit workspace id; defaults to pathname + target id. */
   workspace?: string;
   /** Configurable storage adapter (default: IndexedDB in workspace mode). */
   storage?: StorageAdapter | (() => StorageAdapter);

@@ -35,7 +35,7 @@ export interface WorkspaceHost {
 }
 
 export interface WorkspaceControllerOptions {
-  holderId: string | null;
+  targetId: string | null;
   explicitWorkspaceId?: string;
   storage?: StorageAdapter | (() => StorageAdapter);
   theme?: WorkspaceTheme;
@@ -72,7 +72,7 @@ export class WorkspaceController {
     const storage = options.storage
       ? typeof options.storage === "function" ? options.storage() : options.storage
       : new IndexedDbStorage();
-    const workspaceId = options.explicitWorkspaceId ?? defaultWorkspaceId(options.holderId);
+    const workspaceId = options.explicitWorkspaceId ?? defaultWorkspaceId(options.targetId);
     this.state = new WorkspaceState({ workspaceId, storage, generateId: createWorkspaceId });
 
     this.disposers.push(

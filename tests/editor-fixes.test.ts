@@ -4,15 +4,15 @@ import { EzynotaError } from "../src/core/errors";
 import type { EzynotaConfig, EzynotaDocument, JsonValue } from "../src/types";
 
 const editors: Ezynota[] = [];
-const holders: HTMLElement[] = [];
+const targets: HTMLElement[] = [];
 
-function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder: HTMLElement } {
-  const holder = document.createElement("div");
-  document.body.appendChild(holder);
-  holders.push(holder);
-  const editor = new Ezynota({ holder, mode: "embedded", ...config });
+function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; target: HTMLElement } {
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  targets.push(target);
+  const editor = new Ezynota({ target, mode: "embedded", ...config });
   editors.push(editor);
-  return { editor, holder };
+  return { editor, target };
 }
 
 function doc(blocks: Array<{ id?: string; type: string; data: JsonValue }>): EzynotaDocument {
@@ -29,9 +29,9 @@ beforeEach(() => {
 
 describe("editing lock (mutations before ready)", () => {
   it("rejects API mutations issued before the workspace load completes", async () => {
-    const holder = document.createElement("div");
-    document.body.appendChild(holder);
-    const editor = new Ezynota({ holder, data: doc([paragraph("loaded")]) });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const editor = new Ezynota({ target, data: doc([paragraph("loaded")]) });
     expect(() => editor.insertBlock("paragraph")).toThrow(EzynotaError);
     expect(() => editor.updateBlock("x", {})).toThrow(EzynotaError);
     expect(() => editor.clear()).toThrow(EzynotaError);
@@ -49,9 +49,9 @@ describe("editing lock (mutations before ready)", () => {
   });
 
   it("focus() no-ops while locked instead of inserting", async () => {
-    const holder = document.createElement("div");
-    document.body.appendChild(holder);
-    const editor = new Ezynota({ holder, data: doc([paragraph("loaded")]) });
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const editor = new Ezynota({ target, data: doc([paragraph("loaded")]) });
     expect(() => editor.focus()).not.toThrow();
     await editor.ready;
     editor.destroy();
@@ -60,11 +60,11 @@ describe("editing lock (mutations before ready)", () => {
 
 describe("consumer callback hardening", () => {
   it("a throwing onChange handler does not break transaction processing", () => {
-    const holder = document.createElement("div");
-    document.body.appendChild(holder);
-    holders.push(holder);
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    targets.push(target);
     const throwing = new Ezynota({
-      holder,
+      target,
       mode: "embedded",
       onChange: () => {
         throw new Error("consumer bug");
@@ -80,11 +80,11 @@ describe("consumer callback hardening", () => {
   });
 
   it("a throwing onReady handler does not break readiness", async () => {
-    const holder = document.createElement("div");
-    document.body.appendChild(holder);
-    holders.push(holder);
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    targets.push(target);
     const editor = new Ezynota({
-      holder,
+      target,
       mode: "embedded",
       onReady: () => {
         throw new Error("consumer bug");
@@ -122,11 +122,11 @@ describe("undo race with async tool saves", () => {
 
 describe("salvage of malformed documents", () => {
   it("does not crash the constructor; invalid blocks become unknown placeholders", () => {
-    const holder = document.createElement("div");
-    document.body.appendChild(holder);
-    holders.push(holder);
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    targets.push(target);
     const editor = new Ezynota({
-      holder,
+      target,
       mode: "embedded",
       data: {
         schemaVersion: "1.0.0",
@@ -207,8 +207,8 @@ describe("nested child input saves through the parent tool", () => {
   });
 
   it("child edits through the input path persist the child text", async () => {
-    const { editor, holder } = create({ data: toggleDoc("kid") });
-    const nestedEditable = holder.querySelector<HTMLElement>('[data-ez-nested-id="child-1"] [data-ez-editable]')!;
+    const { editor, target } = create({ data: toggleDoc("kid") });
+    const nestedEditable = target.querySelector<HTMLElement>('[data-ez-nested-id="child-1"] [data-ez-editable]')!;
     expect(nestedEditable).not.toBeNull();
     nestedEditable.textContent = "kid typed";
     nestedEditable.dispatchEvent(new Event("input", { bubbles: true }));

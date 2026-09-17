@@ -25,18 +25,18 @@ interface EzynotaClipboardPayload {
  */
 export class ClipboardManager {
   private host: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private disposers: (() => void)[] = [];
 
-  constructor(host: Host, holder: HTMLElement) {
+  constructor(host: Host, target: HTMLElement) {
     this.host = host;
-    this.holder = holder;
+    this.target = target;
   }
 
   start(): void {
     const targetInSurface = (target: EventTarget | null): boolean => {
       const el = target as HTMLElement | null;
-      return !!el && this.holder.contains(el) && !el.closest?.("[data-ez-ui]");
+      return !!el && this.target.contains(el) && !el.closest?.("[data-ez-ui]");
     };
 
     const onCopy = (event: Event): void => {
@@ -97,16 +97,16 @@ export class ClipboardManager {
       await this.routeFiles(Array.from(files), selection.blockId);
     };
 
-    this.holder.addEventListener("copy", onCopy);
-    this.holder.addEventListener("cut", onCut);
-    this.holder.addEventListener("paste", onPaste as EventListener);
-    this.holder.addEventListener("drop", onDrop);
+    this.target.addEventListener("copy", onCopy);
+    this.target.addEventListener("cut", onCut);
+    this.target.addEventListener("paste", onPaste as EventListener);
+    this.target.addEventListener("drop", onDrop);
 
     this.disposers.push(() => {
-      this.holder.removeEventListener("copy", onCopy);
-      this.holder.removeEventListener("cut", onCut);
-      this.holder.removeEventListener("paste", onPaste as EventListener);
-      this.holder.removeEventListener("drop", onDrop);
+      this.target.removeEventListener("copy", onCopy);
+      this.target.removeEventListener("cut", onCut);
+      this.target.removeEventListener("paste", onPaste as EventListener);
+      this.target.removeEventListener("drop", onDrop);
     });
   }
 
@@ -126,7 +126,7 @@ export class ClipboardManager {
     const end = endBlock ?? startBlock;
     if (!this.selectionCoversBlockStart(startBlock, range)) return null;
     if (!this.selectionCoversBlockEnd(end, range)) return null;
-    const all = Array.from(this.holder.querySelectorAll<HTMLElement>("[data-ez-block-id]"));
+    const all = Array.from(this.target.querySelectorAll<HTMLElement>("[data-ez-block-id]"));
     const ids: string[] = [];
     let inRange = false;
     for (const el of all) {
@@ -143,7 +143,7 @@ export class ClipboardManager {
   }
 
   private selectionCoversBlockStart(block: HTMLElement, range: Range): boolean {
-    const probe = this.holder.ownerDocument.createRange();
+    const probe = this.target.ownerDocument.createRange();
     probe.selectNodeContents(block);
     try {
       probe.setEnd(range.startContainer, range.startOffset);
@@ -154,7 +154,7 @@ export class ClipboardManager {
   }
 
   private selectionCoversBlockEnd(block: HTMLElement, range: Range): boolean {
-    const probe = this.holder.ownerDocument.createRange();
+    const probe = this.target.ownerDocument.createRange();
     probe.selectNodeContents(block);
     try {
       probe.setStart(range.endContainer, range.endOffset);
@@ -166,7 +166,7 @@ export class ClipboardManager {
 
   private closestBlock(node: Node): HTMLElement | null {
     let cursor: Node | null = node;
-    while (cursor && cursor !== this.holder) {
+    while (cursor && cursor !== this.target) {
       if (cursor.nodeType === Node.ELEMENT_NODE && (cursor as HTMLElement).hasAttribute?.("data-ez-block-id")) {
         return cursor as HTMLElement;
       }
@@ -318,7 +318,7 @@ export class ClipboardManager {
       return;
     }
     range.deleteContents();
-    const node = this.holder.ownerDocument.createTextNode(text);
+    const node = this.target.ownerDocument.createTextNode(text);
     range.insertNode(node);
     range.setStartAfter(node);
     range.collapse(true);

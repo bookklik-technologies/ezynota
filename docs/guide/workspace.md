@@ -13,7 +13,7 @@ Workspace mode turns the editor into a small note-taking app: notes, folders, tr
 ## Accessing the workspace
 
 ```ts
-const editor = new Ezynota({ holder: "#app", mode: "workspace" });
+const editor = new Ezynota({ target: "#app", mode: "workspace" });
 await editor.ready;
 
 const ws = editor.workspace; // WorkspaceController | null (workspace/document modes only)

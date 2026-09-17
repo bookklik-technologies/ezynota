@@ -74,7 +74,7 @@ Register it:
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   tunes: [AlignmentTune, WidthTune],
 });
 ```

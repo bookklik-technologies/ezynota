@@ -12,7 +12,7 @@ import "./styles/ezynota.css";
  * import { Ezynota } from "ezynota";
  * import "ezynota/dist/ezynota.css";
  *
- * const editor = new Ezynota({ holder: "#editor" });
+ * const editor = new Ezynota({ target: "#editor" });
  * const auto = Ezynota.initAll(); // or rely on the automatic scan
  */
 import { setupDeclarativeScanning } from "./init/declarative";

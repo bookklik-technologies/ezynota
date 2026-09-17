@@ -19,7 +19,7 @@ export interface RenderedBlock {
  */
 export class Renderer {
   private hostApi: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private blocksRoot: HTMLElement;
   private rendered = new Map<string, RenderedBlock>();
   /** Cached JSON of each block's children, compared on updates to detect child changes. */
@@ -31,13 +31,13 @@ export class Renderer {
   private observer: MutationObserver | null = null;
   private destroyed = false;
 
-  constructor(hostApi: Host, holder: HTMLElement) {
+  constructor(hostApi: Host, target: HTMLElement) {
     this.hostApi = hostApi;
-    this.holder = holder;
-    this.blocksRoot = hostApi.holder.ownerDocument.createElement("div");
+    this.target = target;
+    this.blocksRoot = hostApi.target.ownerDocument.createElement("div");
     this.blocksRoot.className = "ez-blocks";
     this.blocksRoot.setAttribute("role", "presentation");
-    holder.appendChild(this.blocksRoot);
+    target.appendChild(this.blocksRoot);
   }
 
   /** Re-render (or re-render) the full document. */
@@ -206,7 +206,7 @@ export class Renderer {
   }
 
   private renderBlockInto(block: EzynotaBlock, at?: number): void {
-    const doc = this.holder.ownerDocument;
+    const doc = this.target.ownerDocument;
     // Blocks whose tool is unavailable render through a read-only fallback
     // so their data is never lost or dropped from saves.
     const supported = this.hostApi.registry.has(block.type);
@@ -342,7 +342,7 @@ export class Renderer {
   }
 
   private blockApiFor(id: string): import("../types").BlockAPI {
-    return this.blockApiForTool(id, this.getToolHost(id) ?? this.holder);
+    return this.blockApiForTool(id, this.getToolHost(id) ?? this.target);
   }
 
   private getToolHost(id: string): HTMLElement | null {

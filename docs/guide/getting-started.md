@@ -4,7 +4,7 @@ Ezynota is a free, block-style editor with portable JSON output. It ships as a s
 
 ## Requirements
 
-- A browser environment (the constructor throws `EZ_RENDER_FAILED` outside a DOM — it is not SSR-renderable, though you can render the empty holder server-side and initialize on the client).
+- A browser environment (the constructor throws `EZ_RENDER_FAILED` outside a DOM — it is not SSR-renderable, though you can render the empty target server-side and initialize on the client).
 - No framework required. Works with plain HTML, React, Vue, Svelte, or anything else.
 
 ## Installation
@@ -22,7 +22,7 @@ import { Ezynota } from "@bookklik/ezynota";
 import "@bookklik/ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   data: {
     schemaVersion: "1.0.0",
     blocks: [
@@ -53,7 +53,7 @@ The core entry is identical except it does **not** auto-mount `[data-ezn-editor]
 
 <script src="https://unpkg.com/@bookklik/ezynota/dist/ezynota.umd.cjs"></script>
 <script>
-  const editor = new Ezynota({ holder: "#editor" });
+  const editor = new Ezynota({ target: "#editor" });
 </script>
 ```
 

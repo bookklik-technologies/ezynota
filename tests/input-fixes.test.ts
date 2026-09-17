@@ -11,12 +11,12 @@ const editors: Ezynota[] = [];
 
 const EZ_JSON = "application/x-ezynota+json";
 
-function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder: HTMLElement } {
-  const holder = document.createElement("div");
-  document.body.appendChild(holder);
-  const editor = new Ezynota({ holder, mode: "embedded", ...config });
+function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; target: HTMLElement } {
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  const editor = new Ezynota({ target, mode: "embedded", ...config });
   editors.push(editor);
-  return { editor, holder };
+  return { editor, target };
 }
 
 function doc(blocks: Array<{ id?: string; type: string; data: JsonValue }>): EzynotaDocument {
@@ -122,7 +122,7 @@ describe("markdown block shortcuts (fix 2)", () => {
 
 describe("clipboard sanitization (fix 1)", () => {
   it("paste of ezynota JSON with a javascript: link renders no live link", async () => {
-    const { editor, holder } = create({ data: doc([paragraph("start")]) });
+    const { editor, target } = create({ data: doc([paragraph("start")]) });
     await flush();
     const payload = JSON.stringify({
       blocks: [
@@ -144,8 +144,8 @@ describe("clipboard sanitization (fix 1)", () => {
       new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt })
     );
     await flush();
-    expect(holder.querySelector('a[href^="javascript:"]')).toBeNull();
-    expect(holder.textContent).toContain("evil");
+    expect(target.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(target.textContent).toContain("evil");
   });
 
   it("sanitizeClipboardBlocks keeps safe links and drops unsafe ones", () => {

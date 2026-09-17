@@ -10,7 +10,7 @@ const editor = new Ezynota(config);
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `holder` | `string \| Element` | — | Element (or selector) the editor mounts into. **Required.** |
+| `target` | `string \| Element` | — | Element (or selector) the editor mounts into. **Required.** |
 | `data` | `EzynotaDocument` | — | Initial document. In workspace mode this opens as a new note instead. |
 | `tools` | `Record<string, BlockToolConstructor \| ToolDefinition>` | built-ins | Custom/extra block tools, keyed by block type. Built-ins remain registered. |
 | `inlineTools` | `(InlineToolConstructor \| InlineToolDefinition)[]` | built-ins | Inline formatting tools for the floating toolbar. |
@@ -37,7 +37,7 @@ const editor = new Ezynota(config);
 
 ```ts
 const editor = new Ezynota({
-  holder: "#comment-box",
+  target: "#comment-box",
   mode: "embedded",
   placeholder: "Write a comment…",
   minHeight: 120,
@@ -48,7 +48,7 @@ const editor = new Ezynota({
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   mode: "workspace",
   theme: "system",
   storage: myCustomAdapter, // optional
@@ -62,7 +62,7 @@ const editor = new Ezynota({
 
 ```ts
 const viewer = new Ezynota({
-  holder: "#article",
+  target: "#article",
   readOnly: true,
   data: fetchedDocument,
 });
@@ -83,7 +83,7 @@ Block ids must be unique strings. Provide `idGenerator` if you need a specific f
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   idGenerator: () => ulid(),
 });
 ```

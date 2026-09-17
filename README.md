@@ -33,7 +33,7 @@ evaluated:
 | Attribute                | Values                                              | Description                          |
 | ------------------------ | --------------------------------------------------- | ------------------------------------ |
 | `data-ezn-mode`          | `workspace` \| `document` \| `embedded` \| `headless` | Lifecycle mode (default `workspace`). |
-| `data-ezn-workspace`     | any workspace id                                    | Share notes across holders/pages.    |
+| `data-ezn-workspace`     | any workspace id                                    | Share notes across targets/pages.    |
 | `data-ezn-theme`         | `light` \| `dark` \| `system`                       | UI theme.                            |
 | `data-ezn-readonly`      | `true` \| `false`                                   | Read-only editing.                   |
 | `data-ezn-placeholder`   | text                                                | First-block placeholder.             |
@@ -55,7 +55,7 @@ import { Ezynota } from "ezynota/core";     // no automatic scanning
 import "ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
-  holder: "#editor",
+  target: "#editor",
   placeholder: "Start writing...",
   onReady(api) {},
   onChange(api, batch) {}
@@ -66,7 +66,7 @@ const editor = new Ezynota({
 
 | Option          | Type                         | Default        | Description                                    |
 | --------------- | ---------------------------- | -------------- | ---------------------------------------------- |
-| `holder`        | `HTMLElement \| string`      | —              | Element (or selector) to mount the editor in.  |
+| `target`        | `HTMLElement \| string`      | —              | Element (or selector) to mount the editor in.  |
 | `data`          | `EzynotaDocument`            | `null`         | Initial document.                              |
 | `tools`         | `Record<string, ToolClass>`  | all built-ins  | Block tools, by name.                          |
 | `inlineTools`   | `InlineToolClass[]`          | all built-ins  | Bold, italic, underline, code, mark, link.     |
@@ -81,7 +81,7 @@ const editor = new Ezynota({
 | `idGenerator`   | `() => string`               | `randomUUID`   | Custom block id generator.                     |
 | `ui`            | `boolean \| object`          | `true`         | Toggle toolbars and the block picker; see below. |
 | `mode`          | `EzynotaMode`                | `"workspace"`  | `workspace` \| `document` \| `embedded` \| `headless`. |
-| `workspace`     | `string`                     | path+holder id | Explicit workspace id; matching IDs share notes. |
+| `workspace`     | `string`                     | path+target id | Explicit workspace id; matching IDs share notes. |
 | `storage`       | `StorageAdapter \| factory`  | IndexedDB      | Configurable async storage adapter.            |
 | `theme`         | `"light" \| "dark" \| "system"` | `"system"`  | UI theme (also settable via attribute).        |
 
@@ -110,7 +110,7 @@ For a familiar writing interface, enable the document toolbar and disable duplic
 
 ```ts
 const editor = new Ezynota({
-  holder: "#editor",
+  target: "#editor",
   placeholder: "Start writing. Use + to add content or / for shortcuts.",
   ui: { documentToolbar: true, inlineToolbar: false, blockToolbar: true, slashMenu: true }
 });
@@ -168,9 +168,9 @@ and `editor.on("fullscreen:changed", …)`, plus `ezn:*` DOM events.
 
 The workspace stores all notes, folders, trash records and uploaded image
 assets in **IndexedDB**, scoped to a workspace ID that defaults to the page
-pathname plus the holder ID (`"default"` for unnamed holders). An explicit
+pathname plus the target ID (`"default"` for unnamed targets). An explicit
 `workspace` id (or `data-ezn-workspace`) intentionally makes matching
-holders share notes. Autosave runs after 500 ms of inactivity; writes are
+targets share notes. Autosave runs after 500 ms of inactivity; writes are
 serialized, revision-checked against the stored record, and cross-tab
 changes are broadcast between tabs to prevent silent overwrites.
 

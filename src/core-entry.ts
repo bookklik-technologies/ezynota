@@ -7,7 +7,7 @@
  * import { Ezynota } from "ezynota/core";
  * import "ezynota/dist/ezynota.css";
  *
- * const editor = new Ezynota({ holder: "#editor", mode: "workspace" });
+ * const editor = new Ezynota({ target: "#editor", mode: "workspace" });
  * // Opt into declarative mounting explicitly when needed:
  * // Ezynota.initAll();
  */

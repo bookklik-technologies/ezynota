@@ -57,7 +57,7 @@ export class BlockToolbar {
       if (!this.open && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
         const controls = Array.from(this.root.querySelectorAll<HTMLButtonElement>(":scope > button"))
           .filter((button) => getComputedStyle(button).display !== "none");
-        const direction = (event.key === "ArrowRight" ? 1 : -1) * (this.host.holder.getAttribute("dir") === "rtl" ? -1 : 1);
+        const direction = (event.key === "ArrowRight" ? 1 : -1) * (this.host.target.getAttribute("dir") === "rtl" ? -1 : 1);
         const index = controls.indexOf(document.activeElement as HTMLButtonElement);
         controls[(index + direction + controls.length) % controls.length]?.focus();
         event.preventDefault();
@@ -95,12 +95,12 @@ export class BlockToolbar {
     if (this.host.readOnly) { this.hide(); return; }
     if (this.activeBlockId !== blockId) this.closeSettings();
     this.activeBlockId = blockId;
-    const blockEl = this.host.holder.querySelector(`[data-ez-block-id="${CSS.escape(blockId)}"]`) as HTMLElement | null;
+    const blockEl = this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(blockId)}"]`) as HTMLElement | null;
     if (!blockEl) {
       this.hide();
       return;
     }
-    const holderRect = this.host.holder.getBoundingClientRect();
+    const targetRect = this.host.target.getBoundingClientRect();
     const rect = blockEl.getBoundingClientRect();
     if (this.activeBlockElement !== blockEl) this.activeBlockElement?.classList.remove("ez-active");
     this.activeBlockElement = blockEl;
@@ -113,13 +113,13 @@ export class BlockToolbar {
     const firstLine = editable?.querySelector("li") ?? editable;
     const lineRect = firstLine?.getBoundingClientRect() ?? rect;
     const lineHeight = firstLine ? Number.parseFloat(getComputedStyle(firstLine).lineHeight) || 26 : rect.height;
-    this.root.style.top = `${Math.round(lineRect.top - holderRect.top + this.host.holder.scrollTop + (Math.min(lineHeight, lineRect.height) - toolbarRect.height) / 2)}px`;
-    const rtl = this.host.holder.getAttribute("dir") === "rtl";
+    this.root.style.top = `${Math.round(lineRect.top - targetRect.top + this.host.target.scrollTop + (Math.min(lineHeight, lineRect.height) - toolbarRect.height) / 2)}px`;
+    const rtl = this.host.target.getAttribute("dir") === "rtl";
     this.root.style.left = "";
     this.root.style.right = "";
     this.root.style[rtl ? "right" : "left"] = rtl
-      ? `${Math.max(0, Math.round(holderRect.right - rect.right - toolbarRect.width - 10))}px`
-      : `${Math.max(0, Math.round(rect.left - holderRect.left - toolbarRect.width - 10))}px`;
+      ? `${Math.max(0, Math.round(targetRect.right - rect.right - toolbarRect.width - 10))}px`
+      : `${Math.max(0, Math.round(rect.left - targetRect.left - toolbarRect.width - 10))}px`;
     this.root.classList.add("ez-visible");
   }
 
@@ -154,7 +154,7 @@ export class BlockToolbar {
       if (!next) this.settingsButton.focus();
     });
     this.renderSettingsMenu(this.activeBlockId);
-    const blockEl = this.host.holder.querySelector(`[data-ez-block-id="${CSS.escape(this.activeBlockId)}"]`) as HTMLElement | null;
+    const blockEl = this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(this.activeBlockId)}"]`) as HTMLElement | null;
     if (!blockEl) return;
     this.root.appendChild(this.settingsPopover);
     placePopover(this.settingsPopover, this.settingsButton.getBoundingClientRect());
@@ -230,7 +230,7 @@ export class BlockToolbar {
       this.host.removeBlock(blockId);
       const next = this.host.blocks.blocks[Math.min(index, this.host.blocks.length - 1)];
       if (next) this.host.focusBlock(next.id, "end");
-      else this.host.holder.querySelector<HTMLElement>(".ez-empty-input")?.focus();
+      else this.host.target.querySelector<HTMLElement>(".ez-empty-input")?.focus();
       this.host.announce(this.host.i18n.t("settings.deleted"));
     });
     del.classList.add("ez-danger");
@@ -282,7 +282,7 @@ export class BlockToolbar {
       id: blockId,
       type: host.getBlockType(blockId) ?? "",
       readOnly: host.readOnly,
-      element: (host.holder.querySelector(`[data-ez-block-id="${CSS.escape(blockId)}"] .ez-tool-host`) as HTMLElement) ?? document.createElement("div"),
+      element: (host.target.querySelector(`[data-ez-block-id="${CSS.escape(blockId)}"] .ez-tool-host`) as HTMLElement) ?? document.createElement("div"),
       getData: () => host.getBlockData(blockId) ?? {},
       update: (data) => host.updateBlockData(blockId, data),
       patch: (data) => {

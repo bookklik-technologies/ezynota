@@ -69,7 +69,7 @@ That guarantees identical selection handling, undo participation, and active-sta
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   inlineTools: [
     // Replace the whole set, or append to the defaults in your own order
     ...defaultInlineTools,

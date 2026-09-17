@@ -77,7 +77,7 @@ class HintTool extends TextBlockTool {
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   tools: {
     hint: HintTool,
   },
@@ -145,7 +145,7 @@ If you need a popover (like the link tool), use `InlineToolOptions.onActivate()`
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   inlineTools: [
     SmallCapsTool,
     // append to or replace the built-ins as you like
@@ -181,7 +181,7 @@ class WidthTune implements BlockTune {
 }
 
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   tunes: [AlignmentTune, WidthTune],
 });
 ```
@@ -201,7 +201,7 @@ import { Ezynota } from "@bookklik/ezynota";
 import "@bookklik/ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
-  holder: document.body.appendChild(document.createElement("div")),
+  target: document.body.appendChild(document.createElement("div")),
   tools: { hint: HintTool },
 });
 

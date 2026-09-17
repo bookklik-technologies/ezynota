@@ -32,12 +32,11 @@ export function clearChildren(node: HTMLElement): void {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 
-export function positionBelow(anchor: DOMRect | HTMLElement, target: HTMLElement, holder?: HTMLElement): void {
+export function positionBelow(anchor: DOMRect | HTMLElement, target: HTMLElement): void {
   const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
   target.style.left = `${Math.round(rect.left)}px`;
   target.style.top = `${Math.round(rect.bottom + 6)}px`;
   target.style.position = "fixed";
-  void holder;
 }
 
 export function clampToViewport(node: HTMLElement, margin = 8): void {

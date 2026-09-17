@@ -26,8 +26,8 @@ let started = false;
 let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Build a config from documented data-ezn-* attributes only. */
-export function configFromAttributes(element: HTMLElement): Partial<EzynotaConfig> & { holder: HTMLElement } {
-  const config: Partial<EzynotaConfig> & { holder: HTMLElement } = { holder: element };
+export function configFromAttributes(element: HTMLElement): Partial<EzynotaConfig> & { target: HTMLElement } {
+  const config: Partial<EzynotaConfig> & { target: HTMLElement } = { target: element };
   const mode = element.getAttribute("data-ezn-mode");
   if (mode && MODES.has(mode)) config.mode = mode as EzynotaConfig["mode"];
   const workspace = element.getAttribute("data-ezn-workspace");
@@ -47,7 +47,7 @@ export function configFromAttributes(element: HTMLElement): Partial<EzynotaConfi
 /** Mount one element unless it already holds an editor. Returns undefined when skipped. */
 export function mountElement(element: HTMLElement): Ezynota | undefined {
   if (element.hasAttribute(MOUNT_FLAG) || element.hasAttribute(DESTROY_FLAG)) return undefined;
-  const existing = listInstances().find((instance) => (instance as unknown as { holderEl: Element }).holderEl === element);
+  const existing = listInstances().find((instance) => (instance as unknown as { targetEl: Element }).targetEl === element);
   if (existing) return existing;
   const config = configFromAttributes(element);
   let instance: Ezynota;
@@ -88,12 +88,12 @@ export function setupDeclarativeScanning(): void {
 export function getInstance(elementOrSelector: Element | string): Ezynota | undefined {
   const element = typeof elementOrSelector === "string" ? document.querySelector(elementOrSelector) : elementOrSelector;
   if (!element) return undefined;
-  const direct = listInstances().find((instance) => (instance as unknown as { holderEl: Element }).holderEl === element);
+  const direct = listInstances().find((instance) => (instance as unknown as { targetEl: Element }).targetEl === element);
   if (direct) return direct;
   // Also match elements inside an instance's mount (e.g. the surface).
   if (element instanceof Element) {
     for (const instance of listInstances()) {
-      if (instance.holder.contains(element)) return instance;
+      if (instance.target.contains(element)) return instance;
     }
   }
   return undefined;
@@ -136,18 +136,18 @@ function scheduleDetachedCleanup(): void {
     cleanupTimer = null;
     for (const instance of Array.from(listInstances())) {
       if (!instance.declarative || instance.isDestroyed()) continue;
-      const holder = (instance as unknown as { holderEl: HTMLElement }).holderEl;
-      if (holder.isConnected) continue;
+      const target = (instance as unknown as { targetEl: HTMLElement }).targetEl;
+      if (target.isConnected) continue;
       // Double-check after another tick: transient DOM moves are tolerated.
       setTimeout(() => {
-        if (holder.isConnected || instance.isDestroyed()) return;
+        if (target.isConnected || instance.isDestroyed()) return;
         instance.destroy();
         // destroy() stamps data-ezn-destroyed to suppress automatic
         // remounting, but a confirmed detach cleanup must allow the
         // element to mount again later (frameworks reparent/virtualize
         // elements constantly) — clear both flags.
-        holder.removeAttribute(MOUNT_FLAG);
-        holder.removeAttribute(DESTROY_FLAG);
+        target.removeAttribute(MOUNT_FLAG);
+        target.removeAttribute(DESTROY_FLAG);
       }, 100);
     }
   }, 200);

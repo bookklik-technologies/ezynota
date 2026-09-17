@@ -19,10 +19,10 @@ export function listInstances(): readonly Ezynota[] {
   return Array.from(instances);
 }
 
-/** Match an instance by its mount element (holder). */
-export function getInstanceByHolder(element: Element): Ezynota | undefined {
+/** Match an instance by its mount element (target). */
+export function getInstanceByTarget(element: Element): Ezynota | undefined {
   for (const instance of instances) {
-    if ((instance as unknown as { holderEl: Element }).holderEl === element) return instance;
+    if ((instance as unknown as { targetEl: Element }).targetEl === element) return instance;
   }
   return undefined;
 }

@@ -4,14 +4,14 @@ import { MemoryStorage, emptyWorkspace } from "../src/workspace/storage";
 import type { EzynotaConfig, EzynotaDocument } from "../src/types";
 
 const editors: Ezynota[] = [];
-const holders: HTMLElement[] = [];
+const targets: HTMLElement[] = [];
 
 function create(storage: MemoryStorage, options: Partial<EzynotaConfig> = {}): Ezynota {
-  const holder = document.createElement("div");
-  document.body.appendChild(holder);
-  holders.push(holder);
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  targets.push(target);
   const editor = new Ezynota({
-    holder,
+    target,
     mode: "workspace",
     workspace: "startup-regression",
     storage,
@@ -38,18 +38,18 @@ async function seed(storage: MemoryStorage, document: EzynotaDocument): Promise<
 
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy();
-  for (const holder of holders.splice(0)) holder.remove();
+  for (const target of targets.splice(0)) target.remove();
 });
 
 describe("workspace startup", () => {
   it("makes a fresh empty note editable immediately after ready", async () => {
     const editor = create(new MemoryStorage(false));
     await editor.ready;
-    const input = editor.holder.querySelector<HTMLElement>(".ez-empty-input");
+    const input = editor.target.querySelector<HTMLElement>(".ez-empty-input");
     expect(input?.contentEditable).toBe("true");
     input?.focus();
     expect(editor.getBlocks()).toHaveLength(1);
-    expect(editor.holder.querySelector<HTMLElement>("[data-ez-editable]")?.contentEditable).toBe("true");
+    expect(editor.target.querySelector<HTMLElement>("[data-ez-editable]")?.contentEditable).toBe("true");
   });
 
   it("opens saved content for editing without replacing it with the startup document", async () => {
@@ -61,7 +61,7 @@ describe("workspace startup", () => {
     const editor = create(storage);
     await editor.ready;
     expect(editor.getSnapshot().blocks).toHaveLength(1);
-    const input = editor.holder.querySelector<HTMLElement>("[data-ez-editable]");
+    const input = editor.target.querySelector<HTMLElement>("[data-ez-editable]");
     expect(input?.textContent).toBe("Keep my saved writing");
     expect(input?.contentEditable).toBe("true");
     expect((await storage.loadWorkspace("startup-regression"))?.notes[0]?.document.blocks).toHaveLength(1);
@@ -75,16 +75,16 @@ describe("workspace startup", () => {
     });
     const editor = create(storage);
     await editor.ready;
-    expect(editor.holder.querySelector(".ez-image-toolbar")).not.toBeNull();
-    expect(editor.holder.querySelector<HTMLElement>(".ez-image-caption")?.contentEditable).toBe("true");
+    expect(editor.target.querySelector(".ez-image-toolbar")).not.toBeNull();
+    expect(editor.target.querySelector<HTMLElement>(".ez-image-caption")?.contentEditable).toBe("true");
   });
 
   it("preserves explicit read-only mode after loading", async () => {
     const editor = create(new MemoryStorage(false), { readOnly: true });
     await editor.ready;
     expect(editor.readOnly).toBe(true);
-    expect(editor.holder.querySelector("[contenteditable='true']")).toBeNull();
-    expect(editor.holder.querySelector(".ez-empty-input")?.textContent).toBe("This document is empty.");
+    expect(editor.target.querySelector("[contenteditable='true']")).toBeNull();
+    expect(editor.target.querySelector(".ez-empty-input")?.textContent).toBe("This document is empty.");
   });
 
   it("keeps explicitly supplied initial document content", async () => {
@@ -95,6 +95,6 @@ describe("workspace startup", () => {
       }
     });
     await editor.ready;
-    expect(editor.holder.querySelector("[data-ez-editable]")?.textContent).toBe("Initial writing");
+    expect(editor.target.querySelector("[data-ez-editable]")?.textContent).toBe("Initial writing");
   });
 });

@@ -57,7 +57,7 @@ it("UMD bundle loads and the playground flow works end-to-end", async () => {
   };
 
   const editor = new Editor({
-    holder: document.getElementById("editor"),
+    target: document.getElementById("editor"),
     mode: "embedded",
     data: initial,
     placeholder: "Start writing...",

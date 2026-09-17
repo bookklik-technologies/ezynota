@@ -1,19 +1,21 @@
 ---
 layout: home
+titleTemplate: false
 
 hero:
   name: "Ezynota"
   text: "A free, block-style editor"
   tagline: Portable JSON output, zero dependencies, transaction-driven. Build note apps, writing surfaces, and embedded editors that own their data.
+  image: /ezynota/logo.svg
   actions:
     - theme: brand
       text: Get started
-      link: /guide/getting-started
+      link: /guide/introduction
     - theme: alt
       text: API reference
       link: /api/editor
     - theme: alt
-      text: GitHub
+      text: View on GitHub
       link: https://github.com/bookklik-technologies/ezynota
 
 features:

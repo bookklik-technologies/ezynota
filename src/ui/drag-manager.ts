@@ -7,15 +7,15 @@ import type { Host } from "../host";
  */
 export class DragManager {
   private host: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private started = false;
   private disposers: (() => void)[] = [];
   private draggingId: string | null = null;
   private pointerDrag: { cleanup(): void } | null = null;
 
-  constructor(host: Host, holder: HTMLElement) {
+  constructor(host: Host, target: HTMLElement) {
     this.host = host;
-    this.holder = holder;
+    this.target = target;
   }
 
   start(): void {
@@ -59,26 +59,26 @@ export class DragManager {
 
     const onDragEnd = (): void => {
       this.draggingId = null;
-      for (const el of Array.from(this.holder.querySelectorAll(".ez-drop-target, .ez-dragging"))) {
+      for (const el of Array.from(this.target.querySelectorAll(".ez-drop-target, .ez-dragging"))) {
         el.classList.remove("ez-drop-target", "ez-below", "ez-dragging");
         el.removeAttribute("data-ez-drop-below");
       }
     };
 
-    this.holder.addEventListener("dragover", onDragOver);
-    this.holder.addEventListener("dragleave", onDragLeave);
-    this.holder.addEventListener("drop", onDrop);
-    this.holder.addEventListener("dragend", onDragEnd);
+    this.target.addEventListener("dragover", onDragOver);
+    this.target.addEventListener("dragleave", onDragLeave);
+    this.target.addEventListener("drop", onDrop);
+    this.target.addEventListener("dragend", onDragEnd);
     const onDragStart = (e: DragEvent): void => {
       if (this.host.readOnly) { e.preventDefault(); return; }
       const id = e.dataTransfer?.getData("text/x-ezynota-drag");
-      const target = id ? this.holder.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`) : this.blockFromEvent(e);
+      const target = id ? this.target.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`) : this.blockFromEvent(e);
       if (target) {
         this.draggingId = target.getAttribute("data-ez-block-id") ?? null;
         target.classList.add("ez-dragging");
       }
     };
-    this.holder.addEventListener("dragstart", onDragStart);
+    this.target.addEventListener("dragstart", onDragStart);
 
     // Pointer Events fallback for touch devices, where HTML5 DnD never
     // starts. Pointerdown on the drag grip begins a drag for the active
@@ -88,20 +88,20 @@ export class DragManager {
       if (this.pointerDrag) return;
       const grip = (e.target as HTMLElement).closest?.(".ez-block-actions") as HTMLElement | null;
       if (!grip) return;
-      const active = this.holder.querySelector<HTMLElement>(".ez-block.ez-active");
+      const active = this.target.querySelector<HTMLElement>(".ez-block.ez-active");
       const id = active?.getAttribute("data-ez-block-id") ?? null;
       if (!id) return;
       this.pointerDrag = this.beginPointerDrag(id);
     };
-    this.holder.addEventListener("pointerdown", onPointerDown);
+    this.target.addEventListener("pointerdown", onPointerDown);
 
     this.disposers.push(() => {
-      this.holder.removeEventListener("dragover", onDragOver);
-      this.holder.removeEventListener("dragleave", onDragLeave);
-      this.holder.removeEventListener("drop", onDrop);
-      this.holder.removeEventListener("dragend", onDragEnd);
-      this.holder.removeEventListener("dragstart", onDragStart);
-      this.holder.removeEventListener("pointerdown", onPointerDown);
+      this.target.removeEventListener("dragover", onDragOver);
+      this.target.removeEventListener("dragleave", onDragLeave);
+      this.target.removeEventListener("drop", onDrop);
+      this.target.removeEventListener("dragend", onDragEnd);
+      this.target.removeEventListener("dragstart", onDragStart);
+      this.target.removeEventListener("pointerdown", onPointerDown);
       this.pointerDrag?.cleanup();
       this.pointerDrag = null;
     });
@@ -131,7 +131,7 @@ export class DragManager {
 
   /** Visual ghost + drop tracking driven by document-level pointer events. */
   private beginPointerDrag(id: string): { cleanup(): void } {
-    const doc = this.holder.ownerDocument;
+    const doc = this.target.ownerDocument;
     const ghost = doc.createElement("div");
     ghost.className = "ez-drag-ghost";
     ghost.setAttribute("data-ez-ui", "true");
@@ -143,7 +143,7 @@ export class DragManager {
     ghost.style.overflow = "hidden";
     ghost.style.whiteSpace = "nowrap";
     ghost.style.textOverflow = "ellipsis";
-    const source = this.holder.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`);
+    const source = this.target.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`);
     ghost.textContent = (source?.textContent ?? "").trim().slice(0, 80) || id;
     doc.body.appendChild(ghost);
 
@@ -207,7 +207,7 @@ export class DragManager {
 
   private blockFromEvent(e: Event): HTMLElement | null {
     let node = e.target as Node | null;
-    while (node && node !== this.holder) {
+    while (node && node !== this.target) {
       if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).hasAttribute?.("data-ez-block-id")) {
         return node as HTMLElement;
       }
@@ -217,10 +217,10 @@ export class DragManager {
   }
 
   private blockFromPoint(x: number, y: number): HTMLElement | null {
-    const doc = this.holder.ownerDocument;
+    const doc = this.target.ownerDocument;
     const element = doc.elementFromPoint(x, y);
     if (!element) return null;
     const block = element.closest<HTMLElement>("[data-ez-block-id]");
-    return block && this.holder.contains(block) ? block : null;
+    return block && this.target.contains(block) ? block : null;
   }
 }

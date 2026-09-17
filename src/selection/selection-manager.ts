@@ -9,22 +9,22 @@ type Events = {
 };
 
 /**
- * SelectionManager tracks DOM selection inside the editor holder and maps
+ * SelectionManager tracks DOM selection inside the editor target and maps
  * it to block-scoped selection objects.
  */
 export class SelectionManager {
   private bus = new SimpleBus<Events>();
   private host: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private current: EditorSelection | null = null;
   private savedRange: Range | null = null;
   private started = false;
   private stopped = false;
   private disposers: (() => void)[] = [];
 
-  constructor(host: Host, holder: HTMLElement) {
+  constructor(host: Host, target: HTMLElement) {
     this.host = host;
-    this.holder = holder;
+    this.target = target;
   }
 
   start(): void {
@@ -39,9 +39,9 @@ export class SelectionManager {
     };
     const onFocusOut = (event: FocusEvent): void => {
       const next = event.relatedTarget as Node | null;
-      if (!next || !this.holder.contains(next)) {
+      if (!next || !this.target.contains(next)) {
         this.bus.emit("blur");
-        if (!this.holder.contains(next as Node | null)) {
+        if (!this.target.contains(next as Node | null)) {
           this.current = null;
           this.savedRange = null;
           this.bus.emit("selection", null);
@@ -49,12 +49,12 @@ export class SelectionManager {
       }
     };
     document.addEventListener("selectionchange", onSelectionChange);
-    this.holder.addEventListener("focusin", onFocusIn);
-    this.holder.addEventListener("focusout", onFocusOut);
+    this.target.addEventListener("focusin", onFocusIn);
+    this.target.addEventListener("focusout", onFocusOut);
     this.disposers.push(() => {
       document.removeEventListener("selectionchange", onSelectionChange);
-      this.holder.removeEventListener("focusin", onFocusIn);
-      this.holder.removeEventListener("focusout", onFocusOut);
+      this.target.removeEventListener("focusin", onFocusIn);
+      this.target.removeEventListener("focusout", onFocusOut);
     });
   }
 
@@ -77,16 +77,16 @@ export class SelectionManager {
     const sel = typeof window !== "undefined" ? window.getSelection() : null;
     if (!sel || sel.rangeCount === 0) return this.uiRange();
     const range = sel.getRangeAt(0);
-    // Any range contained in the holder is valid — including cross-block
+    // Any range contained in the target is valid — including cross-block
     // selections (previously those returned null and handlers fell through
     // to browser defaults). Callers clamp to a block when they need one.
-    if (this.holder.contains(range.commonAncestorContainer)) return range;
+    if (this.target.contains(range.commonAncestorContainer)) return range;
     return this.uiRange();
   }
 
   private uiRange(): Range | null {
     const active = document.activeElement as HTMLElement | null;
-    return active && this.holder.contains(active) && active.closest("[data-ez-ui]")
+    return active && this.target.contains(active) && active.closest("[data-ez-ui]")
       && this.savedRange?.startContainer.isConnected ? this.savedRange : null;
   }
 
@@ -107,8 +107,8 @@ export class SelectionManager {
       return null;
     }
     // The anchor block comes from the range's START boundary, clamped to
-    // the holder — a multi-block selection's commonAncestorContainer is the
-    // holder itself and has no block ancestor of its own.
+    // the target — a multi-block selection's commonAncestorContainer is the
+    // target itself and has no block ancestor of its own.
     const blockEl = this.blockForBoundary(range.startContainer, range.startOffset);
     if (!blockEl) {
       this.current = null;
@@ -154,7 +154,7 @@ export class SelectionManager {
   private findBlockElement(node: Node): HTMLElement | null {
     let cursor: Node | null = node;
     if (cursor.nodeType === Node.TEXT_NODE) cursor = cursor.parentNode;
-    while (cursor && cursor !== this.holder) {
+    while (cursor && cursor !== this.target) {
       if (cursor.nodeType === Node.ELEMENT_NODE && (cursor as HTMLElement).hasAttribute?.("data-ez-block-id")) {
         return cursor as HTMLElement;
       }
@@ -165,12 +165,12 @@ export class SelectionManager {
 
   /**
    * Resolve the block element for a selection boundary point. A boundary on
-   * the holder itself (whole-document selections) is clamped to the child
+   * the target itself (whole-document selections) is clamped to the child
    * at the boundary offset.
    */
   private blockForBoundary(node: Node, offset: number): HTMLElement | null {
-    if (node === this.holder || node === this.holder.parentNode) {
-      const child = this.holder.childNodes[Math.min(offset, this.holder.childNodes.length - 1)];
+    if (node === this.target || node === this.target.parentNode) {
+      const child = this.target.childNodes[Math.min(offset, this.target.childNodes.length - 1)];
       if (child) return this.findBlockElement(child);
       return null;
     }

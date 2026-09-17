@@ -4,15 +4,15 @@ import { EzynotaError } from "../src/core/errors";
 import type { EzynotaConfig, EzynotaDocument, JsonValue } from "../src/types";
 
 const editors: Ezynota[] = [];
-const holders: HTMLElement[] = [];
+const targets: HTMLElement[] = [];
 
-function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder: HTMLElement } {
-  const holder = document.createElement("div");
-  document.body.appendChild(holder);
-  holders.push(holder);
-  const editor = new Ezynota({ holder, mode: "embedded", ...config });
+function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; target: HTMLElement } {
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  targets.push(target);
+  const editor = new Ezynota({ target, mode: "embedded", ...config });
   editors.push(editor);
-  return { editor, holder };
+  return { editor, target };
 }
 
 function doc(blocks: Array<{ id?: string; type: string; data: JsonValue }>): EzynotaDocument {
@@ -28,17 +28,17 @@ function paragraph(text: string): { type: string; data: JsonValue } {
 
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy();
-  for (const holder of holders.splice(0)) holder.remove();
+  for (const target of targets.splice(0)) target.remove();
 });
 
 describe("block move convention (final destination index)", () => {
   it("moveBlock(id, n) places the block at final index n in both state and DOM", () => {
-    const { editor, holder } = create({ data: doc([
+    const { editor, target } = create({ data: doc([
       paragraph("A"), paragraph("B"), paragraph("C")
     ]) });
     editor.moveBlock("blk_1", 2); // A down: final index 2 → [B, C, A]
     expect(editor.getSnapshot().blocks.map((b) => b.id)).toEqual(["blk_2", "blk_3", "blk_1"]);
-    const ids = () => Array.from(holder.querySelectorAll<HTMLElement>(".ez-block")).map((el) => el.dataset.ezBlockId);
+    const ids = () => Array.from(target.querySelectorAll<HTMLElement>(".ez-block")).map((el) => el.dataset.ezBlockId);
     expect(ids()).toEqual(["blk_2", "blk_3", "blk_1"]);
     editor.destroy();
   });
@@ -166,11 +166,11 @@ describe("recovery mode for unsupported documents", () => {
       schemaVersion: "9.0.0",
       blocks: [{ id: "f1", type: "futurething", data: { secret: true } }]
     };
-    const { editor, holder } = create({ data: future });
+    const { editor, target } = create({ data: future });
     expect(editor.isRecoveryMode()).toBe(true);
-    expect(holder.classList.contains("ez-readonly")).toBe(true);
+    expect(target.classList.contains("ez-readonly")).toBe(true);
     // Unknown tool falls back to a read-only representation, data intact.
-    expect(holder.querySelector(".ez-unknown-block")).not.toBeNull();
+    expect(target.querySelector(".ez-unknown-block")).not.toBeNull();
     const saved = await editor.save();
     expect(saved.schemaVersion).toBe("9.0.0");
     expect(saved.blocks[0]!.type).toBe("futurething");

@@ -3,16 +3,16 @@ import { Ezynota } from "../src/editor";
 import type { EzynotaConfig, EzynotaDocument } from "../src/types";
 
 const editors: Ezynota[] = [];
-const holders: HTMLElement[] = [];
+const targets: HTMLElement[] = [];
 const PLACEHOLDER = "Every idea starts somewhere. Start writing...";
 
-function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; holder: HTMLElement } {
-  const holder = document.createElement("div");
-  document.body.appendChild(holder);
-  holders.push(holder);
-  const editor = new Ezynota({ holder, mode: "embedded", placeholder: PLACEHOLDER, ...config });
+function create(config: Partial<EzynotaConfig> = {}): { editor: Ezynota; target: HTMLElement } {
+  const target = document.createElement("div");
+  document.body.appendChild(target);
+  targets.push(target);
+  const editor = new Ezynota({ target, mode: "embedded", placeholder: PLACEHOLDER, ...config });
   editors.push(editor);
-  return { editor, holder };
+  return { editor, target };
 }
 
 function documentWith(...texts: string[]): EzynotaDocument {
@@ -28,7 +28,7 @@ function documentWith(...texts: string[]): EzynotaDocument {
 
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy();
-  for (const holder of holders.splice(0)) holder.remove();
+  for (const target of targets.splice(0)) target.remove();
 });
 
 describe("note placeholder scope", () => {
@@ -72,9 +72,9 @@ describe("note placeholder scope", () => {
   });
 
   it("keeps tool hints (captions) unaffected by the note-placeholder scope", () => {
-    const { editor, holder } = create({ data: documentWith("Image note") });
+    const { editor, target } = create({ data: documentWith("Image note") });
     const id = editor.insertBlock("image", { src: "data:image/png;base64,iVBORw0KGgo=", alt: "" }, { focus: false });
-    const caption = holder.querySelector<HTMLElement>(`[data-ez-block-id="${id}"] .ez-image-caption`);
+    const caption = target.querySelector<HTMLElement>(`[data-ez-block-id="${id}"] .ez-image-caption`);
     expect(caption?.getAttribute("data-ez-placeholder")).toBe("Add a caption...");
   });
 });

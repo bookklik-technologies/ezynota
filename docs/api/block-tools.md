@@ -85,7 +85,7 @@ class HintTool extends TextBlockTool {
 
 ```ts
 const editor = new Ezynota({
-  holder: "#app",
+  target: "#app",
   tools: {
     hint: HintTool,        // usable as type: "hint", in slash menu, conversions
   },

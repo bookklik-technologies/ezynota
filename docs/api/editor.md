@@ -1,11 +1,11 @@
 # Ezynota class
 
-The `Ezynota` class is the editor. One instance mounts into one holder element.
+The `Ezynota` class is the editor. One instance mounts into one target element.
 
 ```ts
 import { Ezynota } from "@bookklik/ezynota";
 
-const editor = new Ezynota({ holder: "#app" });
+const editor = new Ezynota({ target: "#app" });
 await editor.ready;
 ```
 
@@ -16,7 +16,7 @@ The constructor is SSR-safe in the sense that it **throws** `EZ_RENDER_FAILED` w
 | Property | Type | Description |
 | --- | --- | --- |
 | `ready` | `Promise<void>` | Resolves after the initial workspace load. **Await this before mutating.** |
-| `holder` | `Element` | The mount surface element. |
+| `target` | `Element` | The mount surface element. |
 | `readOnly` | `boolean` | `config.readOnly \|\| editingLocked` — true during workspace load. |
 | `registry` | `ToolRegistry` | The tool registry (block tools, inline tools, tunes). |
 | `i18n` | `I18n` | The i18n instance. |
@@ -54,7 +54,7 @@ Toggles read-only mode. Emits `readOnly:changed`.
 
 ### `destroy(): void`
 
-Tolerant teardown — safe to call twice. Removes mount classes/attributes and empties the holder. Emits `destroyed`.
+Tolerant teardown — safe to call twice. Removes mount classes/attributes and empties the target. Emits `destroyed`.
 
 ## Block API
 
@@ -114,7 +114,7 @@ editor.dispatch("EZ_UNDO");
 
 ### `Ezynota.initAll(root?: ParentNode): Ezynota[]`
 
-Mount every `[data-ezn-editor]` under `root` (default: `document`). Idempotent — already-mounted holders are skipped.
+Mount every `[data-ezn-editor]` under `root` (default: `document`). Idempotent — already-mounted targets are skipped.
 
 ### `Ezynota.getInstance(elementOrSelector): Ezynota | undefined`
 

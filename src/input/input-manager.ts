@@ -12,7 +12,7 @@ import { compositionEnded, compositionStarted } from "./composition";
  */
 export class InputManager {
   private host: Host;
-  private holder: HTMLElement;
+  private target: HTMLElement;
   private disposers: (() => void)[] = [];
   private lastInputAt = new Map<string, number>();
   private composing = false;
@@ -21,15 +21,15 @@ export class InputManager {
   private lastCompositionBlock = "";
   private onInputCallbacks: ((blockId: string) => void)[] = [];
 
-  constructor(host: Host, holder: HTMLElement) {
+  constructor(host: Host, target: HTMLElement) {
     this.host = host;
-    this.holder = holder;
+    this.target = target;
   }
 
   start(): void {
     const blockOf = (target: EventTarget | null): { id: string; nestedId: string | null; editable: HTMLElement } | null => {
       let node = target as Node | null;
-      while (node && node !== this.holder) {
+      while (node && node !== this.target) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           const el = node as HTMLElement;
           if (el.hasAttribute?.("data-ez-editable")) {
@@ -86,14 +86,14 @@ export class InputManager {
       }
     };
 
-    this.holder.addEventListener("input", onInput, true);
-    this.holder.addEventListener("compositionstart", onCompositionStart, true);
-    this.holder.addEventListener("compositionend", onCompositionEnd, true);
+    this.target.addEventListener("input", onInput, true);
+    this.target.addEventListener("compositionstart", onCompositionStart, true);
+    this.target.addEventListener("compositionend", onCompositionEnd, true);
 
     this.disposers.push(() => {
-      this.holder.removeEventListener("input", onInput, true);
-      this.holder.removeEventListener("compositionstart", onCompositionStart, true);
-      this.holder.removeEventListener("compositionend", onCompositionEnd, true);
+      this.target.removeEventListener("input", onInput, true);
+      this.target.removeEventListener("compositionstart", onCompositionStart, true);
+      this.target.removeEventListener("compositionend", onCompositionEnd, true);
     });
   }
 
