@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ezynota - Workspace mode</title>
+  <link rel="stylesheet" href="../dist/ezynota.css" />
+  <style>
+    html, body { margin: 0; height: 100%; }
+  </style>
+</head>
+<body>
+  <!-- Declarative workspace: notes, folders, trash, autosave, import/export and fullscreen.
+       All persistence lives inside the editor (IndexedDB, one workspace per page+holder). -->
+  <div
+    data-ezn-editor
+    data-ezn-mode="workspace"
+    data-ezn-theme="light"
+    data-ezn-autofocus="false"
+    data-ezn-placeholder="Every idea starts somewhere. Start writing…"
+    style="height: 100vh"
+  ></div>
+
+  <script src="../dist/ezynota.umd.cjs"></script>
+</body>
+</html>

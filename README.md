@@ -301,15 +301,17 @@ pnpm lint        # ESLint
 pnpm build       # ESM + UMD (.cjs) + TypeScript declarations + CSS into dist/
 ```
 
-Serve the playground via any static server (e.g. WAMP: `http://localhost/ezynota/examples/`).
-
-Minimal bare embed examples (build first with `pnpm build`):
+Self-contained examples (build first with `pnpm build`), served via any static
+server (e.g. WAMP: `http://localhost/ezynota/examples/`):
 
 - [Declarative initialization](examples/declarative.html) uses HTML attributes and automatic mounting.
 - [Programmatic initialization](examples/programmatic.html) creates the editor in JavaScript.
+- [Events](examples/events.html) listens to `ezn:ready`, `ezn:change` and `ezn:error`.
+- [Workspace mode](examples/advanced.html) is a declarative workspace with notes, folders, autosave and fullscreen.
 
-Both use `embedded` mode and the local `dist/` bundle. Content stays in memory;
-these minimal examples do not configure persistence.
+Each example is a single self-contained HTML file loading the local `dist/`
+bundle. The minimal examples use `embedded` mode and in-memory content; they do
+not configure persistence.
 
 ## Status
 

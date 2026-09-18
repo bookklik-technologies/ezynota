@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ezynota - Events</title>
+  <link rel="stylesheet" href="../dist/ezynota.css" />
+</head>
+<body>
+  <div data-ezn-editor data-ezn-mode="embedded" data-ezn-placeholder="Start writing..."></div>
+  <pre id="log" style="font-family: monospace; white-space: pre-wrap; height: 200px; overflow: auto"></pre>
+
+  <script src="../dist/ezynota.umd.cjs"></script>
+  <script>
+    // The editor emits DOM events on its host element.
+    const holder = document.querySelector("[data-ezn-editor]");
+    const log = document.querySelector("#log");
+    for (const name of ["ezn:ready", "ezn:change", "ezn:error"]) {
+      holder.addEventListener(name, (event) => {
+        const payload = event.detail && event.detail.payload !== undefined ? JSON.stringify(event.detail.payload) : "";
+        log.textContent = `${name} ${payload}\n${log.textContent ?? ""}`;
+      });
+    }
+  </script>
+</body>
+</html>

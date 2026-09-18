@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { Window } from "happy-dom";
 import { it, expect } from "vitest";
 
-it("UMD bundle loads and the playground flow works end-to-end", async () => {
-  const window = new Window({ url: "http://localhost/examples/index.html" });
+  it("UMD bundle loads and the programmatic embed flow works end-to-end", async () => {
+  const window = new Window({ url: "http://localhost/examples/programmatic.html" });
   const document = window.document;
   const globals = globalThis as unknown as Record<string, unknown>;
   globals.window = window;
@@ -16,7 +16,7 @@ it("UMD bundle loads and the playground flow works end-to-end", async () => {
 
   document.body.innerHTML = `<div id="editor"></div>`;
 
-  // Load the real UMD bundle the same way the playground does: via <script>.
+  // Load the real UMD bundle the same way the examples do: via <script>.
   const bundle = readFileSync(resolve(__dirname, "../dist/ezynota.umd.cjs"), "utf8");
   const script = document.createElement("script");
   script.textContent = bundle;
