@@ -135,9 +135,14 @@ pre.ez-code {
   transition: opacity 120ms ease;
 }
 
-.ez-block-toolbar.ez-visible {
+.ez-block-toolbar.ez-visible.ez-hovered,
+.ez-block-toolbar.ez-visible:focus-within {
   opacity: 1;
   pointer-events: auto;
+}
+
+@media (hover: none) {
+  .ez-block-toolbar.ez-visible { opacity: 1; pointer-events: auto; }
 }
 
 .ez-tool-btn {
@@ -299,6 +304,10 @@ pre.ez-code {
 
 /* ---------- Inline toolbar ---------- */
 
+.ez-inline-popover {
+  z-index: calc(var(--ez-z-toolbar) + 4);
+}
+
 .ez-inline-toolbar {
   position: fixed;
   display: flex;
@@ -411,16 +420,32 @@ pre.ez-code {
 
 /* ---------- Drag & drop ---------- */
 
-.ez-block.ez-dragging {
+.ez-block.ez-dragging,
+.ez-nested-block.ez-dragging {
   opacity: 0.4;
 }
 
-.ez-block.ez-drop-target {
+.ez-block.ez-drop-target,
+.ez-nested-block.ez-drop-target {
   box-shadow: 0 -2px 0 0 var(--ez-accent);
 }
 
-.ez-block.ez-drop-target.ez-below {
+.ez-block.ez-drop-target.ez-below,
+.ez-nested-block.ez-drop-target.ez-below {
   box-shadow: 0 2px 0 0 var(--ez-accent);
+}
+
+.ez-block.ez-drop-inside,
+.ez-nested-block.ez-drop-inside {
+  box-shadow: inset 0 0 0 2px var(--ez-accent);
+  background: var(--ez-selected);
+  border-radius: var(--ez-radius-sm);
+}
+
+.ez-drop-inside > .ez-toggle > .ez-toggle-add-row > .ez-toggle-add,
+.ez-drop-inside > .ez-tool-host > .ez-toggle > .ez-toggle-add-row > .ez-toggle-add {
+  color: var(--ez-accent);
+  opacity: 1;
 }
 
 .ez-drop-placeholder {
@@ -598,8 +623,9 @@ pre.ez-code {
   display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
 .ez-topbar .ez-icon-btn { color: var(--ez-text); }
+.ez-topbar .ez-icon-btn:disabled { opacity: .4; cursor: default; background: transparent; }
 .ez-topbar-group { display: flex; align-items: center; gap: 3px; }
-.ez-document-actions { padding-inline-end: 10px; border-inline-end: 1px solid var(--ez-border); }
+.ez-document-actions, .ez-history-actions { padding-inline-end: 10px; border-inline-end: 1px solid var(--ez-border); }
 .ez-mobile-action { display: none; }
 .ez-export-btn {
   align-items: center;
@@ -1211,6 +1237,8 @@ pre.ez-code {
 }
 @media (max-width: 480px) {
   .ez-workspace-root { --ez-content-inset-start: 48px; }
+  .ez-history-actions { gap: 0; padding-inline-end: 4px; }
+  .ez-export-btn > span:not(.ez-menu-icon) { display: none; }
 }
 
 /* ============================================================
@@ -1341,15 +1369,26 @@ pre.ez-code {
 .ez-toggle-children { padding-inline-start: 26px; border-inline-start: 2px solid var(--ez-border); margin-inline-start: 17px; }
 .ez-workspace-root [data-ez-toggle-open="false"] .ez-toggle-children,
 [data-ez-toggle-open="false"] .ez-toggle-children { display: none; }
-.ez-toggle-add { margin: 4px 0 4px 26px; min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
+.ez-toggle-add-row { display: flex; margin-inline-start: 17px; padding-block: 2px; }
+.ez-toggle-add { opacity: 0; }
+.ez-toggle:hover > .ez-toggle-add-row > .ez-toggle-add,
+.ez-toggle-add:focus-visible { opacity: 1; }
+[data-ez-toggle-open="false"] > .ez-toggle-add-row { display: none; }
+.ez-nested-block { position: relative; }
+.ez-nested-drag { position: absolute; inset-inline-start: -27px; top: 2px; width: 24px; height: 28px; padding: 3px; cursor: grab; touch-action: none; opacity: 0; }
+.ez-nested-block:hover > .ez-nested-drag, .ez-nested-block:focus-within > .ez-nested-drag { opacity: 1; }
+.ez-nested-drag:active { cursor: grabbing; }
+.ez-editor.ez-readonly .ez-nested-drag, .ez-editor.ez-readonly .ez-toggle-add-row { display: none; }
+@media (hover: none) { .ez-nested-drag, .ez-toggle-add { opacity: 1; } }
 
 /* Task lists */
 .ez-task-checkbox { accent-color: var(--ez-accent); margin-inline-end: 6px; }
 .ez-task-checked > .ez-text-input, li.ez-task-checked { color: var(--ez-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ez-muted) 60%, transparent); }
 
 /* Color swatch form */
-.ez-color-form { display: flex; gap: 6px; padding: 8px; }
+.ez-color-form { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; }
 .ez-color-swatch {
+  flex: 0 0 26px;
   width: 26px;
   height: 26px;
   border-radius: 50%;

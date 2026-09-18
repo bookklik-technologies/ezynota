@@ -134,6 +134,11 @@ interface RenderContext {
 
 function makeHost(context: RenderContext) {
   return {
+    readOnly: false,
+    undo: () => undefined,
+    redo: () => undefined,
+    canUndo: () => false,
+    canRedo: () => false,
     getSnapshot: (): EzynotaDocument => ({ schemaVersion: "1.0.0", blocks: [], createdAt: 0, updatedAt: 0 }),
     render: (document: EzynotaDocument): Promise<void> => {
       context.rendered.push(JSON.parse(JSON.stringify(document)) as EzynotaDocument);

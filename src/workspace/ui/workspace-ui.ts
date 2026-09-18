@@ -9,6 +9,9 @@ import type { EzynotaBlock } from "../../types";
 import { EzynotaError } from "../../core/errors";
 
 export interface WorkspaceUIDeps {
+  undo(): void;
+  redo(): void;
+  getHistoryState(): { canUndo: boolean; canRedo: boolean };
   createNote(title?: string, folderId?: string | null): string | null;
   createFolder(name?: string, parentId?: string | null): string | null;
   renameNote(id: string, title: string): void;
@@ -93,6 +96,8 @@ export class WorkspaceUI {
   private wordCountEl: HTMLElement | null = null;
   private outlinePanel: HTMLElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
+  private undoButton: HTMLButtonElement | null = null;
+  private redoButton: HTMLButtonElement | null = null;
   private themeMenu: HTMLDetailsElement | null = null;
   private docMenu: HTMLDetailsElement | null = null;
   private exportMenu: HTMLDetailsElement | null = null;
@@ -120,6 +125,7 @@ export class WorkspaceUI {
 
   mount(): void {
     this.buildShell();
+    this.refreshHistory();
     const offNotes = this.state.on((event) => this.handleEvent(event));
     this.disposers.push(offNotes);
     this.renderSidebar();
@@ -138,6 +144,12 @@ export class WorkspaceUI {
   /** Public event entry point used by the controller. */
   notifyEvent(event: import("../types").WorkspaceEvent): void {
     this.handleEvent(event);
+  }
+
+  refreshHistory(): void {
+    const { canUndo, canRedo } = this.deps.getHistoryState();
+    if (this.undoButton) this.undoButton.disabled = !canUndo;
+    if (this.redoButton) this.redoButton.disabled = !canRedo;
   }
 
   /** Highlight and expand a folder in the sidebar tree. */
@@ -288,6 +300,19 @@ export class WorkspaceUI {
     brand.append(brandMark, el("span", "ez-brand-name", "Ezynota"));
 
     const actions = el("div", "ez-topbar-actions");
+    const historyActions = el("div", "ez-topbar-group ez-history-actions");
+    historyActions.setAttribute("role", "group");
+    historyActions.setAttribute("aria-label", "Edit history");
+    historyActions.setAttribute("data-ez-ui", "true");
+    this.undoButton = svgButton("ez-icon-btn", ICONS.undo, "Undo");
+    this.redoButton = svgButton("ez-icon-btn", ICONS.redo, "Redo");
+    for (const control of [this.undoButton, this.redoButton]) {
+      control.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      control.addEventListener("mousedown", (event) => event.preventDefault());
+    }
+    this.undoButton.addEventListener("click", () => { this.deps.undo(); this.refreshHistory(); });
+    this.redoButton.addEventListener("click", () => { this.deps.redo(); this.refreshHistory(); });
+    historyActions.append(this.undoButton, this.redoButton);
     const documentActions = el("div", "ez-topbar-group ez-document-actions");
     const outlineBtn = svgButton("ez-icon-btn", ICONS.outline, "Toggle heading outline");
     outlineBtn.setAttribute("aria-expanded", "false");
@@ -368,7 +393,7 @@ export class WorkspaceUI {
 
     const viewActions = el("div", "ez-topbar-group");
     viewActions.append(this.themeMenu, this.fullscreenBtn, this.docMenu);
-    actions.append(documentActions, viewActions, this.exportMenu);
+    actions.append(historyActions, documentActions, viewActions, this.exportMenu);
     topbar.append(brand, el("div", "ez-topbar-spacer"), actions);
     const menus = [this.docMenu, this.themeMenu, this.exportMenu];
     const positionMenus = (): void => {
@@ -469,11 +494,11 @@ export class WorkspaceUI {
     this.noteCount = el("span", "ez-note-count", "0");
     sectionLabel.append(el("span", "", "Your notes"), this.noteCount);
     this.setupTreeDragAndDrop(this.notesTree, sectionLabel);
-    const storage = el("div", "ez-storage-note");
-    storage.appendChild(renderIcon(ICONS.monitor));
-    storage.appendChild(el("span", "", "Stored in this browser"));
-    storage.title = "Download a workspace backup from the document menu to keep a copy.";
-    this.sidebar.append(searchRow, this.searchResults, actions, sectionLabel, this.notesTree, trash, storage);
+    // const storage = el("div", "ez-storage-note");
+    // storage.appendChild(renderIcon(ICONS.monitor));
+    // storage.appendChild(el("span", "", "Stored in this browser"));
+    // storage.title = "Download a workspace backup from the document menu to keep a copy.";
+    this.sidebar.append(searchRow, this.searchResults, actions, sectionLabel, this.notesTree, trash);
   }
 
   private closeMobileSidebar(restoreFocus = true): void {

@@ -306,8 +306,8 @@ export class Renderer {
   }
 
   /** Instantiate a block tool for a nested child (collapsible sections). */
-  createToolInstancePublic(block: EzynotaBlock, element: HTMLElement, parentId: string, api?: import("../types").BlockAPI): BlockTool {
-    const nested = this.hostApi.nestedHost?.(parentId);
+  createToolInstancePublic(block: EzynotaBlock, element: HTMLElement, _parentId: string, api?: import("../types").BlockAPI): BlockTool {
+    const nested = this.hostApi.nestedHost?.(block.id);
     return this.hostApi.registry.createBlockTool(block.type, {
       api: api ?? this.blockApiForTool(block.id, element),
       config: {},

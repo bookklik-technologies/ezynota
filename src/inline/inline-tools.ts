@@ -150,18 +150,21 @@ export function unwrapPartial(elm: Element, range: Range): void {
  * Simple accessible popover anchored to an element. Returns the popover and
  * a close function; Escape and outside click close it.
  */
-export function openPopover(content: HTMLElement, anchor: Range | HTMLElement, onClose?: () => void): { close: () => void } {
+export function openPopover(content: HTMLElement, anchor: Range | HTMLElement, onClose?: () => void, trigger?: HTMLElement): { close: () => void } {
   const source = anchor instanceof HTMLElement ? anchor : anchor.commonAncestorContainer;
   const doc = (source instanceof Element ? source : source.parentElement)?.ownerDocument ?? document;
   const pop = doc.createElement("div");
-  pop.className = "ez-popover";
+  pop.className = "ez-popover ez-inline-popover";
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-label", content.getAttribute("aria-label") ?? "Link");
   pop.setAttribute("data-ez-ui", "true");
   pop.appendChild(content);
   const parent = (source instanceof Element ? source : source.parentElement)?.closest(".ez-editor") ?? document.body;
   parent.appendChild(pop);
-  const reposition = (): void => placePopover(pop, anchor.getBoundingClientRect());
+  const reposition = (): void => {
+    const reference = trigger?.isConnected && trigger.getClientRects().length ? trigger : anchor;
+    placePopover(pop, reference.getBoundingClientRect());
+  };
   reposition();
   let closed = false;
   const onKey = (event: KeyboardEvent): void => {
@@ -214,6 +217,7 @@ export abstract class MarkInlineTool implements InlineTool {
     const btn = this.icon
       ? svgButton("ez-inline-tool-btn", this.icon, label)
       : button("ez-inline-tool-btn", label, label);
+    btn.querySelector("svg")?.setAttribute("aria-hidden", "true");
     btn.addEventListener("click", () => this.toggle());
     btn.title = label;
     btn.setAttribute("data-ez-inline-tool", this.markType);
@@ -356,11 +360,19 @@ export class CodeInlineTool extends ToggleMarkTool {
   constructor(options: InlineToolOptions) {
     super(options, "code", "code");
   }
+
+  protected get icon(): string {
+    return ICONS.code;
+  }
 }
 
 export class MarkTool extends ToggleMarkTool {
   constructor(options: InlineToolOptions) {
     super(options, "mark", "mark");
+  }
+
+  protected get icon(): string {
+    return ICONS.highlighter;
   }
 }
 
@@ -368,6 +380,10 @@ export class MarkTool extends ToggleMarkTool {
 export class StrikethroughTool extends ToggleMarkTool {
   constructor(options: InlineToolOptions) {
     super(options, "strike", "s");
+  }
+
+  protected get icon(): string {
+    return ICONS.strikethrough;
   }
 
   apply(range: Range, context: InlineToolContext): void {
@@ -413,6 +429,7 @@ export abstract class ColorInlineToolBase extends MarkInlineTool {
 
   private promptForColor(range: Range, context: InlineToolContext): void {
     const form = el("div", "ez-color-form");
+    form.setAttribute("aria-label", this.options.t(this.labelKey));
     const restore = (): void => {
       if (!range.startContainer.isConnected || context.blockElement.contentEditable === "false") return;
       context.blockElement.focus();
@@ -420,7 +437,6 @@ export abstract class ColorInlineToolBase extends MarkInlineTool {
       sel?.removeAllRanges();
       sel?.addRange(range);
     };
-    const { close } = openPopover(form, range.cloneRange(), restore);
     for (const color of COLOR_PALETTE) {
       const swatch = el("button", "ez-color-swatch");
       swatch.type = "button";
@@ -446,6 +462,7 @@ export abstract class ColorInlineToolBase extends MarkInlineTool {
       });
       form.appendChild(swatch);
     }
+    const { close } = openPopover(form, range.cloneRange(), restore, this.node ?? undefined);
   }
 }
 
@@ -463,10 +480,18 @@ function findColorSpan(range: Range, editable: HTMLElement, markType: string): E
 
 export class ColorTool extends ColorInlineToolBase {
   readonly markType = "color" as const;
+
+  protected get icon(): string {
+    return ICONS.textColor;
+  }
 }
 
 export class BackgroundColorTool extends ColorInlineToolBase {
   readonly markType = "background" as const;
+
+  protected get icon(): string {
+    return ICONS.backgroundColor;
+  }
 }
 
 /** Link inline tool: popover with URL input; toggling removes existing links. */
@@ -475,6 +500,10 @@ export class LinkTool extends MarkInlineTool {
 
   protected get labelKey(): string {
     return "inline.link";
+  }
+
+  protected get icon(): string {
+    return ICONS.link;
   }
 
   apply(range: Range, context: InlineToolContext): void {
@@ -517,7 +546,7 @@ export class LinkTool extends MarkInlineTool {
       sel?.removeAllRanges();
       sel?.addRange(range);
     };
-    const { close } = openPopover(form, range, restore);
+    const { close } = openPopover(form, range, restore, this.node ?? undefined);
     const submit = (): void => {
       const url = input.value.trim();
       if (!url || !isSafe(url)) {

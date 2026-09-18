@@ -1,7 +1,7 @@
 import type { BlockAPI, BlockTool, ConversionConfig, InlineContent, JsonValue } from "../types";
 import { inlineToDom, domToInline, isEmptyInlineValue } from "../rich-text/dom";
-import { TOOL_ICONS } from "../ui/icons";
-import { el } from "../ui/dom";
+import { ICONS, TOOL_ICONS } from "../ui/icons";
+import { el, svgButton } from "../ui/dom";
 
 export type TableCell = {
   content: InlineContent[];
@@ -83,19 +83,29 @@ export class TableTool implements BlockTool<TableData> {
   /** Table settings: row/column operations and the header toggle. */
   renderSettings(): HTMLElement | null {
     const wrap = el("div", "ez-inline-group");
-    const items: { label: string; run: () => void }[] = [
-      { label: "Add row", run: () => this.addRowAt(-1) },
-      { label: "Add column", run: () => this.addColumnAt(-1) },
-      { label: "Delete row", run: () => this.deleteRow() },
-      { label: "Delete column", run: () => this.deleteColumn() },
-      { label: "Toggle header", run: () => this.toggleHeader() }
+    wrap.setAttribute("role", "group");
+    wrap.setAttribute("aria-label", "Table options");
+    const items: { label: string; icon: string; run: () => void; toggle?: boolean }[] = [
+      { label: "Add row", icon: ICONS.tableRowAdd, run: () => this.addRowAt(-1) },
+      { label: "Add column", icon: ICONS.tableColumnAdd, run: () => this.addColumnAt(-1) },
+      { label: "Delete row", icon: ICONS.tableRowDelete, run: () => this.deleteRow() },
+      { label: "Delete column", icon: ICONS.tableColumnDelete, run: () => this.deleteColumn() },
+      { label: "Toggle header", icon: ICONS.tableHeader, run: () => this.toggleHeader(), toggle: true }
     ];
     for (const item of items) {
-      const btn = el("button", "ez-inline-btn", item.label);
-      btn.type = "button";
+      const btn = svgButton("ez-inline-btn", item.icon, item.label);
+      btn.querySelector("svg")?.setAttribute("aria-hidden", "true");
+      const syncToggle = (): void => {
+        if (!item.toggle) return;
+        const enabled = this.tableEl.querySelector("th") !== null;
+        btn.classList.toggle("ez-active", enabled);
+        btn.setAttribute("aria-pressed", String(enabled));
+      };
+      syncToggle();
       btn.addEventListener("click", () => {
         if (this.api.readOnly) return;
         item.run();
+        syncToggle();
       });
       wrap.appendChild(btn);
     }

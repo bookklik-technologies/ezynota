@@ -18,6 +18,7 @@ export class BlockToolbar {
   private disposers: (() => void)[] = [];
   private menuTunes: BlockTune[] = [];
   private activeBlockElement: HTMLElement | null = null;
+  private hoveredBlockId: string | null = null;
 
   constructor(host: Host) {
     this.host = host;
@@ -79,12 +80,45 @@ export class BlockToolbar {
       if (!this.root.hidden && this.activeBlockId) this.showFor(this.activeBlockId);
       if (this.settingsPopover) placePopover(this.settingsPopover, this.settingsButton.getBoundingClientRect());
     };
+    const clearHover = (): void => {
+      this.hoveredBlockId = null;
+      this.root.classList.remove("ez-hovered");
+      const selection = this.host.getSelectionInfo();
+      if (!this.open && !this.root.contains(document.activeElement) && selection?.collapsed) this.showFor(selection.blockId);
+    };
+    const onPointerMove = (event: PointerEvent): void => {
+      if (event.pointerType === "touch" || event.buttons !== 0 || this.open) return;
+      if (this.host.readOnly) { this.hide(); return; }
+      const element = event.target as Element;
+      if (this.root.contains(element)) return;
+      const selection = this.host.getSelectionInfo();
+      if (selection && !selection.collapsed) { clearHover(); return; }
+      if (this.root.contains(document.activeElement)) return;
+      const block = element.closest<HTMLElement>("[data-ez-block-id]");
+      if (block && this.host.target.contains(block)) {
+        this.hoveredBlockId = block.getAttribute("data-ez-block-id");
+        if (this.hoveredBlockId) this.showFor(this.hoveredBlockId);
+        return;
+      }
+      // Keep the controls reachable while crossing the gap beside the block.
+      if (this.hoveredBlockId && this.activeBlockElement) {
+        const blockRect = this.activeBlockElement.getBoundingClientRect();
+        const toolbarRect = this.root.getBoundingClientRect();
+        if (event.clientY >= toolbarRect.top && event.clientY <= toolbarRect.bottom &&
+            event.clientX >= Math.min(blockRect.left, toolbarRect.left) &&
+            event.clientX <= Math.max(blockRect.right, toolbarRect.right)) return;
+      }
+      clearHover();
+    };
+    this.host.target.addEventListener("pointermove", onPointerMove);
+    this.host.target.addEventListener("pointerleave", clearHover);
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);
     window.addEventListener("resize", reposition);
     document.addEventListener("scroll", reposition, true);
     this.disposers.push(() => document.removeEventListener("pointerdown", outside), () => document.removeEventListener("focusin", outside),
-      () => window.removeEventListener("resize", reposition), () => document.removeEventListener("scroll", reposition, true));
+      () => window.removeEventListener("resize", reposition), () => document.removeEventListener("scroll", reposition, true),
+      () => this.host.target.removeEventListener("pointermove", onPointerMove), () => this.host.target.removeEventListener("pointerleave", clearHover));
   }
 
   getElement(): HTMLElement {
@@ -93,6 +127,7 @@ export class BlockToolbar {
 
   showFor(blockId: string): void {
     if (this.host.readOnly) { this.hide(); return; }
+    blockId = this.hoveredBlockId ?? blockId;
     if (this.activeBlockId !== blockId) this.closeSettings();
     this.activeBlockId = blockId;
     const blockEl = this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(blockId)}"]`) as HTMLElement | null;
@@ -121,12 +156,14 @@ export class BlockToolbar {
       ? `${Math.max(0, Math.round(targetRect.right - rect.right - toolbarRect.width - 10))}px`
       : `${Math.max(0, Math.round(rect.left - targetRect.left - toolbarRect.width - 10))}px`;
     this.root.classList.add("ez-visible");
+    this.root.classList.toggle("ez-hovered", this.hoveredBlockId === blockId || blockEl.matches(":hover"));
   }
 
   hide(): void {
     this.closeSettings();
     this.root.hidden = true;
-    this.root.classList.remove("ez-visible");
+    this.root.classList.remove("ez-visible", "ez-hovered");
+    this.hoveredBlockId = null;
     this.activeBlockElement?.classList.remove("ez-active");
     this.activeBlockElement = null;
   }

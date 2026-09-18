@@ -50,11 +50,13 @@ export class ToggleTool implements BlockTool<ToggleData> {
       this.container.setAttribute("data-ez-toggle-open", String(this.open));
       caret.innerHTML = this.open ? ICONS.caretDown : ICONS.caretRight;
       caret.setAttribute("aria-expanded", String(this.open));
+      caret.setAttribute("aria-label", this.open ? "Collapse section" : "Expand section");
+      caret.title = this.open ? "Collapse section" : "Expand section";
     });
 
     const heading = doc.createElement("div");
     heading.classList.add("ez-text-input", "ez-toggle-heading");
-    heading.contentEditable = "true";
+    heading.contentEditable = this.api.readOnly ? "false" : "true";
     heading.setAttribute("data-ez-editable", "true");
     heading.setAttribute("data-ez-region", "toggle-heading");
     heading.setAttribute("data-ez-placeholder", "Section title");
@@ -68,11 +70,14 @@ export class ToggleTool implements BlockTool<ToggleData> {
     this.renderChildren();
 
     const addRow = el("div", "ez-toggle-add-row");
-    const add = el("button", "ez-btn ez-toggle-add", "Add block inside");
-    add.type = "button";
+    const add = svgButton("ez-icon-btn ez-toggle-add", ICONS.plus, "Add block inside");
+    add.setAttribute("data-ez-ui", "true");
+    add.querySelector("svg")?.setAttribute("aria-hidden", "true");
+    add.hidden = this.api.readOnly;
     add.addEventListener("click", () => {
       if (!this.nested || this.nested.readOnly) return;
-      this.nested.insert("paragraph", undefined);
+      const id = this.nested.insert("paragraph", undefined);
+      this.nested.focusBlock(id, "start");
     });
     addRow.appendChild(add);
 
@@ -95,6 +100,13 @@ export class ToggleTool implements BlockTool<ToggleData> {
     if (open !== this.open) {
       this.open = open;
       this.container.setAttribute("data-ez-toggle-open", String(open));
+    }
+    const caret = this.container.querySelector<HTMLButtonElement>(":scope > .ez-toggle-header > .ez-toggle-caret");
+    if (caret) {
+      caret.innerHTML = open ? ICONS.caretDown : ICONS.caretRight;
+      caret.setAttribute("aria-expanded", String(open));
+      caret.setAttribute("aria-label", open ? "Collapse section" : "Expand section");
+      caret.title = open ? "Collapse section" : "Expand section";
     }
     // Heading content: only re-render when it differs from the DOM.
     if (this.headingEl && document.activeElement !== this.headingEl) {
@@ -139,21 +151,24 @@ export class ToggleTool implements BlockTool<ToggleData> {
       }
     }
     this.childTools.clear();
+    this.childSignatures.clear();
   }
 
   /* ---------- children rendering ---------- */
 
   private childTools = new Map<string, BlockTool>();
+  private childSignatures = new Map<string, string>();
 
   private renderChildren(): void {
     if (!this.nested || !this.childrenHost) return;
     const children = this.nested.getBlocks();
-    const domChildren = Array.from(this.childrenHost.querySelectorAll<HTMLElement>("[data-ez-nested-id]"));
+    const domChildren = Array.from(this.childrenHost.querySelectorAll<HTMLElement>(":scope > [data-ez-nested-id]"));
     // Fast path: same ids and types — only update changed child content.
     if (domChildren.length === children.length) {
       let identical = true;
       for (let i = 0; i < children.length; i++) {
-        if (domChildren[i]?.getAttribute("data-ez-nested-id") !== children[i]!.id) {
+        if (domChildren[i]?.getAttribute("data-ez-nested-id") !== children[i]!.id ||
+            domChildren[i]?.getAttribute("data-ez-block-type") !== children[i]!.type) {
           identical = false;
           break;
         }
@@ -175,18 +190,38 @@ export class ToggleTool implements BlockTool<ToggleData> {
       }
     }
     this.childTools.clear();
+    this.childSignatures.clear();
     children.forEach((child, index) => {
       const wrapper = el("div", "ez-nested-block");
       wrapper.setAttribute("data-ez-nested-id", child.id);
+      wrapper.setAttribute("data-ez-block-type", child.type);
       wrapper.setAttribute("data-ez-region", `child-${index}`);
+      if (!this.api.readOnly) {
+        const grip = svgButton("ez-icon-btn ez-nested-drag", ICONS.grip, "Drag block (Alt+ArrowUp/Down to reorder)");
+        grip.draggable = true;
+        grip.setAttribute("data-ez-ui", "true");
+        grip.addEventListener("keydown", (event) => {
+          if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key) || this.api.readOnly) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const from = this.nested!.getBlocks().findIndex((block) => block.id === child.id);
+          this.nested!.move(child.id, Math.max(0, from + (event.key === "ArrowUp" ? -1 : 1)));
+          this.childrenHost.querySelector<HTMLButtonElement>(`[data-ez-nested-id="${CSS.escape(child.id)}"] > .ez-nested-drag`)?.focus();
+        });
+        wrapper.appendChild(grip);
+      }
       const tool = this.nested!.createToolInstance(child, wrapper, this.childApi(child, wrapper));
       wrapper.appendChild(tool.render());
+      for (const editable of wrapper.querySelectorAll<HTMLElement>("[data-ez-editable]")) {
+        editable.contentEditable = this.api.readOnly ? "false" : "true";
+      }
       try {
         tool.rendered?.();
       } catch {
         /* optional hook */
       }
       this.childTools.set(child.id, tool);
+      this.childSignatures.set(child.id, JSON.stringify(child));
       this.childrenHost.appendChild(wrapper);
     });
   }
@@ -196,14 +231,21 @@ export class ToggleTool implements BlockTool<ToggleData> {
     for (const child of children) {
       const tool = this.childTools.get(child.id);
       if (!tool) continue;
-      const editable = this.nestedEditable(child.id, tool);
-      if (!editable) continue;
-      const current = domToInline(editable);
-      const state = (child.data as { content?: InlineContent[] }).content ?? [];
-      if (JSON.stringify(current) !== JSON.stringify(state)) {
-        // State differs from the DOM (e.g. undo): re-render the child.
-        const fresh = tool.render();
-        editable.replaceWith(fresh);
+      const signature = JSON.stringify(child);
+      if (this.childSignatures.get(child.id) === signature) continue;
+      this.childSignatures.set(child.id, signature);
+      const wrapper = this.childrenHost.querySelector<HTMLElement>(`:scope > [data-ez-nested-id="${CSS.escape(child.id)}"]`);
+      if (!wrapper) continue;
+      // Local input is already rendered. External changes refresh the whole
+      // tool, never replace a table cell with an entire table, for example.
+      if (child.type !== "toggle" && JSON.stringify(tool.save(wrapper)) === JSON.stringify(child.data)) continue;
+      if (tool.updated) tool.updated();
+      else {
+        wrapper.lastElementChild?.replaceWith(tool.render());
+        tool.rendered?.();
+      }
+      for (const editable of wrapper.querySelectorAll<HTMLElement>("[data-ez-editable]")) {
+        editable.contentEditable = this.api.readOnly ? "false" : "true";
       }
     }
   }

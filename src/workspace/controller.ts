@@ -21,6 +21,11 @@ import { GENERATOR_VERSION } from "../core/schema";
 
 /** What the controller needs from the Ezynota editor instance. */
 export interface WorkspaceHost {
+  readonly readOnly: boolean;
+  undo(): void;
+  redo(): void;
+  canUndo(): boolean;
+  canRedo(): boolean;
   getSnapshot(): Readonly<EzynotaDocument>;
   render(document: EzynotaDocument): Promise<void>;
   focus(options?: FocusOptions): void;
@@ -80,10 +85,14 @@ export class WorkspaceController {
 
     this.disposers.push(
       host.on("change", (batch) => {
+        this.ui?.refreshHistory();
         if (this.switching) return;
         if (batch.origin === "history" || batch.origin === "migration") return;
         this.persistActiveNote();
-      })
+      }),
+      host.on("history:changed", () => this.ui?.refreshHistory()),
+      host.on("readOnly:changed", () => this.ui?.refreshHistory()),
+      host.on("ready", () => this.ui?.refreshHistory())
     );
 
     const deps = this.buildDeps();
@@ -189,6 +198,7 @@ export class WorkspaceController {
     // interleave — only the latest generation may mutate the session.
     const generation = ++this.loadGeneration;
     this.switching = true;
+    this.ui?.refreshHistory();
     try {
       // Retain independent in-memory history and selection per note.
       const previous = this.state.activeNoteId;
@@ -205,7 +215,10 @@ export class WorkspaceController {
       if (preserveFocus) this.host.focus({ at: "start" });
       this.emit({ type: "activeNote:changed", noteId });
     } finally {
-      if (generation === this.loadGeneration) this.switching = false;
+      if (generation === this.loadGeneration) {
+        this.switching = false;
+        this.ui?.refreshHistory();
+      }
     }
   }
 
@@ -318,6 +331,20 @@ export class WorkspaceController {
 
   private buildDeps(): import("./ui/workspace-ui").WorkspaceUIDeps {
     return {
+      undo: () => {
+        if (this.host.readOnly || this.switching || !this.host.canUndo()) return;
+        this.host.undo();
+        this.persistActiveNote();
+      },
+      redo: () => {
+        if (this.host.readOnly || this.switching || !this.host.canRedo()) return;
+        this.host.redo();
+        this.persistActiveNote();
+      },
+      getHistoryState: () => ({
+        canUndo: !this.host.readOnly && !this.switching && this.host.canUndo(),
+        canRedo: !this.host.readOnly && !this.switching && this.host.canRedo()
+      }),
       createNote: (title, folderId) => {
         const note = this.state.createNote(title ?? "Untitled", folderId ?? null);
         void this.loadNoteIntoEditor(note.id);

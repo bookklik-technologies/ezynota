@@ -815,6 +815,13 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   focusBlock(id: string, at?: "start" | "end"): void {
     if (this.destroyed) return;
+    if (!this.blockManager.getById(id)) {
+      const nested = this.target.querySelector<HTMLElement>(`[data-ez-nested-id="${CSS.escape(id)}"]`);
+      const editables = nested?.querySelectorAll<HTMLElement>("[data-ez-editable]");
+      const editable = at === "end" ? editables?.[editables.length - 1] : editables?.[0];
+      editable?.focus();
+      return;
+    }
     this.renderer.focus(id, at);
   }
 
@@ -921,7 +928,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   /** Nested child-block operations for tools hosting collapsible sections. */
   nestedHost(parentId: string): import("./core/types").NestedBlockHost {
     return {
-      getBlocks: () => cloneDocument(this.blockManager.getById(parentId)?.children ?? []) as EzynotaBlock[],
+      getBlocks: () => cloneDocument(this.blockManager.getByIdRecursive(parentId)?.children ?? []) as EzynotaBlock[],
       insert: (type, data, index) => this.insertNestedBlock(parentId, type, data, index),
       update: (id, data) => this.updateNestedBlock(parentId, id, data),
       remove: (id) => this.removeNestedBlock(parentId, id),
@@ -933,15 +940,29 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   private commitChildren(parentId: string, children: EzynotaBlock[]): void {
+    if (this.editingLocked) return;
     const parent = this.blockManager.getById(parentId);
-    if (!parent) return;
+    if (!parent) {
+      for (const root of this.blockManager.blocks) {
+        const current = cloneDocument(root.children ?? []) as EzynotaBlock[];
+        const update = (blocks: EzynotaBlock[]): boolean => {
+          for (const block of blocks) {
+            if (block.id === parentId) { block.children = children; return true; }
+            if (update(block.children ?? [])) return true;
+          }
+          return false;
+        };
+        if (update(current)) { this.commitChildren(root.id, current); return; }
+      }
+      return;
+    }
     const previous = cloneDocument(parent.children ?? []) as EzynotaBlock[];
     this.tm.commit("user", [{ type: "children:update", id: parentId, previous, current: children }]);
   }
 
   private insertNestedBlock(parentId: string, type: string, data: JsonValue | undefined, index?: number): string {
     if (!this.registry.has(type)) throw toolNotFound(type);
-    const children = cloneDocument(this.blockManager.getById(parentId)?.children ?? []) as EzynotaBlock[];
+    const children = cloneDocument(this.blockManager.getByIdRecursive(parentId)?.children ?? []) as EzynotaBlock[];
     const block: EzynotaBlock = { id: createIdFactory(this.config.idGenerator)(), type, data: (data ?? initialDataShape(type)) as JsonValue };
     const at = index === undefined ? children.length : Math.max(0, Math.min(index, children.length));
     children.splice(at, 0, block);
@@ -950,7 +971,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   private updateNestedBlock(parentId: string, childId: string, data: JsonValue): void {
-    const children = cloneDocument(this.blockManager.getById(parentId)?.children ?? []) as EzynotaBlock[];
+    const children = cloneDocument(this.blockManager.getByIdRecursive(parentId)?.children ?? []) as EzynotaBlock[];
     const child = children.find((b) => b.id === childId);
     if (!child) return;
     child.data = data;
@@ -958,7 +979,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   private removeNestedBlock(parentId: string, childId: string): void {
-    const children = cloneDocument(this.blockManager.getById(parentId)?.children ?? []) as EzynotaBlock[];
+    const children = cloneDocument(this.blockManager.getByIdRecursive(parentId)?.children ?? []) as EzynotaBlock[];
     const index = children.findIndex((b) => b.id === childId);
     if (index < 0) return;
     children.splice(index, 1);
@@ -966,7 +987,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   private moveNestedBlock(parentId: string, childId: string, to: number): void {
-    const children = cloneDocument(this.blockManager.getById(parentId)?.children ?? []) as EzynotaBlock[];
+    const children = cloneDocument(this.blockManager.getByIdRecursive(parentId)?.children ?? []) as EzynotaBlock[];
     const from = children.findIndex((b) => b.id === childId);
     if (from < 0) return;
     const [child] = children.splice(from, 1);

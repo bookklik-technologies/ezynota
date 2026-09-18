@@ -73,6 +73,77 @@ describe("toggle blocks with children", () => {
   });
 });
 
+describe("dragging blocks into toggle sections", () => {
+  function drag(target: HTMLElement, sourceId: string, destination: HTMLElement, y = 50): void {
+    const source = target.querySelector<HTMLElement>(`[data-ez-block-id="${sourceId}"], [data-ez-nested-id="${sourceId}"]`)!;
+    const dataTransfer = { getData: () => sourceId, setData: vi.fn(), effectAllowed: "move", dropEffect: "move" };
+    vi.spyOn(destination, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 100, height: 100 } as DOMRect);
+    const start = new Event("dragstart", { bubbles: true });
+    Object.defineProperty(start, "dataTransfer", { value: dataTransfer });
+    source.dispatchEvent(start);
+    destination.dispatchEvent(new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY: y }));
+    destination.dispatchEvent(new MouseEvent("drop", { bubbles: true, cancelable: true, clientY: y }));
+  }
+
+  it("moves a complete block into a collapsed section and undoes in one step", () => {
+    const { editor, target } = create({ data: doc([
+      { id: "p", type: "paragraph", data: { content: text("Keep me") } },
+      { id: "t", type: "toggle", data: { open: false, heading: text("Section") }, children: [] }
+    ]) });
+    const before = editor.getSnapshot().blocks;
+    drag(target, "p", target.querySelector<HTMLElement>('[data-ez-block-id="t"]')!);
+    expect(editor.getSnapshot().blocks.map((block) => block.id)).toEqual(["t"]);
+    expect(editor.getSnapshot().blocks[0]!.children?.[0]).toEqual(before[0]);
+    expect(target.querySelector('[data-ez-nested-id="p"]')?.textContent).toBe("Keep me");
+    expect(target.querySelector(".ez-toggle")?.getAttribute("data-ez-toggle-open")).toBe("true");
+    expect(target.querySelector(".ez-drop-target, .ez-dragging")).toBeNull();
+    editor.undo();
+    expect(editor.getSnapshot().blocks).toEqual(before);
+    expect(target.querySelector(".ez-toggle")?.getAttribute("data-ez-toggle-open")).toBe("false");
+    editor.redo();
+    expect(target.querySelector('[data-ez-nested-id="p"]')).not.toBeNull();
+  });
+
+  it("reorders children and moves a nested block back to the root", () => {
+    const { editor, target } = create({ data: doc([
+      toggleBlock("t", "Section", [{ id: "a", text: "A" }, { id: "b", text: "B" }]),
+      { id: "p", type: "paragraph", data: { content: text("Outside") } }
+    ]) });
+    drag(target, "b", target.querySelector<HTMLElement>('[data-ez-nested-id="a"]')!, 10);
+    expect(editor.getSnapshot().blocks[0]!.children?.map((block) => block.id)).toEqual(["b", "a"]);
+    drag(target, "b", target.querySelector<HTMLElement>('[data-ez-block-id="p"]')!, 90);
+    expect(editor.getSnapshot().blocks.map((block) => block.id)).toEqual(["t", "p", "b"]);
+    expect(editor.getSnapshot().blocks[0]!.children?.map((block) => block.id)).toEqual(["a"]);
+    editor.undo();
+    expect(editor.getSnapshot().blocks[0]!.children?.map((block) => block.id)).toEqual(["b", "a"]);
+  });
+
+  it("keeps deeper sections editable after moving between sections", () => {
+    const { editor, target } = create({ data: doc([
+      toggleBlock("outer", "Outer", []),
+      toggleBlock("inner", "Inner", [{ id: "child", text: "Editable" }]),
+      { id: "p", type: "paragraph", data: { content: text("New child") } }
+    ]) });
+    drag(target, "inner", target.querySelector<HTMLElement>('[data-ez-block-id="outer"]')!);
+    drag(target, "p", target.querySelector<HTMLElement>('[data-ez-nested-id="inner"]')!);
+    expect(target.querySelector('[data-ez-nested-id="inner"] [data-ez-nested-id="p"]')).not.toBeNull();
+    const editable = target.querySelector<HTMLElement>('[data-ez-nested-id="child"] [data-ez-editable]')!;
+    editable.textContent = "Edited";
+    editable.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(editor.getSnapshot().blocks[0]!.children?.[0]?.children?.[0]?.data).toEqual({ content: text("Edited") });
+  });
+
+  it("rejects moving a section into its own descendant", () => {
+    const { editor, target } = create({ data: doc([
+      { id: "outer", type: "toggle", data: { open: true, heading: text("Outer") }, children: [toggleBlock("inner", "Inner", [])] }
+    ]) });
+    const before = editor.getSnapshot().blocks;
+    drag(target, "outer", target.querySelector<HTMLElement>('[data-ez-nested-id="inner"]')!);
+    expect(editor.getSnapshot().blocks).toEqual(before);
+    expect(target.querySelector(".ez-drop-target, .ez-dragging")).toBeNull();
+  });
+});
+
 describe("slash menu conversion strips the typed query", () => {
   it("typing /head and choosing Heading yields a heading with empty content", () => {
     const { editor, target } = create({

@@ -1,5 +1,5 @@
 /**
- * Icons — Lucide (ISC license, https://lucide.dev).
+ * Icons — Lucide (ISC license, https://lucide.dev) and local table actions.
  * The SVGs are static, code-owned assets inlined at build time;
  * they are never built from user data, so injection via innerHTML is safe.
  */
@@ -44,7 +44,14 @@ import listTreeIcon from "lucide-static/icons/list-tree.svg?raw";
 import strikeIcon from "lucide-static/icons/strikethrough.svg?raw";
 import paletteIcon from "lucide-static/icons/palette.svg?raw";
 import highlighterIcon from "lucide-static/icons/highlighter.svg?raw";
+import textColorIcon from "lucide-static/icons/baseline.svg?raw";
+import backgroundColorIcon from "lucide-static/icons/paint-bucket.svg?raw";
 import tableIcon from "lucide-static/icons/table.svg?raw";
+import tableRowAddIcon from "./icons/table-row-add.svg?raw";
+import tableColumnAddIcon from "./icons/table-column-add.svg?raw";
+import tableRowDeleteIcon from "./icons/table-row-delete.svg?raw";
+import tableColumnDeleteIcon from "./icons/table-column-delete.svg?raw";
+import tableHeaderIcon from "lucide-static/icons/panel-top.svg?raw";
 import imageIcon from "lucide-static/icons/image.svg?raw";
 import infoIcon from "lucide-static/icons/info.svg?raw";
 import alertIcon from "lucide-static/icons/alert-triangle.svg?raw";
@@ -95,7 +102,15 @@ export const ICONS = {
   strikethrough: strikeIcon,
   palette: paletteIcon,
   highlighter: highlighterIcon,
+  code: codeIcon,
+  textColor: textColorIcon,
+  backgroundColor: backgroundColorIcon,
   table: tableIcon,
+  tableRowAdd: tableRowAddIcon,
+  tableColumnAdd: tableColumnAddIcon,
+  tableRowDelete: tableRowDeleteIcon,
+  tableColumnDelete: tableColumnDeleteIcon,
+  tableHeader: tableHeaderIcon,
   image: imageIcon,
   info: infoIcon,
   alert: alertIcon,

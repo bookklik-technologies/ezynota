@@ -131,6 +131,59 @@ export class BlockManager {
     this.run(origin, () => [{ type: "block:move", id, from, to }]);
   }
 
+  /** Move between root and nested lists atomically, preserving the whole subtree. */
+  relocate(id: string, targetId: string, placement: "before" | "after" | "inside", origin: ChangeOrigin = "user"): void {
+    if (id === targetId) return;
+    const previous = this.blocks;
+    const current = JSON.parse(JSON.stringify(previous)) as EzynotaBlock[];
+    const locate = (blocks: EzynotaBlock[], search: string): { block: EzynotaBlock; siblings: EzynotaBlock[]; index: number } | undefined => {
+      for (let index = 0; index < blocks.length; index++) {
+        const block = blocks[index]!;
+        if (block.id === search) return { block, siblings: blocks, index };
+        const child = locate(block.children ?? [], search);
+        if (child) return child;
+      }
+      return undefined;
+    };
+    const source = locate(current, id);
+    const target = locate(current, targetId);
+    if (!source || !target || locate(source.block.children ?? [], targetId)) return;
+    if (placement === "inside" && target.block.type !== "toggle") return;
+    if (placement !== "inside" && source.siblings === current && target.siblings === current) {
+      this.move(id, placement === "before" ? { before: targetId } : { after: targetId }, origin);
+      return;
+    }
+    source.siblings.splice(source.index, 1);
+    const destination = placement === "inside" ? (target.block.children ??= []) : target.siblings;
+    const index = placement === "inside" ? destination.length
+      : destination.indexOf(target.block) + (placement === "after" ? 1 : 0);
+    destination.splice(index, 0, source.block);
+    if (placement === "inside") {
+      target.block.data = { ...(target.block.data as Record<string, JsonValue>), open: true };
+    }
+    const changes: EzynotaChange[] = [];
+    for (let i = 0; i < previous.length; i++) {
+      const block = previous[i]!;
+      if (!current.some((entry) => entry.id === block.id)) {
+        changes.push({ type: "block:remove", id: block.id, index: i, block });
+      }
+    }
+    for (const block of current) {
+      const before = previous.find((entry) => entry.id === block.id);
+      if (!before) continue;
+      if (JSON.stringify(before.data) !== JSON.stringify(block.data)) {
+        changes.push({ type: "block:update", id: block.id, previous: before.data, current: block.data });
+      }
+      if (JSON.stringify(before.children ?? []) !== JSON.stringify(block.children ?? [])) {
+        changes.push({ type: "children:update", id: block.id, previous: before.children ?? [], current: block.children ?? [] });
+      }
+    }
+    current.forEach((block, index) => {
+      if (!previous.some((entry) => entry.id === block.id)) changes.push({ type: "block:insert", block, index });
+    });
+    this.run(origin, () => changes);
+  }
+
   duplicate(id: string, origin: ChangeOrigin = "api"): string {
     const index = this.getIndex(id);
     const block = this.getById(id);

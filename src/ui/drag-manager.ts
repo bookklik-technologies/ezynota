@@ -1,5 +1,8 @@
 import type { Host } from "../host";
 
+const BLOCK_SELECTOR = "[data-ez-block-id], [data-ez-nested-id]";
+type DropTarget = { element: HTMLElement; id: string; placement: "before" | "after" | "inside" };
+
 /**
  * DragManager: HTML5 drag & drop reordering of blocks, plus a Pointer
  * Events fallback for touch devices, and a keyboard alternative
@@ -24,44 +27,33 @@ export class DragManager {
 
     const onDragOver = (e: DragEvent): void => {
       if (this.host.readOnly) return;
-      const target = this.blockFromEvent(e);
-      if (!this.draggingId || !target) return;
+      if (!this.draggingId) return;
+      const drop = this.dropTarget(this.blockFromEvent(e), e.clientY);
+      this.highlight(drop);
+      if (!drop) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-      const id = target.getAttribute("data-ez-block-id") ?? "";
-      if (id === this.draggingId) return;
-      const rect = target.getBoundingClientRect();
-      const below = e.clientY > rect.top + rect.height / 2;
-      target.classList.add("ez-drop-target");
-      target.classList.toggle("ez-below", below);
-      target.setAttribute("data-ez-drop-below", below ? "true" : "false");
     };
 
     const onDragLeave = (e: DragEvent): void => {
       const target = this.blockFromEvent(e);
-      target?.classList.remove("ez-drop-target", "ez-below");
-      target?.removeAttribute("data-ez-drop-below");
+      if (target && (!e.relatedTarget || !target.contains(e.relatedTarget as Node))) this.highlight(null);
     };
 
     const onDrop = (e: DragEvent): void => {
       if (this.host.readOnly) return;
-      const target = this.blockFromEvent(e);
-      if (!this.draggingId || !target) return;
+      if (!this.draggingId) return;
       e.preventDefault();
-      const dropId = target.getAttribute("data-ez-block-id") ?? "";
-      const below = target.getAttribute("data-ez-drop-below") === "true";
-      target.classList.remove("ez-drop-target", "ez-below");
-      target.removeAttribute("data-ez-drop-below");
-      if (!dropId || dropId === this.draggingId) return;
-      this.moveTo(dropId, below);
-      this.draggingId = null;
+      const drop = this.dropTarget(this.blockFromEvent(e), e.clientY);
+      if (drop) this.moveTo(drop);
+      onDragEnd();
     };
 
     const onDragEnd = (): void => {
       this.draggingId = null;
+      this.highlight(null);
       for (const el of Array.from(this.target.querySelectorAll(".ez-drop-target, .ez-dragging"))) {
-        el.classList.remove("ez-drop-target", "ez-below", "ez-dragging");
-        el.removeAttribute("data-ez-drop-below");
+        el.classList.remove("ez-drop-target", "ez-below", "ez-drop-inside", "ez-dragging");
       }
     };
 
@@ -72,9 +64,12 @@ export class DragManager {
     const onDragStart = (e: DragEvent): void => {
       if (this.host.readOnly) { e.preventDefault(); return; }
       const id = e.dataTransfer?.getData("text/x-ezynota-drag");
-      const target = id ? this.target.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`) : this.blockFromEvent(e);
+      const grip = (e.target as Element).closest(".ez-nested-drag");
+      const target = id ? this.findBlock(id) : grip ? this.blockFromEvent(e) : null;
       if (target) {
-        this.draggingId = target.getAttribute("data-ez-block-id") ?? null;
+        this.draggingId = this.blockId(target);
+        e.dataTransfer?.setData("text/x-ezynota-drag", this.draggingId);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
         target.classList.add("ez-dragging");
       }
     };
@@ -86,10 +81,10 @@ export class DragManager {
     const onPointerDown = (e: PointerEvent): void => {
       if (this.host.readOnly || e.pointerType === "mouse" || e.button !== 0) return;
       if (this.pointerDrag) return;
-      const grip = (e.target as HTMLElement).closest?.(".ez-block-actions") as HTMLElement | null;
+      const grip = (e.target as HTMLElement).closest?.(".ez-block-actions, .ez-nested-drag") as HTMLElement | null;
       if (!grip) return;
-      const active = this.target.querySelector<HTMLElement>(".ez-block.ez-active");
-      const id = active?.getAttribute("data-ez-block-id") ?? null;
+      const active = grip.closest<HTMLElement>("[data-ez-nested-id]") ?? this.target.querySelector<HTMLElement>(".ez-block.ez-active");
+      const id = active ? this.blockId(active) : null;
       if (!id) return;
       this.pointerDrag = this.beginPointerDrag(id);
     };
@@ -104,6 +99,7 @@ export class DragManager {
       this.target.removeEventListener("pointerdown", onPointerDown);
       this.pointerDrag?.cleanup();
       this.pointerDrag = null;
+      onDragEnd();
     });
   }
 
@@ -113,20 +109,46 @@ export class DragManager {
     this.started = false;
   }
 
-  /** Shared "insert at the target's edge" move (DnD drop and pointer drop). */
-  private moveTo(dropId: string, below: boolean): void {
+  /** Shared destination and transaction path for mouse and touch dragging. */
+  private moveTo(drop: DropTarget): void {
     const id = this.draggingId;
-    if (!id) return;
-    const from = this.host.getBlockIndex(id);
-    const toIndex = this.host.getBlockIndex(dropId);
-    let to = below ? toIndex + 1 : toIndex;
-    // Convert "insert before/after the target in the ORIGINAL order"
-    // into the shared FINAL-index convention before moving.
-    if (from >= 0 && from < to) to -= 1;
-    if (from !== to && from >= 0) {
-      this.host.moveBlock(id, to);
-      this.host.announce(`Block moved to position ${to + 1}`);
+    if (!id || this.host.readOnly) return;
+    this.host.blocks.relocate(id, drop.id, drop.placement);
+    this.host.focusBlock(id, "start");
+    this.host.announce(drop.placement === "inside" ? "Block moved inside section" : "Block moved");
+  }
+
+  private blockId(element: HTMLElement): string {
+    return element.getAttribute("data-ez-nested-id") ?? element.getAttribute("data-ez-block-id") ?? "";
+  }
+
+  private findBlock(id: string): HTMLElement | null {
+    return this.target.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"], [data-ez-nested-id="${CSS.escape(id)}"]`);
+  }
+
+  private dropTarget(element: HTMLElement | null, y: number): DropTarget | null {
+    if (!element || !this.draggingId) return null;
+    const id = this.blockId(element);
+    const source = this.findBlock(this.draggingId);
+    if (!id || source?.contains(element)) return null;
+    const rect = element.getBoundingClientRect();
+    let placement: DropTarget["placement"] = y > rect.top + rect.height / 2 ? "after" : "before";
+    if (this.host.blocks.getByIdRecursive(id)?.type === "toggle") {
+      // Thin outer edges reorder the whole section; its body accepts children.
+      const edge = Math.min(8, rect.height / 4);
+      if (y >= rect.top + edge && y <= rect.bottom - edge) placement = "inside";
     }
+    return { element, id, placement };
+  }
+
+  private highlight(drop: DropTarget | null): void {
+    for (const element of this.target.querySelectorAll(".ez-drop-target")) {
+      element.classList.remove("ez-drop-target", "ez-below", "ez-drop-inside");
+    }
+    if (!drop) return;
+    drop.element.classList.add("ez-drop-target");
+    drop.element.classList.toggle("ez-below", drop.placement === "after");
+    drop.element.classList.toggle("ez-drop-inside", drop.placement === "inside");
   }
 
   /** Visual ghost + drop tracking driven by document-level pointer events. */
@@ -143,35 +165,15 @@ export class DragManager {
     ghost.style.overflow = "hidden";
     ghost.style.whiteSpace = "nowrap";
     ghost.style.textOverflow = "ellipsis";
-    const source = this.target.querySelector<HTMLElement>(`[data-ez-block-id="${CSS.escape(id)}"]`);
+    const source = this.findBlock(id);
     ghost.textContent = (source?.textContent ?? "").trim().slice(0, 80) || id;
     doc.body.appendChild(ghost);
-
-    let highlighted: HTMLElement | null = null;
-    const clearHighlight = (): void => {
-      if (!highlighted) return;
-      highlighted.classList.remove("ez-drop-target", "ez-below");
-      highlighted.removeAttribute("data-ez-drop-below");
-      highlighted = null;
-    };
 
     const onMove = (e: PointerEvent): void => {
       if (this.host.readOnly) return;
       ghost.style.left = `${e.clientX + 12}px`;
       ghost.style.top = `${e.clientY + 12}px`;
-      const target = this.blockFromPoint(e.clientX, e.clientY);
-      const targetId = target?.getAttribute("data-ez-block-id") ?? "";
-      if (!target || !targetId || targetId === id) {
-        clearHighlight();
-        return;
-      }
-      if (target !== highlighted) clearHighlight();
-      const rect = target.getBoundingClientRect();
-      const below = e.clientY > rect.top + rect.height / 2;
-      target.classList.add("ez-drop-target");
-      target.classList.toggle("ez-below", below);
-      target.setAttribute("data-ez-drop-below", below ? "true" : "false");
-      highlighted = target;
+      this.highlight(this.dropTarget(this.blockFromPoint(e.clientX, e.clientY), e.clientY));
     };
 
     const finish = (): void => {
@@ -179,20 +181,14 @@ export class DragManager {
       doc.removeEventListener("pointerup", onUp);
       doc.removeEventListener("pointercancel", onCancel);
       ghost.remove();
-      clearHighlight();
+      this.highlight(null);
       this.draggingId = null;
       this.pointerDrag = null;
     };
     const onUp = (e: PointerEvent): void => {
-      const target = this.blockFromPoint(e.clientX, e.clientY);
-      const dropId = target?.getAttribute("data-ez-block-id") ?? "";
-      const below = target?.getAttribute("data-ez-drop-below") === "true";
+      const drop = this.dropTarget(this.blockFromPoint(e.clientX, e.clientY), e.clientY);
+      if (drop) this.moveTo(drop);
       finish();
-      if (this.host.readOnly) return;
-      if (!dropId || dropId === id) return;
-      this.draggingId = id;
-      this.moveTo(dropId, below);
-      this.draggingId = null;
     };
     const onCancel = (): void => {
       finish();
@@ -208,7 +204,7 @@ export class DragManager {
   private blockFromEvent(e: Event): HTMLElement | null {
     let node = e.target as Node | null;
     while (node && node !== this.target) {
-      if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).hasAttribute?.("data-ez-block-id")) {
+      if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).matches(BLOCK_SELECTOR)) {
         return node as HTMLElement;
       }
       node = node.parentNode;
@@ -220,7 +216,7 @@ export class DragManager {
     const doc = this.target.ownerDocument;
     const element = doc.elementFromPoint(x, y);
     if (!element) return null;
-    const block = element.closest<HTMLElement>("[data-ez-block-id]");
+    const block = element.closest<HTMLElement>(BLOCK_SELECTOR);
     return block && this.target.contains(block) ? block : null;
   }
 }
