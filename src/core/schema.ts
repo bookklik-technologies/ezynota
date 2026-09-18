@@ -3,7 +3,7 @@ import { EzynotaError, invalidDocument } from "./errors";
 import { isSafeUrl } from "./url";
 
 export const SCHEMA_VERSION = "1.0.0";
-export const GENERATOR_VERSION = "0.2.1";
+export const GENERATOR_VERSION = "0.1.1";
 
 /** Maximum nesting depth accepted for JSON data, tunes, meta and children. */
 export const MAX_JSON_DEPTH = 200;

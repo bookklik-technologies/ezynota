@@ -1,5 +1,6 @@
 import type { EditorSelection, InlineTool, InlineToolContext, InlineToolOptions } from "../types";
-import { el, button, placePopover } from "../ui/dom";
+import { el, button, placePopover, svgButton } from "../ui/dom";
+import { ICONS } from "../ui/icons";
 
 /** --- DOM helpers for inline formatting in contenteditable blocks --- */
 
@@ -209,9 +210,12 @@ export abstract class MarkInlineTool implements InlineTool {
   }
 
   render(): HTMLElement {
-    const btn = button("ez-inline-tool-btn", this.options.t(this.labelKey), this.options.t(this.labelKey));
+    const label = this.options.t(this.labelKey);
+    const btn = this.icon
+      ? svgButton("ez-inline-tool-btn", this.icon, label)
+      : button("ez-inline-tool-btn", label, label);
     btn.addEventListener("click", () => this.toggle());
-    btn.title = this.options.t(this.labelKey);
+    btn.title = label;
     btn.setAttribute("data-ez-inline-tool", this.markType);
     btn.setAttribute("aria-pressed", "false");
     this.node = btn;
@@ -219,6 +223,11 @@ export abstract class MarkInlineTool implements InlineTool {
   }
 
   protected abstract get labelKey(): string;
+
+  /** Optional Lucide icon; a text label renders when undefined. */
+  protected get icon(): string | undefined {
+    return undefined;
+  }
 
   abstract apply(range: Range, context: InlineToolContext): void;
 
@@ -285,6 +294,10 @@ export class BoldTool extends MarkInlineTool {
     return "inline.bold";
   }
 
+  protected get icon(): string {
+    return ICONS.bold;
+  }
+
   apply(_range: Range, context: InlineToolContext): void {
     exec(context.blockElement, "bold");
     context.requestSave();
@@ -304,6 +317,10 @@ export class ItalicTool extends MarkInlineTool {
     return "inline.italic";
   }
 
+  protected get icon(): string {
+    return ICONS.italic;
+  }
+
   apply(_range: Range, context: InlineToolContext): void {
     exec(context.blockElement, "italic");
     context.requestSave();
@@ -319,6 +336,10 @@ export class UnderlineTool extends MarkInlineTool {
 
   protected get labelKey(): string {
     return "inline.underline";
+  }
+
+  protected get icon(): string {
+    return ICONS.underline;
   }
 
   apply(_range: Range, context: InlineToolContext): void {

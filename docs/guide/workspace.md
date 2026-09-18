@@ -87,7 +87,7 @@ const portable = await ws.portableSnapshot(); // document with assets as data UR
 ## Fullscreen, theme & recovery
 
 ```ts
-ws.toggleFullscreen();      // CSS-based, no Fullscreen API permission needed
+await ws.toggleFullscreen(); // browser fullscreen; call from a click handler
 ws.isFullscreen();
 ws.setTheme("dark");        // "light" | "dark" | "system"
 ws.getTheme();

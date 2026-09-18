@@ -1,6 +1,6 @@
 {
   "name": "ezynota",
-  "version": "0.3.0",
+  "version": "0.1.1",
   "description": "A free, block-style editor with portable JSON output",
   "type": "module",
   "license": "MIT",

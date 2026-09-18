@@ -339,6 +339,6 @@ export function emptyWorkspace(workspaceId: string): WorkspaceEnvelope {
     notes: [],
     folders: [],
     savedAt: 0,
-    generator: { name: "ezynota", version: "0.3.0" }
+    generator: { name: "ezynota", version: "0.1.1" }
   };
 }

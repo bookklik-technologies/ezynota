@@ -7,7 +7,7 @@ Ezynota documents are plain, portable, versioned JSON. The DOM is never the sour
 ```json
 {
   "schemaVersion": "1.0.0",
-  "generator": { "name": "ezynota", "version": "0.3.0" },
+  "generator": { "name": "ezynota", "version": "0.1.1" },
   "createdAt": 1727000000000,
   "updatedAt": 1727000123456,
   "meta": { "title": "Meeting notes" },

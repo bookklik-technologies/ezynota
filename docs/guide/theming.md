@@ -68,6 +68,17 @@ Override the design tokens on `.ez-editor`, `.ez-editor-mount`, or `.ez-workspac
 | `--ez-font-family` / `--ez-font-size` | Typography |
 | `--ez-z-toolbar` | Z-index base for floating UI |
 
+## Suite UI standard
+
+The editor chrome follows the same visual standard as the other Ezy libraries:
+
+- Font: Outfit, weights 400–800, fallback stack `-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", sans-serif`
+- Icons: Lucide, 1.8 stroke with round caps/joins; 18px in toolbars and icon buttons, 14px in menus and trees
+- Radius scale: 6px controls, 10px menus, 14px dialogs
+- Icon buttons 32px, focus ring 2px accent with 1px offset
+
+Brand accent colors (pink/purple) remain Ezynota-specific.
+
 ## Class naming
 
 All classes use the `ez-` prefix. Useful groups to know when styling around the editor:

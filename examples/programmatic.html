@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ezynota - Programmatic embed</title>
   <link rel="stylesheet" href="../dist/ezynota.css" />
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    #editor {
+      box-sizing: border-box;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+    }
+  </style>
 </head>
 <body>
   <div id="editor" aria-label="Text editor"></div>
@@ -14,9 +28,11 @@
     // The UMD global is a namespace containing the Ezynota constructor.
     const editor = new Ezynota.Ezynota({
       target: "#editor",
-      mode: "embedded",
-      placeholder: "Start writing..."
+      mode: "workspace",
+      theme: "light",
+      placeholder: "Start writing...",
     });
+    window.editor = editor;
   </script>
 </body>
 </html>

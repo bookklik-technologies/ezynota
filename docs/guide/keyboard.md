@@ -11,7 +11,7 @@ Ezynota is keyboard-complete. All shortcuts are IME-safe (composition events and
 | `Backspace` (at block start) | Merge with previous block |
 | `Delete` (at block end) | Merge with next block |
 | `Tab` / `Shift+Tab` | Table cell navigation (creates rows/cols at the edges) |
-| `Escape` | Close menus (twice exits fullscreen) |
+| `Escape` | Exit browser fullscreen; otherwise close menus |
 | `/` | Open slash menu |
 | `[[` | Note-link suggestions (workspace mode) |
 

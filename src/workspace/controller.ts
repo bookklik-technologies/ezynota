@@ -61,12 +61,15 @@ export class WorkspaceController {
   private theme: WorkspaceTheme;
   private themeMedia: MediaQueryList | null = null;
   private fullscreenOn = false;
+  private fullscreenPending = false;
+  private surface: HTMLElement;
   private lastFocus: HTMLElement | null = null;
   private switching = false;
   private options: WorkspaceControllerOptions;
 
   constructor(host: WorkspaceHost, surface: HTMLElement, options: WorkspaceControllerOptions) {
     this.host = host;
+    this.surface = surface;
     this.options = options;
     this.theme = options.theme ?? "system";
     const storage = options.storage
@@ -86,6 +89,7 @@ export class WorkspaceController {
     const deps = this.buildDeps();
     this.depsBridge = deps;
     this.ui = new WorkspaceUI(surface, this.state, deps, options.showSidebar !== false);
+    surface.ownerDocument.addEventListener("fullscreenchange", this.onFullscreenChange);
     this.suggester = new WorkspaceLinkSuggester(surface, {
       listNotes: () => this.state.listNotes().map((note) => ({ id: note.id, title: note.title })),
       openNote: (id) => this.depsBridge?.openNote(id) ?? void this.loadNoteIntoEditor(id),
@@ -226,56 +230,63 @@ export class WorkspaceController {
 
   /* =================== fullscreen =================== */
 
-  toggleFullscreen(force?: boolean): void {
-    const next = force ?? !this.fullscreenOn;
-    if (next === this.fullscreenOn) return;
-    if (next) {
-      this.lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      this.fullscreenOn = true;
-      document.documentElement.classList.add("ez-has-fullscreen-editor");
-      document.addEventListener("keydown", this.onGlobalKeydown, true);
-      this.host.announce("Fullscreen enabled. Press Escape twice to exit.");
-    } else {
-      this.fullscreenOn = false;
-      document.documentElement.classList.remove("ez-has-fullscreen-editor");
-      document.removeEventListener("keydown", this.onGlobalKeydown, true);
-      // Escape closes an open menu/dialog before exiting fullscreen: this
-      // exit path runs only after menus are closed, and restores focus.
-      this.lastFocus?.focus();
+  async toggleFullscreen(force?: boolean): Promise<void> {
+    if (this.destroyed || this.fullscreenPending) return;
+    const doc = this.surface.ownerDocument;
+    const current = doc.fullscreenElement === this.surface;
+    const next = force ?? !current;
+    if (next === current) return;
+    this.fullscreenPending = true;
+    try {
+      if (next) {
+        if (!this.surface.requestFullscreen) {
+          this.ui?.showNotice("Fullscreen is unavailable in this browser.");
+          return;
+        }
+        this.lastFocus = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
+        await this.surface.requestFullscreen();
+        // A request can finish after the editor has been destroyed.
+        if (this.destroyed) {
+          if (doc.fullscreenElement === this.surface) await doc.exitFullscreen();
+          return;
+        }
+      } else {
+        await doc.exitFullscreen();
+      }
+      this.onFullscreenChange();
+    } catch {
+      if (!this.destroyed) this.ui?.showNotice("Unable to change fullscreen. Check your browser's fullscreen permissions and try again.");
+    } finally {
+      this.fullscreenPending = false;
     }
-    this.ui?.setFullscreen(this.fullscreenOn);
-    this.options.onEvent?.({ type: "fullscreen", on: this.fullscreenOn });
   }
 
   isFullscreen(): boolean {
     return this.fullscreenOn;
   }
 
-  private onGlobalKeydown = (event: KeyboardEvent): void => {
-    if (event.key !== "Escape" || !this.fullscreenOn) return;
-    // First Escape: close any open menu/dialog inside the workspace.
-    const root = document.querySelector(".ez-workspace-root");
-    const openMenu = root?.querySelector("details[open]") ?? null;
-    const openPopoverEl = root?.querySelector(".ez-popover:not([hidden])") ?? null;
-    const openFind = root?.querySelector(".ez-find-bar:not([hidden])") ?? null;
-    if (openMenu || openPopoverEl || openFind) {
-      event.preventDefault();
-      event.stopPropagation();
-      root?.dispatchEvent(new Event("ez-close-popovers"));
-      for (const details of Array.from(root?.querySelectorAll("details[open]") ?? [])) {
-        (details as HTMLDetailsElement).open = false;
-      }
-      (openFind as HTMLElement | null)?.setAttribute("hidden", "");
-      return;
+  private onFullscreenChange = (): void => {
+    if (this.destroyed) return;
+    const next = this.surface.ownerDocument.fullscreenElement === this.surface;
+    if (next === this.fullscreenOn) return;
+    this.fullscreenOn = next;
+    this.ui?.setFullscreen(next);
+    if (next) {
+      this.host.announce("Fullscreen enabled. Press Escape to exit.");
+    } else {
+      if (!this.surface.ownerDocument.fullscreenElement) this.lastFocus?.focus();
+      this.lastFocus = null;
     }
-    // Second Escape: exit fullscreen (no Fullscreen API permission needed).
-    event.preventDefault();
-    this.toggleFullscreen(false);
+    this.options.onEvent?.({ type: "fullscreen", on: next });
   };
 
   private removeFullscreenListeners(): void {
-    document.removeEventListener("keydown", this.onGlobalKeydown, true);
-    document.documentElement.classList.remove("ez-has-fullscreen-editor");
+    const doc = this.surface.ownerDocument;
+    doc.removeEventListener("fullscreenchange", this.onFullscreenChange);
+    if (doc.fullscreenElement === this.surface) void doc.exitFullscreen().catch(() => {});
+    this.fullscreenOn = false;
+    this.lastFocus = null;
+    this.ui?.setFullscreen(false);
   }
 
   /* =================== theme =================== */

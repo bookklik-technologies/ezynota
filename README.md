@@ -157,7 +157,7 @@ ws.backlinks(noteId);                     // notes linking to a note
 await ws.save();                          // flush the active note + workspace
 await ws.createBackup();                  // notes + folders + trash + assets
 await ws.restoreBackup(backup);           // restores under a NEW workspace id by default
-ws.toggleFullscreen();                    // expands over the browser viewport (no Fullscreen API)
+await ws.toggleFullscreen();              // browser fullscreen; call from a click handler
 ws.setTheme("dark");
 ```
 
@@ -234,7 +234,7 @@ analytics consumes.
       "tunes": { "alignment": "center" }
     }
   ],
-  "generator": { "name": "ezynota", "version": "0.3.0" }
+  "generator": { "name": "ezynota", "version": "0.1.1" }
 }
 ```
 
@@ -265,7 +265,7 @@ and collapsible toggle sections containing editable child blocks.
 | `/`                    | Open the slash menu                  |
 | `[[`                   | Open the note-link suggestions       |
 | `Tab`                  | Table cells: next cell (creates rows/columns at the edges) |
-| `Escape`               | Close menus (twice exits fullscreen) |
+| `Escape`               | Exit browser fullscreen; otherwise close menus |
 
 ## Security
 
@@ -315,7 +315,7 @@ not configure persistence.
 
 ## Status
 
-**v0.3.0** — the workspace release: browser-local multi-note workspaces
+**v0.1.1** — the workspace release: browser-local multi-note workspaces
 (folders, linked notes, trash, search), IndexedDB storage with a
 configurable async adapter, declarative `data-ezn-editor` initialization
 with `ezn:*` DOM events and an `ezynota/core` entry, four lifecycle modes,

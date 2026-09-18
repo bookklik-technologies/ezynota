@@ -3,6 +3,7 @@ import type { SaveStatus, SearchHit, WorkspaceEvent, WorkspaceTheme } from "../t
 import type { NoteRecord, FolderRecord } from "../types";
 import { el, button, svgButton, clearChildren, navigateControls, placePopover } from "../../ui/dom";
 import { ICONS, renderIcon } from "../../ui/icons";
+import { BRAND_LOGO } from "../../ui/brand";
 import { inlineToPlainText } from "../../rich-text/types";
 import type { EzynotaBlock } from "../../types";
 import { EzynotaError } from "../../core/errors";
@@ -94,12 +95,14 @@ export class WorkspaceUI {
   private fullscreenBtn: HTMLButtonElement | null = null;
   private themeMenu: HTMLDetailsElement | null = null;
   private docMenu: HTMLDetailsElement | null = null;
+  private exportMenu: HTMLDetailsElement | null = null;
   private importInput: HTMLInputElement | null = null;
   private errorPanel: HTMLElement | null = null;
   private legacyPanel: HTMLElement | null = null;
   private noticeEl: HTMLElement | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private findDialog: HTMLElement | null = null;
+  private findReturnFocus: HTMLElement | null = null;
   private findInput: HTMLInputElement | null = null;
   private replaceInput: HTMLInputElement | null = null;
   private disposers: (() => void)[] = [];
@@ -193,6 +196,7 @@ export class WorkspaceUI {
   private buildShell(): void {
     this.root.classList.add("ez-workspace-root");
     if (!this.showSidebar) this.root.classList.add("ez-mode-document");
+    const topbar = this.buildTopbar();
     const app = el("div", "ez-workspace");
     app.setAttribute("data-ez-workspace", "true");
 
@@ -201,6 +205,7 @@ export class WorkspaceUI {
     this.buildSidebarContent();
 
     const main = el("div", "ez-main");
+    main.appendChild(this.buildSidebarToggle());
     const header = this.buildHeader();
     this.errorPanel = this.buildErrorPanel();
     this.legacyPanel = this.buildLegacyPanel();
@@ -211,19 +216,6 @@ export class WorkspaceUI {
     const docWrap = el("div", "ez-doc-wrap");
     // The document surface (already mounted by the editor) moves into the shell.
     const surface = this.root.querySelector<HTMLElement>(".ez-editor");
-    this.sidebarToggle = svgButton("ez-icon-btn ez-sidebar-toggle", ICONS.panelLeft, "Toggle notes sidebar");
-    this.sidebarToggle.setAttribute("aria-expanded", String(!window.matchMedia("(max-width: 900px)").matches));
-    this.sidebarToggle.addEventListener("click", () => {
-      if (window.matchMedia("(max-width: 900px)").matches) {
-        this.root.classList.remove("ez-sidebar-collapsed");
-        const open = this.root.classList.toggle("ez-sidebar-open");
-        this.sidebarToggle?.setAttribute("aria-expanded", String(open));
-        if (open) this.searchInput?.focus();
-      } else {
-        const collapsed = this.root.classList.toggle("ez-sidebar-collapsed");
-        this.sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
-      }
-    });
     const backdrop = button("ez-sidebar-backdrop", "", "Close notes sidebar");
     backdrop.tabIndex = -1;
     backdrop.addEventListener("click", () => this.closeMobileSidebar());
@@ -250,8 +242,10 @@ export class WorkspaceUI {
     this.root.addEventListener("keydown", onKey);
     this.disposers.push(() => this.root.removeEventListener("keydown", onKey));
     const headerRow = el("div", "ez-header-row");
-    headerRow.append(this.sidebarToggle, header);
-    main.append(headerRow, this.noticeEl, this.errorPanel, this.legacyPanel, docWrap);
+    headerRow.append(header);
+    const documentColumn = el("div", "ez-document-column");
+    documentColumn.append(headerRow, this.noticeEl, this.errorPanel, this.legacyPanel, docWrap);
+    main.appendChild(documentColumn);
     if (surface) {
       docWrap.appendChild(surface);
     } else {
@@ -259,26 +253,181 @@ export class WorkspaceUI {
     }
 
     app.append(backdrop, this.sidebar, main);
-    this.root.appendChild(app);
+    this.root.append(topbar, app, this.buildStatusbar());
     this.applyTheme(this.state ? (this.root.getAttribute("data-ez-theme") as WorkspaceTheme | null) ?? "system" : "system");
     this.outlinePanel = this.buildOutline();
     main.appendChild(this.outlinePanel);
     this.findDialog = this.buildFindDialog();
-    main.insertBefore(this.findDialog, docWrap);
+    main.insertBefore(this.findDialog, documentColumn);
     this.buildHiddenImportInput();
+  }
+
+  private buildSidebarToggle(): HTMLElement {
+    this.sidebarToggle = svgButton("ez-icon-btn ez-sidebar-toggle", ICONS.panelLeft, "Toggle notes sidebar");
+    this.sidebarToggle.setAttribute("aria-expanded", String(!window.matchMedia("(max-width: 900px)").matches));
+    this.sidebarToggle.addEventListener("click", () => {
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        this.root.classList.remove("ez-sidebar-collapsed");
+        const open = this.root.classList.toggle("ez-sidebar-open");
+        this.sidebarToggle?.setAttribute("aria-expanded", String(open));
+        if (open) this.searchInput?.focus();
+      } else {
+        const collapsed = this.root.classList.toggle("ez-sidebar-collapsed");
+        this.sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
+      }
+    });
+    return this.sidebarToggle;
+  }
+
+  /** Suite-standard topbar: brand + document actions, shared with the shell. */
+  private buildTopbar(): HTMLElement {
+    const topbar = el("header", "ez-topbar");
+    const brand = el("div", "ez-brand");
+    const brandMark = el("span", "ez-brand-mark");
+    brandMark.innerHTML = BRAND_LOGO; // static, code-owned brand asset (mirrors icon.svg)
+    brand.append(brandMark, el("span", "ez-brand-name", "Ezynota"));
+
+    const actions = el("div", "ez-topbar-actions");
+    const documentActions = el("div", "ez-topbar-group ez-document-actions");
+    const outlineBtn = svgButton("ez-icon-btn", ICONS.outline, "Toggle heading outline");
+    outlineBtn.setAttribute("aria-expanded", "false");
+    const toggleOutline = (): void => {
+      const open = this.root.classList.toggle("ez-outline-open");
+      outlineBtn.setAttribute("aria-expanded", String(open));
+      mobileOutline.setAttribute("aria-expanded", String(open));
+    };
+    outlineBtn.addEventListener("click", toggleOutline);
+    const findBtn = svgButton("ez-icon-btn", ICONS.search, "Find in document");
+    findBtn.addEventListener("click", () => this.openFindDialog());
+    documentActions.append(outlineBtn, findBtn);
+
+    this.fullscreenBtn = svgButton("ez-icon-btn", ICONS.maximize, "Enter fullscreen");
+    this.fullscreenBtn.addEventListener("click", () => this.deps.toggleFullscreen());
+
+    this.docMenu = el("details", "ez-doc-menu") as HTMLDetailsElement;
+    const menuSummary = el("summary", "ez-icon-btn ez-doc-menu-btn");
+    menuSummary.appendChild(renderIcon(ICONS.ellipsis));
+    menuSummary.setAttribute("aria-label", "Document menu");
+    const panel = el("div", "ez-doc-menu-panel");
+    panel.setAttribute("data-ez-ui", "true");
+    const makeItem = (label: string, run: () => void, menu: HTMLDetailsElement = this.docMenu!): HTMLElement => {
+      const item = button("ez-doc-menu-item", label);
+      item.addEventListener("click", () => {
+        if (menu.contains(document.activeElement)) menu.querySelector("summary")?.focus();
+        menu.open = false;
+        run();
+      });
+      return item;
+    };
+    const mobileOutline = makeItem("Toggle heading outline", toggleOutline);
+    mobileOutline.classList.add("ez-mobile-action");
+    mobileOutline.setAttribute("aria-expanded", "false");
+    const mobileFind = makeItem("Find in document", () => this.openFindDialog());
+    mobileFind.classList.add("ez-mobile-action");
+    panel.append(
+      mobileOutline,
+      mobileFind,
+      makeItem("Print document", () => this.deps.printActiveNote()),
+      makeItem("Import file…", () => this.importInput?.click()),
+      makeItem("Download workspace backup", () => this.deps.createBackup()),
+      makeItem("Restore workspace backup…", () => this.pickBackupFile())
+    );
+    this.docMenu.append(menuSummary, panel);
+
+    this.exportMenu = el("details", "ez-doc-menu ez-export-menu") as HTMLDetailsElement;
+    const exportSummary = el("summary", "ez-export-btn");
+    exportSummary.setAttribute("aria-label", "Export document");
+    exportSummary.append(renderIcon(ICONS.download), el("span", "", "Export"), renderIcon(ICONS.down));
+    const exportPanel = el("div", "ez-doc-menu-panel");
+    exportPanel.setAttribute("data-ez-ui", "true");
+    exportPanel.append(
+      makeItem("Download JSON", () => this.deps.exportActiveNote("json"), this.exportMenu),
+      makeItem("Export Markdown", () => this.deps.exportActiveNote("md"), this.exportMenu),
+      makeItem("Export HTML", () => this.deps.exportActiveNote("html"), this.exportMenu),
+      makeItem("Export plain text", () => this.deps.exportActiveNote("txt"), this.exportMenu)
+    );
+    this.exportMenu.append(exportSummary, exportPanel);
+
+    this.themeMenu = el("details", "ez-theme-menu") as HTMLDetailsElement;
+    const themeSummary = el("summary", "ez-icon-btn");
+    themeSummary.appendChild(renderIcon(ICONS.sun));
+    themeSummary.setAttribute("aria-label", "Theme");
+    const themePanel = el("div", "ez-theme-panel");
+    themePanel.setAttribute("data-ez-ui", "true");
+    for (const theme of ["light", "dark", "system"] as WorkspaceTheme[]) {
+      const item = button("ez-theme-item", THEME_LABELS[theme]);
+      item.setAttribute("data-ez-theme-choice", theme);
+      item.addEventListener("click", () => {
+        if (this.themeMenu?.contains(document.activeElement)) themeSummary.focus();
+        this.deps.setTheme(theme);
+        if (this.themeMenu) this.themeMenu.open = false;
+      });
+      themePanel.appendChild(item);
+    }
+    this.themeMenu.append(themeSummary, themePanel);
+
+    const viewActions = el("div", "ez-topbar-group");
+    viewActions.append(this.themeMenu, this.fullscreenBtn, this.docMenu);
+    actions.append(documentActions, viewActions, this.exportMenu);
+    topbar.append(brand, el("div", "ez-topbar-spacer"), actions);
+    const menus = [this.docMenu, this.themeMenu, this.exportMenu];
+    const positionMenus = (): void => {
+      for (const menu of menus) {
+        if (!menu.open) continue;
+        const popup = menu.querySelector<HTMLElement>("[data-ez-ui]");
+        const summary = menu.querySelector("summary");
+        if (!popup || !summary) continue;
+        popup.style.insetInlineEnd = "auto";
+        placePopover(popup, summary.getBoundingClientRect());
+      }
+    };
+    for (const menu of menus) {
+      menu.addEventListener("toggle", () => {
+        if (menu.open) for (const other of menus) if (other !== menu) other.open = false;
+        positionMenus();
+      });
+      menu.addEventListener("keydown", (event) => {
+        if (!menu.open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"))
+          .filter((item) => item.getClientRects().length > 0);
+        const index = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+          : index < 0 ? (event.key === "ArrowUp" ? items.length - 1 : 0)
+          : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    }
+    const closeMenus = (event: Event): void => {
+      for (const menu of menus) {
+        if (!menu?.open) continue;
+        if (event instanceof KeyboardEvent && event.key === "Escape") {
+          menu.open = false;
+          menu.querySelector("summary")?.focus();
+          event.stopPropagation();
+        } else if (event.type === "pointerdown" && !menu.contains(event.target as Node)) {
+          menu.open = false;
+        }
+      }
+    };
+    document.addEventListener("pointerdown", closeMenus);
+    document.addEventListener("scroll", positionMenus, true);
+    window.addEventListener("resize", positionMenus);
+    this.root.addEventListener("keydown", closeMenus);
+    this.disposers.push(() => {
+      document.removeEventListener("pointerdown", closeMenus);
+      document.removeEventListener("scroll", positionMenus, true);
+      window.removeEventListener("resize", positionMenus);
+      this.root.removeEventListener("keydown", closeMenus);
+    });
+    return topbar;
   }
 
   private buildSidebarContent(): void {
     if (!this.sidebar) return;
     clearChildren(this.sidebar);
-    const brand = el("div", "ez-sidebar-brand");
-    const brandMark = el("span", "ez-sidebar-brand-mark");
-    brandMark.appendChild(renderIcon(ICONS.file));
-    const brandText = el("div", "ez-sidebar-brand-text");
-    brandText.append(el("strong", "", "My workspace"), el("span", "", "A little space to think"));
-    const closeSidebar = svgButton("ez-icon-btn ez-sidebar-close", ICONS.x, "Close notes sidebar");
-    closeSidebar.addEventListener("click", () => this.closeMobileSidebar());
-    brand.append(brandMark, brandText, closeSidebar);
+    const searchRow = el("div", "ez-sidebar-search-row");
     const searchWrap = el("div", "ez-sidebar-search");
     this.searchInput = el("input", "ez-sidebar-search-input");
     this.searchInput.type = "search";
@@ -294,6 +443,9 @@ export class WorkspaceUI {
     searchIcon.innerHTML = ICONS.search;
     searchIcon.setAttribute("aria-hidden", "true");
     searchWrap.append(searchIcon, this.searchInput);
+    const closeSidebar = svgButton("ez-icon-btn ez-sidebar-close", ICONS.x, "Close notes sidebar");
+    closeSidebar.addEventListener("click", () => this.closeMobileSidebar());
+    searchRow.append(searchWrap, closeSidebar);
     this.searchResults = el("div", "ez-search-results");
     this.searchResults.setAttribute("role", "listbox");
     this.searchResults.setAttribute("aria-label", "Search results");
@@ -319,10 +471,9 @@ export class WorkspaceUI {
     this.setupTreeDragAndDrop(this.notesTree, sectionLabel);
     const storage = el("div", "ez-storage-note");
     storage.appendChild(renderIcon(ICONS.monitor));
-    const storageText = el("div");
-    storageText.append(el("strong", "", "Your own little corner"), el("span", "", "Notes stay in this browser. Export a backup to keep a copy."));
-    storage.appendChild(storageText);
-    this.sidebar.append(brand, searchWrap, this.searchResults, actions, sectionLabel, this.notesTree, trash, storage);
+    storage.appendChild(el("span", "", "Stored in this browser"));
+    storage.title = "Download a workspace backup from the document menu to keep a copy.";
+    this.sidebar.append(searchRow, this.searchResults, actions, sectionLabel, this.notesTree, trash, storage);
   }
 
   private closeMobileSidebar(restoreFocus = true): void {
@@ -644,7 +795,6 @@ export class WorkspaceUI {
 
   private buildHeader(): HTMLElement {
     const header = el("header", "ez-doc-header");
-    header.setAttribute("role", "banner");
     this.breadcrumbs = el("nav", "ez-breadcrumbs");
     this.breadcrumbs.setAttribute("aria-label", "Folder path");
 
@@ -659,7 +809,15 @@ export class WorkspaceUI {
     });
     titleRow.appendChild(this.titleInput);
 
-    const meta = el("div", "ez-doc-meta");
+    const navigation = el("div", "ez-document-navigation");
+    navigation.append(this.breadcrumbs);
+    header.append(navigation, titleRow);
+    return header;
+  }
+
+  private buildStatusbar(): HTMLElement {
+    const statusbar = el("footer", "ez-statusbar");
+    statusbar.setAttribute("aria-label", "Document status");
     this.saveStatusDot = el("span", "ez-status-dot");
     this.saveStatusEl = el("span", "ez-status-text");
     this.saveStatusEl.setAttribute("role", "status");
@@ -672,86 +830,8 @@ export class WorkspaceUI {
     this.wordCountEl = el("span", "ez-word-count");
     this.wordCountEl.textContent = "0 words";
 
-    const metaGroup = el("div", "ez-doc-meta-group");
-    metaGroup.append(statusBtn, this.wordCountEl);
-    meta.appendChild(metaGroup);
-
-    const actions = el("div", "ez-doc-actions");
-    const outlineBtn = svgButton("ez-icon-btn", ICONS.outline, "Toggle heading outline");
-    outlineBtn.addEventListener("click", () => this.root.classList.toggle("ez-outline-open"));
-    const findBtn = svgButton("ez-icon-btn", ICONS.search, "Find in document");
-    findBtn.addEventListener("click", () => this.openFindDialog());
-    const printBtn = svgButton("ez-icon-btn", ICONS.printer, "Print document");
-    printBtn.addEventListener("click", () => this.deps.printActiveNote());
-
-    this.fullscreenBtn = svgButton("ez-icon-btn", ICONS.maximize, "Enter fullscreen");
-    this.fullscreenBtn.addEventListener("click", () => this.deps.toggleFullscreen());
-
-    this.docMenu = el("details", "ez-doc-menu") as HTMLDetailsElement;
-    const menuSummary = el("summary", "ez-icon-btn ez-doc-menu-btn");
-    menuSummary.appendChild(renderIcon(ICONS.ellipsis));
-    menuSummary.setAttribute("aria-label", "Document menu");
-    const panel = el("div", "ez-doc-menu-panel");
-    panel.setAttribute("data-ez-ui", "true");
-    const makeItem = (label: string, run: () => void): HTMLElement => {
-      const item = button("ez-doc-menu-item", label);
-      item.addEventListener("click", () => {
-        run();
-        if (this.docMenu) this.docMenu.open = false;
-      });
-      return item;
-    };
-    panel.append(
-      makeItem("Download JSON", () => this.deps.exportActiveNote("json")),
-      makeItem("Export Markdown", () => this.deps.exportActiveNote("md")),
-      makeItem("Export HTML", () => this.deps.exportActiveNote("html")),
-      makeItem("Export plain text", () => this.deps.exportActiveNote("txt")),
-      makeItem("Import file…", () => this.importInput?.click()),
-      makeItem("Download workspace backup", () => this.deps.createBackup()),
-      makeItem("Restore workspace backup…", () => this.pickBackupFile())
-    );
-    this.docMenu.append(menuSummary, panel);
-
-    this.themeMenu = el("details", "ez-theme-menu") as HTMLDetailsElement;
-    const themeSummary = el("summary", "ez-icon-btn");
-    themeSummary.appendChild(renderIcon(ICONS.sun));
-    themeSummary.setAttribute("aria-label", "Theme");
-    const themePanel = el("div", "ez-theme-panel");
-    themePanel.setAttribute("data-ez-ui", "true");
-    for (const theme of ["light", "dark", "system"] as WorkspaceTheme[]) {
-      const item = button("ez-theme-item", THEME_LABELS[theme]);
-      item.setAttribute("data-ez-theme-choice", theme);
-      item.addEventListener("click", () => {
-        this.deps.setTheme(theme);
-        if (this.themeMenu) this.themeMenu.open = false;
-      });
-      themePanel.appendChild(item);
-    }
-    this.themeMenu.append(themeSummary, themePanel);
-
-    actions.append(outlineBtn, findBtn, printBtn, this.themeMenu, this.fullscreenBtn, this.docMenu);
-    const navigation = el("div", "ez-document-navigation");
-    navigation.append(this.breadcrumbs, actions);
-    header.append(navigation, titleRow, meta);
-    const closeMenus = (event: Event): void => {
-      for (const menu of [this.docMenu, this.themeMenu]) {
-        if (!menu?.open) continue;
-        if (event instanceof KeyboardEvent && event.key === "Escape") {
-          menu.open = false;
-          menu.querySelector("summary")?.focus();
-          event.stopPropagation();
-        } else if (event.type === "pointerdown" && !menu.contains(event.target as Node)) {
-          menu.open = false;
-        }
-      }
-    };
-    document.addEventListener("pointerdown", closeMenus);
-    this.root.addEventListener("keydown", closeMenus);
-    this.disposers.push(() => {
-      document.removeEventListener("pointerdown", closeMenus);
-      this.root.removeEventListener("keydown", closeMenus);
-    });
-    return header;
+    statusbar.append(statusBtn, this.wordCountEl);
+    return statusbar;
   }
 
   private updateHeader(): void {
@@ -905,13 +985,20 @@ export class WorkspaceUI {
 
   openFindDialog(): void {
     if (!this.findDialog) return;
+    if (this.findDialog.hidden) this.findReturnFocus = document.activeElement as HTMLElement | null;
     this.findDialog.hidden = false;
     this.findInput?.focus();
   }
 
   closeFindDialog(): void {
     if (!this.findDialog) return;
+    const restoreFocus = this.findDialog.contains(document.activeElement);
     this.findDialog.hidden = true;
+    if (restoreFocus) {
+      const target = this.findReturnFocus?.getClientRects().length ? this.findReturnFocus : this.docMenu?.querySelector("summary");
+      target?.focus();
+    }
+    this.findReturnFocus = null;
     this.root.querySelectorAll<HTMLElement>(".ez-find-hit").forEach((el) => {
       el.classList.remove("ez-find-hit");
       el.removeAttribute("data-ez-find");

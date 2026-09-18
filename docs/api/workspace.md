@@ -46,10 +46,12 @@ Per-note history: undo stacks are kept per note in `histories: Map<string, Histo
 
 | Member | Description |
 | --- | --- |
-| `toggleFullscreen(force?)` | CSS-based fullscreen (no Fullscreen API permission prompts). |
+| `toggleFullscreen(force?)` | `Promise<void>` — enter or exit browser fullscreen. Call from a user action such as a click. Failures show a notice. |
 | `isFullscreen()` | Current state. |
 | `setTheme(t)` / `getTheme()` | `"light" \| "dark" \| "system"`. |
 | `resolvedTheme()` | Effective `"light" \| "dark"`. |
+
+The fullscreen button uses the browser's Fullscreen API. Escape exits fullscreen, and `fullscreen:changed` reports the actual browser state. Embedded editors need fullscreen allowed by their containing iframe.
 
 ## Backups
 

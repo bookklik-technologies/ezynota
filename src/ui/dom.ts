@@ -25,6 +25,9 @@ export function svgButton(className: string, svg: string, ariaLabel: string): HT
   btn.setAttribute("aria-label", ariaLabel);
   btn.title = ariaLabel;
   btn.innerHTML = svg; // SVG icons are static, code-owned constants — safe.
+  for (const icon of Array.from(btn.querySelectorAll("svg"))) {
+    icon.setAttribute("stroke-width", "1.8"); // Suite UI icon standard.
+  }
   return btn;
 }
 

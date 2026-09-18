@@ -24,7 +24,7 @@ A saved document embeds a generator stamp:
 ```json
 {
   "schemaVersion": "1.0.0",
-  "generator": { "name": "ezynota", "version": "0.3.0" },
+  "generator": { "name": "ezynota", "version": "0.1.1" },
   "blocks": []
 }
 ```

@@ -55,6 +55,9 @@ import replaceIcon from "lucide-static/icons/replace.svg?raw";
 import linkIcon from "lucide-static/icons/link.svg?raw";
 import ellipsisIcon from "lucide-static/icons/ellipsis-vertical.svg?raw";
 import checkIcon from "lucide-static/icons/check.svg?raw";
+import boldIcon from "lucide-static/icons/bold.svg?raw";
+import italicIcon from "lucide-static/icons/italic.svg?raw";
+import underlineIcon from "lucide-static/icons/underline.svg?raw";
 
 export const ICONS = {
   plus: plusIcon,
@@ -104,7 +107,10 @@ export const ICONS = {
   replace: replaceIcon,
   link: linkIcon,
   ellipsis: ellipsisIcon,
-  check: checkIcon
+  check: checkIcon,
+  bold: boldIcon,
+  italic: italicIcon,
+  underline: underlineIcon
 };
 
 /** Tool palette icons (slash menu + block settings "convert to" list). */
@@ -134,5 +140,8 @@ export function renderIcon(icon: string): HTMLElement {
   span.className = "ez-menu-icon";
   span.innerHTML = icon;
   span.setAttribute("aria-hidden", "true");
+  for (const svg of Array.from(span.querySelectorAll("svg"))) {
+    svg.setAttribute("stroke-width", "1.8");
+  }
   return span;
 }
