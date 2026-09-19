@@ -30,11 +30,12 @@
 }
 
 .ez-editor[data-ez-theme="dark"] {
-  --ez-bg: #1b1620;
-  --ez-text: #fafafa;
-  --ez-muted: #a79cae;
-  --ez-border: #352c3d;
-  --ez-hover: #272130;
+  /* Neutral base matches Ezyreka; accents retain Ezynota's brand colors. */
+  --ez-bg: #17181d;
+  --ez-text: #e8e9ee;
+  --ez-muted: #9a9da8;
+  --ez-border: #383a41;
+  --ez-hover: #34363d;
   --ez-accent: #f472b6;
   --ez-accent-2: #a78bfa;
   --ez-danger: #ef4444;
@@ -580,11 +581,11 @@ pre.ez-code {
    ============================================================ */
 
 .ez-editor-mount[data-ez-theme="dark"], .ez-editor-mount[data-ez-resolved-theme="dark"] {
-  --ez-bg: #1b1620;
-  --ez-text: #fafafa;
-  --ez-muted: #a79cae;
-  --ez-border: #352c3d;
-  --ez-hover: #272130;
+  --ez-bg: #17181d;
+  --ez-text: #e8e9ee;
+  --ez-muted: #9a9da8;
+  --ez-border: #383a41;
+  --ez-hover: #34363d;
   --ez-accent: #f472b6;
   --ez-accent-2: #a78bfa;
   --ez-danger: #ef4444;
@@ -1192,12 +1193,12 @@ pre.ez-code {
   font-size: 14px;
 }
 .ez-workspace-root[data-ez-resolved-theme="dark"] {
-  --ez-bg: #1d1721;
-  --ez-text: #ece6f0;
-  --ez-muted: #a79cae;
-  --ez-border: #362c3e;
-  --ez-hover: #2c2331;
-  --ez-sidebar-bg: #170f1c;
+  --ez-bg: #17181d;
+  --ez-text: #e8e9ee;
+  --ez-muted: #9a9da8;
+  --ez-border: #383a41;
+  --ez-hover: #34363d;
+  --ez-sidebar-bg: #23252b;
   --ez-accent: #f472b6;
   --ez-accent-2: #a78bfa;
   --ez-selected: #3b1434;
