@@ -3,6 +3,7 @@
  * The SVGs are static, code-owned assets inlined at build time;
  * they are never built from user data, so injection via innerHTML is safe.
  */
+import saveIcon from "lucide-static/icons/save.svg?raw";
 import plusIcon from "lucide-static/icons/plus.svg?raw";
 import gripIcon from "lucide-static/icons/grip-vertical.svg?raw";
 import settingsIcon from "lucide-static/icons/settings-2.svg?raw";
@@ -67,6 +68,7 @@ import italicIcon from "lucide-static/icons/italic.svg?raw";
 import underlineIcon from "lucide-static/icons/underline.svg?raw";
 
 export const ICONS = {
+  save: saveIcon,
   plus: plusIcon,
   grip: gripIcon,
   settings: settingsIcon,

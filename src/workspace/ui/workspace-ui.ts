@@ -3,6 +3,7 @@ import type { SaveStatus, SearchHit, WorkspaceEvent, WorkspaceTheme } from "../t
 import type { NoteRecord, FolderRecord } from "../types";
 import { el, button, svgButton, clearChildren, navigateControls, placePopover } from "../../ui/dom";
 import { ICONS, renderIcon } from "../../ui/icons";
+import { installSuiteTopbar, bindSuiteMenu } from "../../ui/suite-topbar";
 import { BRAND_LOGO } from "../../ui/brand";
 import { inlineToPlainText } from "../../rich-text/types";
 import type { EzynotaBlock } from "../../types";
@@ -318,7 +319,6 @@ export class WorkspaceUI {
       if (event.key === "Enter") this.workspaceTitle?.blur();
     });
 
-    const actions = el("div", "ez-topbar-actions");
     const historyActions = el("div", "ez-topbar-group ez-history-actions");
     historyActions.setAttribute("role", "group");
     historyActions.setAttribute("aria-label", "Edit history");
@@ -338,7 +338,6 @@ export class WorkspaceUI {
     const toggleOutline = (): void => {
       const open = this.root.classList.toggle("ez-outline-open");
       outlineBtn.setAttribute("aria-expanded", String(open));
-      mobileOutline.setAttribute("aria-expanded", String(open));
     };
     outlineBtn.addEventListener("click", toggleOutline);
     const findBtn = svgButton("ez-icon-btn", ICONS.search, "Find in document");
@@ -363,17 +362,8 @@ export class WorkspaceUI {
       });
       return item;
     };
-    const mobileOutline = makeItem("Toggle heading outline", toggleOutline);
-    mobileOutline.classList.add("ez-mobile-action");
-    mobileOutline.setAttribute("aria-expanded", "false");
-    const mobileFind = makeItem("Find in document", () => this.openFindDialog());
-    mobileFind.classList.add("ez-mobile-action");
     panel.append(
-      mobileOutline,
-      mobileFind,
       makeItem("Print document", () => this.deps.printActiveNote()),
-      makeItem("Import file…", () => this.importInput?.click()),
-      makeItem("Download workspace backup", () => this.deps.createBackup()),
       makeItem("Restore workspace backup…", () => this.pickBackupFile())
     );
     this.docMenu.append(menuSummary, panel);
@@ -410,61 +400,24 @@ export class WorkspaceUI {
     }
     this.themeMenu.append(themeSummary, themePanel);
 
-    const viewActions = el("div", "ez-topbar-group");
-    viewActions.append(this.themeMenu, this.fullscreenBtn, this.docMenu);
-    actions.append(historyActions, documentActions, viewActions, this.exportMenu);
-    topbar.append(brand, this.workspaceTitle, el("div", "ez-topbar-spacer"), actions);
-    const menus = [this.docMenu, this.themeMenu, this.exportMenu];
-    const positionMenus = (): void => {
-      for (const menu of menus) {
-        if (!menu.open) continue;
-        const popup = menu.querySelector<HTMLElement>("[data-ez-ui]");
-        const summary = menu.querySelector("summary");
-        if (!popup || !summary) continue;
-        popup.style.insetInlineEnd = "auto";
-        placePopover(popup, summary.getBoundingClientRect());
-      }
-    };
-    for (const menu of menus) {
-      menu.addEventListener("toggle", () => {
-        if (menu.open) for (const other of menus) if (other !== menu) other.open = false;
-        positionMenus();
-      });
-      menu.addEventListener("keydown", (event) => {
-        if (!menu.open || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-        const items = Array.from(menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"))
-          .filter((item) => item.getClientRects().length > 0);
-        const index = items.indexOf(document.activeElement as HTMLButtonElement);
-        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
-          : index < 0 ? (event.key === "ArrowUp" ? items.length - 1 : 0)
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-        items[next]?.focus();
-        event.preventDefault();
-        event.stopPropagation();
-      });
-    }
-    const closeMenus = (event: Event): void => {
-      for (const menu of menus) {
-        if (!menu?.open) continue;
-        if (event instanceof KeyboardEvent && event.key === "Escape") {
-          menu.open = false;
-          menu.querySelector("summary")?.focus();
-          event.stopPropagation();
-        } else if (event.type === "pointerdown" && !menu.contains(event.target as Node)) {
-          menu.open = false;
-        }
-      }
-    };
-    document.addEventListener("pointerdown", closeMenus);
-    document.addEventListener("scroll", positionMenus, true);
-    window.addEventListener("resize", positionMenus);
-    this.root.addEventListener("keydown", closeMenus);
-    this.disposers.push(() => {
-      document.removeEventListener("pointerdown", closeMenus);
-      document.removeEventListener("scroll", positionMenus, true);
-      window.removeEventListener("resize", positionMenus);
-      this.root.removeEventListener("keydown", closeMenus);
-    });
+    const viewActions = el("div");
+    viewActions.setAttribute("aria-label", "View");
+    viewActions.append(this.themeMenu, this.fullscreenBtn);
+    const fileActions = el("div");
+    fileActions.setAttribute("aria-label", "Files");
+    const importButton = svgButton("ez-icon-btn", ICONS.folderOpen, "Import file");
+    importButton.addEventListener("click", () => this.importInput?.click());
+    const backupButton = svgButton("ez-icon-btn", ICONS.save, "Download workspace backup");
+    backupButton.addEventListener("click", () => this.deps.createBackup());
+    fileActions.append(importButton, backupButton);
+    documentActions.setAttribute("aria-label", "Document tools");
+    this.disposers.push(installSuiteTopbar(this.root, topbar, {
+      brand, title: this.workspaceTitle, history: historyActions,
+      specialist: documentActions, view: viewActions, files: fileActions,
+      exportControl: this.exportMenu, more: this.docMenu,
+    }));
+    this.disposers.push(bindSuiteMenu(this.themeMenu, themePanel));
+    this.disposers.push(bindSuiteMenu(this.exportMenu, exportPanel));
     return topbar;
   }
 
