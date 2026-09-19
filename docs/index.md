@@ -6,7 +6,7 @@ hero:
   name: "Ezynota"
   text: "A free, block-style editor"
   tagline: Portable JSON output, zero dependencies, transaction-driven. Build note apps, writing surfaces, and embedded editors that own their data.
-  image: /ezynota/logo.svg
+  image: /ezynota/ezynota-preview.png
   actions:
     - theme: brand
       text: Get started

@@ -13,6 +13,8 @@ experiences — CMS platforms, documentation systems, note-taking apps, comments
 - **Accessible** — keyboard-complete operation, ARIA menus, RTL, reduced motion (WCAG 2.2 AA target).
 - **Secure by default** — pasted HTML is sanitized, dangerous URLs are rejected, no `eval`.
 
+![Ezynota preview](ezynota-preview.png)
+
 ## Quick start
 
 ### Declarative (browser bundle)
