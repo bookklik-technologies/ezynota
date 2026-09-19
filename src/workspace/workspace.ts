@@ -251,6 +251,20 @@ export class WorkspaceState {
     return this.envelope;
   }
 
+  /** Editable workspace display name shown in the topbar title field. */
+  getWorkspaceName(): string {
+    return this.envelope.name ?? "Untitled workspace";
+  }
+
+  /** Rename the workspace (persists via autosave and notifies listeners). */
+  renameWorkspace(name: string): void {
+    const next = name.trim() || "Untitled workspace";
+    if (this.envelope.name === next) return;
+    this.envelope.name = next;
+    this.markDirty();
+    this.emit({ type: "workspaceRenamed", name: next });
+  }
+
   getRevision(): number {
     return this.revision;
   }
@@ -818,6 +832,7 @@ function normalizeEnvelope(stored: WorkspaceEnvelope | null, workspaceId: string
   return {
     workspaceSchemaVersion: WORKSPACE_SCHEMA_VERSION,
     id: workspaceId,
+    name: typeof stored.name === "string" && stored.name.trim() ? stored.name : base.name,
     notes: Array.isArray(stored.notes) ? stored.notes : [],
     folders: Array.isArray(stored.folders) ? stored.folders : [],
     savedAt: typeof stored.savedAt === "number" ? stored.savedAt : 0,

@@ -336,6 +336,7 @@ export function emptyWorkspace(workspaceId: string): WorkspaceEnvelope {
   return {
     workspaceSchemaVersion: WORKSPACE_SCHEMA_VERSION,
     id: workspaceId,
+    name: "Untitled workspace",
     notes: [],
     folders: [],
     savedAt: 0,

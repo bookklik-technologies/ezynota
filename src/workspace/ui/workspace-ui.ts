@@ -15,6 +15,7 @@ export interface WorkspaceUIDeps {
   createNote(title?: string, folderId?: string | null): string | null;
   createFolder(name?: string, parentId?: string | null): string | null;
   renameNote(id: string, title: string): void;
+  renameWorkspace(name: string): void;
   renameFolder(id: string, name: string): void;
   moveNote(id: string, folderId: string | null): void;
   moveFolder(id: string, parentId: string | null): boolean;
@@ -90,6 +91,7 @@ export class WorkspaceUI {
   private searchInput: HTMLInputElement | null = null;
   private searchResults: HTMLElement | null = null;
   private titleInput: HTMLInputElement | null = null;
+  private workspaceTitle: HTMLInputElement | null = null;
   private breadcrumbs: HTMLElement | null = null;
   private saveStatusEl: HTMLElement | null = null;
   private saveStatusDot: HTMLElement | null = null;
@@ -182,6 +184,10 @@ export class WorkspaceUI {
       return;
     }
     if (event.type === "noteRenamed") {
+      this.scheduleHeaderRefresh();
+      return;
+    }
+    if (event.type === "workspaceRenamed") {
       this.scheduleHeaderRefresh();
       return;
     }
@@ -299,6 +305,19 @@ export class WorkspaceUI {
     brandMark.innerHTML = BRAND_LOGO; // static, code-owned brand asset (mirrors icon.svg)
     brand.append(brandMark, el("span", "ez-brand-name", "Ezynota"));
 
+    // Suite-standard editable title field, mirroring ezygrid/ezyreka topbars.
+    this.workspaceTitle = el("input", "ez-topbar-title");
+    this.workspaceTitle.type = "text";
+    this.workspaceTitle.spellcheck = false;
+    this.workspaceTitle.placeholder = "Untitled workspace";
+    this.workspaceTitle.setAttribute("aria-label", "Workspace name");
+    this.workspaceTitle.addEventListener("change", () => {
+      this.deps.renameWorkspace(this.workspaceTitle?.value ?? "");
+    });
+    this.workspaceTitle.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") this.workspaceTitle?.blur();
+    });
+
     const actions = el("div", "ez-topbar-actions");
     const historyActions = el("div", "ez-topbar-group ez-history-actions");
     historyActions.setAttribute("role", "group");
@@ -394,7 +413,7 @@ export class WorkspaceUI {
     const viewActions = el("div", "ez-topbar-group");
     viewActions.append(this.themeMenu, this.fullscreenBtn, this.docMenu);
     actions.append(historyActions, documentActions, viewActions, this.exportMenu);
-    topbar.append(brand, el("div", "ez-topbar-spacer"), actions);
+    topbar.append(brand, this.workspaceTitle, el("div", "ez-topbar-spacer"), actions);
     const menus = [this.docMenu, this.themeMenu, this.exportMenu];
     const positionMenus = (): void => {
       for (const menu of menus) {
@@ -861,6 +880,11 @@ export class WorkspaceUI {
 
   private updateHeader(): void {
     const note = this.state.activeNoteId ? this.state.getNote(this.state.activeNoteId) : null;
+    if (this.workspaceTitle) {
+      if (document.activeElement !== this.workspaceTitle) {
+        this.workspaceTitle.value = this.state.getWorkspaceName();
+      }
+    }
     if (this.titleInput) {
       if (document.activeElement !== this.titleInput) {
         this.titleInput.value = note?.title ?? "";

@@ -470,4 +470,52 @@ describe("workspace audit fixes", () => {
     expect(state.search("findable")).toHaveLength(0);
     expect(state.search("findable", { includeTrash: true }).length).toBeGreaterThan(0);
   });
+
+  it("renameWorkspace persists the envelope name, emits and round-trips through backup", async () => {
+    const storage = new MemoryStorage(false);
+    const state = workspace("name-regression", storage);
+    await state.load();
+    expect(state.getWorkspaceName()).toBe("Untitled workspace");
+
+    const events: WorkspaceEvent[] = [];
+    state.on((event) => events.push(event));
+    state.renameWorkspace("Field notes");
+    expect(state.getWorkspaceName()).toBe("Field notes");
+    expect(events.some((event) => event.type === "workspaceRenamed" && event.name === "Field notes")).toBe(true);
+
+    // Whitespace-only renames fall back to the default label.
+    state.renameWorkspace("   ");
+    expect(state.getWorkspaceName()).toBe("Untitled workspace");
+
+    await state.flush();
+    expect((await storage.loadWorkspace("name-regression"))?.name).toBe("Untitled workspace");
+
+    // The name survives a backup/restore round-trip.
+    const backup = await state.createBackup();
+    const restored = await state.restoreBackup(backup, { newWorkspaceId: true });
+    expect(state.getWorkspaceName()).toBe("Untitled workspace");
+    expect(restored.workspaceId).not.toBe("name-regression");
+  });
+
+  it("normalizeEnvelope defaults the name for legacy envelopes without one", async () => {
+    const storage = new MemoryStorage(false);
+    await storage.init();
+    const legacy = await storage.loadWorkspace("legacy-name");
+    expect(legacy).toBeNull();
+    await storage.commit(
+      "legacy-name",
+      {
+        workspaceSchemaVersion: "1.0.0",
+        id: "legacy-name",
+        notes: [],
+        folders: [],
+        savedAt: 1
+      },
+      0
+    );
+
+    const state = workspace("legacy-name", storage);
+    await state.load();
+    expect(state.getWorkspaceName()).toBe("Untitled workspace");
+  });
 });

@@ -363,6 +363,7 @@ export class WorkspaceController {
           this.state.renameNote(id, title);
         }
       },
+      renameWorkspace: (name) => this.state.renameWorkspace(name),
       duplicateNote: (id) => {
         const copy = this.state.duplicateNote(id);
         if (copy) void this.loadNoteIntoEditor(copy.id);

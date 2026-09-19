@@ -66,8 +66,9 @@ The fullscreen button uses the browser's Fullscreen API. Escape exits fullscreen
 
 `ws.state` is the state machine under the controller:
 
-- **Read:** `getEnvelope()`, `getRevision()`, `listNotes()`, `listFolders()`, `listTrashedNotes()`, `getNote(id)`, `getFolder(id)`, `folderPath(id)`, `noteLinks(id)`, `backlinks(id)`
+- **Read:** `getEnvelope()`, `getRevision()`, `getWorkspaceName()`, `listNotes()`, `listFolders()`, `listTrashedNotes()`, `getNote(id)`, `getFolder(id)`, `folderPath(id)`, `noteLinks(id)`, `backlinks(id)`
 - **Notes:** `createNote(title, folderId?, document?)`, `renameNote`, `moveNote`, `duplicateNote`, `updateNoteDocument`, `trashNote`, `restoreNote`, `deleteNoteForever`
+- **Workspace:** `renameWorkspace(name)` — updates the envelope's `name` (topbar title field) via autosave; emits `workspaceRenamed`.
 - **Folders:** `createFolder`, `renameFolder`, `moveFolder` (cycle-proof), `trashFolder`, `restoreFolder`, `deleteFolderForever`, `emptyTrash`
 - **Persistence:** `markDirty()` (500 ms debounce), `flushSave()`, `flush()`, `getUnsavedSnapshot()`, `createBackup()`
 - **Assets:** `saveAsset(asset)`, `loadAsset(id)`, `assetObjectUrl(id)`

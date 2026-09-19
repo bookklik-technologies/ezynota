@@ -619,6 +619,23 @@ pre.ez-code {
 .ez-brand-mark svg { width: 28px; height: 28px; display: block; }
 .ez-brand-name { font-weight: 700; font-size: 15px; }
 .ez-topbar-spacer { flex: 1; }
+/* Suite topbar title field, mirroring ezygrid (.ezg-title) / ezyreka (.ez-filename). */
+.ez-topbar-title {
+  border: 1px solid transparent;
+  border-radius: var(--ez-radius-sm);
+  background: transparent;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ez-text);
+  width: 190px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.ez-topbar-title:hover { border-color: var(--ez-border); }
+.ez-topbar-title:focus { outline: none; border-color: var(--ez-accent); background: var(--ez-bg); }
+.ez-topbar-title::placeholder { color: var(--ez-muted); font-weight: 500; }
 .ez-topbar-actions {
   display: flex; align-items: center; gap: 10px; flex-shrink: 0;
 }
@@ -1227,6 +1244,7 @@ pre.ez-code {
 @media (max-width: 600px) {
   .ez-topbar { gap: 4px; padding: 6px 8px; }
   .ez-brand-name { display: none; }
+  .ez-topbar-title { width: 110px; padding: 4px 8px; }
   .ez-workspace-root { --ez-content-inset-end: 20px; }
   .ez-header-row { padding-top: 20px; }
   .ez-topbar-actions { gap: 6px; }

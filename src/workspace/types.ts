@@ -44,6 +44,8 @@ export interface WorkspaceAsset {
 export interface WorkspaceEnvelope {
   workspaceSchemaVersion: string;
   id: string;
+  /** Editable workspace display name shown in the topbar title field. */
+  name?: string;
   notes: NoteRecord[];
   folders: FolderRecord[];
   savedAt: number;
@@ -129,6 +131,7 @@ export type WorkspaceEvent =
   | { type: "saveStatus"; status: SaveStatus; error?: unknown }
   | { type: "remoteChange" }
   | { type: "noteRenamed"; noteId: string; title: string }
+  | { type: "workspaceRenamed"; name: string }
   | { type: "fullscreen"; on: boolean };
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
