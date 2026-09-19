@@ -196,7 +196,7 @@ export class ImageTool implements BlockTool<ImageData> {
       action.title = description;
       return action;
     };
-    const upload = makeAction("Replace", ICONS.upload, "Upload or replace image");
+    const upload = makeAction("Upload", ICONS.upload, "Upload image");
     this.uploadButton = upload;
     upload.addEventListener("click", () => this.pickFile());
     const urlBtn = makeAction("Image URL", ICONS.link, "Insert image from URL");

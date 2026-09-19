@@ -1297,6 +1297,8 @@ pre.ez-code {
 .ez-image-caption[contenteditable="true"]:hover { border-color: var(--ez-border); }
 .ez-image-caption[contenteditable="false"]:empty { display: none; }
 .ez-image-toolbar {
+  opacity: 0;
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1308,6 +1310,14 @@ pre.ez-code {
   border-radius: var(--ez-radius-md);
   color: var(--ez-muted);
   font-size: 12px;
+}
+.ez-image:hover > .ez-image-toolbar,
+.ez-image-toolbar:has(:focus-visible) {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .ez-image:focus-within > .ez-image-toolbar { opacity: 1; pointer-events: auto; }
 }
 .ez-image-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .ez-image-action {
