@@ -5,7 +5,7 @@ Workspace persistence goes through a small async interface. Ezynota ships with t
 ## Built-in adapters
 
 ```ts
-import { IndexedDbStorage, MemoryStorage, emptyWorkspace } from "@bookklik/ezynota";
+import { IndexedDbStorage, MemoryStorage, emptyWorkspace } from "ezynota";
 
 // Default — persists in the browser via IndexedDB
 const editor = new Ezynota({ target: "#app", mode: "workspace" });

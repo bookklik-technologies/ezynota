@@ -28,7 +28,7 @@ Commands are addressed by the `EZ` constants (all values are `"EZ_*"` strings):
 The raw string values work too — constants are just a typo-safety layer:
 
 ```ts
-import { EZ } from "@bookklik/ezynota";
+import { EZ } from "ezynota";
 
 editor.dispatch(EZ.INSERT_BLOCK, { type: "paragraph", data: { content: [] } });
 ```

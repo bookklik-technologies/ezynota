@@ -101,7 +101,7 @@ export class ToggleTool implements BlockTool<ToggleData> {
       this.open = open;
       this.container.setAttribute("data-ez-toggle-open", String(open));
     }
-    const caret = this.container.querySelector<HTMLButtonElement>(":scope > .ez-toggle-header > .ez-toggle-caret");
+    const caret = this.findCaret();
     if (caret) {
       caret.innerHTML = open ? ICONS.caretDown : ICONS.caretRight;
       caret.setAttribute("aria-expanded", String(open));
@@ -117,6 +117,15 @@ export class ToggleTool implements BlockTool<ToggleData> {
       }
     }
     this.renderChildren();
+  }
+
+  /** The header row is a direct child of the container (never a nested toggle's). */
+  private findCaret(): HTMLButtonElement | null {
+    const header = Array.from(this.container.children).find((child) => child.classList.contains("ez-toggle-header"));
+    const caret = header
+      ? Array.from(header.children).find((child) => child.classList.contains("ez-toggle-caret"))
+      : undefined;
+    return (caret as HTMLButtonElement | undefined) ?? null;
   }
 
   focus(at?: "start" | "end"): void {
@@ -162,7 +171,13 @@ export class ToggleTool implements BlockTool<ToggleData> {
   private renderChildren(): void {
     if (!this.nested || !this.childrenHost) return;
     const children = this.nested.getBlocks();
-    const domChildren = Array.from(this.childrenHost.querySelectorAll<HTMLElement>(":scope > [data-ez-nested-id]"));
+    // Direct-child traversal (not a `:scope >` selector): identical semantics
+    // in browsers, and robust in environments whose selector engines lack
+    // `:scope` (where the fast path below would wrongly treat a structural
+    // change as identical).
+    const domChildren = Array.from(this.childrenHost.children).filter(
+      (element) => element.hasAttribute("data-ez-nested-id")
+    ) as HTMLElement[];
     // Fast path: same ids and types — only update changed child content.
     if (domChildren.length === children.length) {
       let identical = true;
@@ -234,7 +249,10 @@ export class ToggleTool implements BlockTool<ToggleData> {
       const signature = JSON.stringify(child);
       if (this.childSignatures.get(child.id) === signature) continue;
       this.childSignatures.set(child.id, signature);
-      const wrapper = this.childrenHost.querySelector<HTMLElement>(`:scope > [data-ez-nested-id="${CSS.escape(child.id)}"]`);
+      const wrapper =
+        (Array.from(this.childrenHost.children) as HTMLElement[]).find(
+          (element) => element.getAttribute("data-ez-nested-id") === child.id
+        ) ?? null;
       if (!wrapper) continue;
       // Local input is already rendered. External changes refresh the whole
       // tool, never replace a table cell with an entire table, for example.

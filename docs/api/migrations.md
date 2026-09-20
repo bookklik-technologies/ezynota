@@ -5,7 +5,7 @@ Documents outlive app versions. Ezynota handles this with three layers: **normal
 ## Normalization
 
 ```ts
-import { normalizeDocument, normalizeBlock, SCHEMA_VERSION, MAX_JSON_DEPTH } from "@bookklik/ezynota";
+import { normalizeDocument, normalizeBlock, SCHEMA_VERSION, MAX_JSON_DEPTH } from "ezynota";
 
 const doc = normalizeDocument(untrustedInput, idGenerator);
 ```
@@ -21,7 +21,7 @@ const doc = normalizeDocument(untrustedInput, idGenerator);
 For payloads that must never fail to open (user uploads, legacy data, third-party JSON):
 
 ```ts
-import { salvageDocument } from "@bookklik/ezynota";
+import { salvageDocument } from "ezynota";
 
 const result: SalvageResult = salvageDocument(badInput, idGenerator?);
 // {
@@ -38,7 +38,7 @@ Invalid blocks become read-only `unknown` placeholders that preserve the raw dat
 Register forward migrations; Ezynota picks the shortest path automatically (BFS over the migration graph) and can even walk **downgrades** when opening an older-schema document is required.
 
 ```ts
-import { MigrationManager } from "@bookklik/ezynota";
+import { MigrationManager } from "ezynota";
 
 const migrations = new MigrationManager();
 migrations.register({

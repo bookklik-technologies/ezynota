@@ -56,8 +56,8 @@ export class BlockToolbar {
     this.root.querySelectorAll("svg").forEach((svg) => svg.setAttribute("aria-hidden", "true"));
     this.root.addEventListener("keydown", (event) => {
       if (!this.open && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
-        const controls = Array.from(this.root.querySelectorAll<HTMLButtonElement>(":scope > button"))
-          .filter((button) => getComputedStyle(button).display !== "none");
+        const controls = (Array.from(this.root.children) as HTMLElement[])
+          .filter((element) => element.matches("button") && getComputedStyle(element).display !== "none") as HTMLButtonElement[];
         const direction = (event.key === "ArrowRight" ? 1 : -1) * (this.host.target.getAttribute("dir") === "rtl" ? -1 : 1);
         const index = controls.indexOf(document.activeElement as HTMLButtonElement);
         controls[(index + direction + controls.length) % controls.length]?.focus();

@@ -100,6 +100,10 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   /** Read-only recovery state for documents from a newer/unknown schema. */
   private recoveryMode = false;
   private originalDocument: EzynotaDocument | null = null;
+  /** True while recovery mode has force-latched readOnly over the user's config. */
+  private recoveryLocked = false;
+  /** The user-configured readOnly value before recovery latched it. */
+  private preRecoveryReadOnly = false;
   /** Guards async tool saves against newer edits or destruction. */
   private blockSaveVersions = new Map<string, number>();
   /** Resolved lifecycle mode. */
@@ -136,7 +140,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     // A document from a newer/unknown schema opens in protected read-only
     // recovery mode; content is preserved verbatim (spec §19).
     if (this.recoveryMode) {
-      this.config = { ...this.config, readOnly: true };
+      this.latchRecoveryReadOnly();
     }
     this.tm = new TransactionManager(this.state, (batch) => this.handleCommit(batch));
     this.blockManager = new BlockManager(this.tm, createIdFactory(config.idGenerator), { onBatch: () => {} });
@@ -359,15 +363,38 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     const migrated = this.migrateDocument(document);
     this.blockManagerReplaceAll(migrated);
     if (this.recoveryMode) {
-      this.config = { ...this.config, readOnly: true };
+      this.latchRecoveryReadOnly();
       this.targetEl.classList.add("ez-readonly");
       this.renderer.setReadOnly(true);
       this.closeMenus();
+    } else {
+      // A valid document replaces a previously opened recovery document:
+      // undo the recovery read-only latch so render() can actually load
+      // editable content again.
+      this.clearRecoveryLock();
     }
     // A document replacement is not an undoable user edit: reset history
     // so undo/redo never reaches across documents.
     this.history.clear();
     this.bus.emit("history:changed", { canUndo: this.canUndo(), canRedo: this.canRedo() });
+  }
+
+  /** Force readOnly for recovery mode, remembering the user's own setting. */
+  private latchRecoveryReadOnly(): void {
+    if (this.recoveryLocked) return;
+    this.recoveryLocked = true;
+    this.preRecoveryReadOnly = this.config.readOnly === true;
+    this.config = { ...this.config, readOnly: true };
+  }
+
+  /** Undo a recovery read-only latch once a valid document is rendered. */
+  private clearRecoveryLock(): void {
+    if (!this.recoveryLocked) return;
+    this.recoveryLocked = false;
+    this.targetEl.classList.remove("ez-readonly");
+    if (this.config.readOnly !== this.preRecoveryReadOnly) {
+      this.setReadOnly(this.preRecoveryReadOnly);
+    }
   }
 
   clear(): void {
@@ -422,7 +449,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
             ? this.blockManager.getIndex(options.after) + 1
             : -1;
     const id = this.blockManager.insert(type, data ?? initialDataShape(type), "api", index);
-    if (options?.focus !== false && !this.config.readOnly) {
+    if (options?.focus !== false && !this.readOnly) {
       queueMicrotask(() => this.focusBlock(id, "start"));
     }
     return id;
@@ -441,16 +468,19 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
   }
 
   moveBlock(id: string, target: BlockPosition): void {
+    if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
     this.assertEditable();
     this.blockManager.move(id, target, "api");
   }
 
   duplicateBlock(id: string): string {
+    if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
     this.assertEditable();
     return this.blockManager.duplicate(id, "api");
   }
 
   convertBlock(id: string, targetType: string): void {
+    if (this.destroyed) throw new EzynotaError("EZ_DESTROYED", "Editor is destroyed");
     this.assertEditable();
     const block = this.blockManager.getById(id);
     if (!block) return;
@@ -547,6 +577,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     this.themeListenerDisposer = null;
     for (const dispose of this.disposers) dispose();
     this.disposers.length = 0;
+    this.blockSaveVersions.clear();
     unregisterInstance(this);
     // Suppress immediate automatic remounting for declarative mounts.
     if (this.declarative) this.targetEl.setAttribute("data-ezn-destroyed", "");
@@ -1356,6 +1387,13 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
         }
       }
     }
+    // A removed block's epoch entry can never match again — prune it so the
+    // map does not grow monotonically in create/delete-heavy sessions.
+    // (Deleting keeps the guard sound: an absent entry never equals an
+    // in-flight save's version, so stale saves are still discarded.)
+    for (const change of batch.changes) {
+      if (change.type === "block:remove") this.blockSaveVersions.delete(change.id);
+    }
     // Document replacements are handled explicitly (render/clear reset the
     // history) — they have no reversible payload for mechanical inversion.
     const replaceOnly = batch.changes.length > 0 && batch.changes.every((c) => c.type === "document:replace");
@@ -1466,6 +1504,10 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     }
     this.tm.commit("api", [{ type: "document:replace" }]);
     this.renderer.renderAll(this.state.get().blocks);
+    // Every block id was replaced: pending-save epochs for the old ids can
+    // never match again and would otherwise accumulate unboundedly in
+    // long-lived workspace sessions.
+    this.blockSaveVersions.clear();
   }
 
   /** Restore the caret recorded with a history entry (undo/redo). */
@@ -1494,6 +1536,12 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     if (this.blockManager.getIndex(id) < 0 || !block) return undefined;
     const getType = (): string => this.blockManager.getById(id)?.type ?? "";
     const getIndex = (): number => this.blockManager.getIndex(id);
+    // Re-resolve by id at call time: undo/redo/paste splice in clones, so a
+    // captured object reference would return stale data.
+    const getData = (): JsonValue => {
+      const current = this.blockManager.getById(id) ?? block;
+      return JSON.parse(JSON.stringify(current.data)) as JsonValue;
+    };
     return {
       id,
       get type() {
@@ -1502,7 +1550,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
       get index() {
         return getIndex();
       },
-      getData: () => JSON.parse(JSON.stringify(block.data)) as JsonValue,
+      getData,
       update: (data) => this.updateBlock(id, data),
       patch: (data) => {
         const current = (this.getBlockData(id) as Record<string, unknown>) ?? {};

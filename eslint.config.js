@@ -21,5 +21,13 @@ export default tseslint.config(
       // console.error is the deliberate last-resort error report for broken listeners.
       "no-console": ["error", { allow: ["error"] }]
     }
+  },
+  {
+    files: ["src/init/declarative.ts"],
+    rules: {
+      // console.error is the deliberate report for failed declarative mounts —
+      // a throwing element must never abort the batch scan or the observer.
+      "no-console": ["error", { allow: ["error"] }]
+    }
   }
 );

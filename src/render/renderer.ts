@@ -109,11 +109,14 @@ export class Renderer {
     if (!entry) return;
     const from = Array.from(this.blocksRoot.children).indexOf(entry.element);
     const siblings = Array.from(this.blocksRoot.children).filter((element) => element !== entry.element);
-    const ref = siblings[to] ?? null;
+    // Clamp like the state layer does (moveInArray): an out-of-range index
+    // from a custom tool must not desync DOM order from state order.
+    const clamped = Math.max(0, Math.min(to, siblings.length));
+    const ref = siblings[clamped] ?? null;
     this.blocksRoot.insertBefore(entry.element, ref);
     const tool = entry.tool as BlockTool;
     try {
-      tool.moved?.({ from, to });
+      tool.moved?.({ from, to: clamped });
     } catch {
       /* optional hook */
     }

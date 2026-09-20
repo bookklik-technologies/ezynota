@@ -21,8 +21,8 @@ interface HintData {
 The easiest path is extending `TextBlockTool`, which already implements rendering plumbing, saving, merging, splitting, and focus for rich-text blocks:
 
 ```ts
-import { TextBlockTool } from "@bookklik/ezynota";
-import type { InlineContent } from "@bookklik/ezynota";
+import { TextBlockTool } from "ezynota";
+import type { InlineContent } from "ezynota";
 
 class HintTool extends TextBlockTool {
   static toolbox = {
@@ -129,7 +129,7 @@ class MyTool extends TextBlockTool {
 Goal: a "small caps" toggle that stores a `smallcaps` mark.
 
 ```ts
-import { MarkInlineTool } from "@bookklik/ezynota";
+import { MarkInlineTool } from "ezynota";
 
 class SmallCapsTool extends MarkInlineTool {
   static isInline = true;
@@ -160,7 +160,7 @@ The mark persists in JSON as `{ type: "smallcaps" }` and normalizes deterministi
 Goal: a width tune that lets any block render "normal" or "wide".
 
 ```ts
-import type { BlockTune, BlockTuneOptions } from "@bookklik/ezynota/types";
+import type { BlockTune, BlockTuneOptions } from "ezynota/types";
 
 class WidthTune implements BlockTune {
   constructor(private options: BlockTuneOptions) {}
@@ -197,8 +197,8 @@ Style the wrapped block accordingly (check `data-ez-tunes` / the block's tune da
 ## 4. Testing your tool
 
 ```ts
-import { Ezynota } from "@bookklik/ezynota";
-import "@bookklik/ezynota/dist/ezynota.css";
+import { Ezynota } from "ezynota";
+import "ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
   target: document.body.appendChild(document.createElement("div")),

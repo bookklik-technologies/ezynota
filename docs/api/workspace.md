@@ -78,4 +78,5 @@ The fullscreen button uses the browser's Fullscreen API. Escape exits fullscreen
 
 - Changes call `markDirty()`; a debounced save (500 ms) follows.
 - Commits carry a `storageRevision`; if another tab saved first, the editor surfaces a recovery state instead of overwriting (`workspace:changed` with kind `"remoteChange"` / `"loadFailed"`).
+- While a cross-tab conflict is pending, automatic saves pause (each attempt would fail on the stale revision) and edits stay dirty until `retrySave()` resolves the conflict against the remote revision.
 - `SaveStatus` drives the visible save indicator: pending / saved / error.

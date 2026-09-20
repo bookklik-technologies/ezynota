@@ -65,6 +65,10 @@ Each mount element bubbles these events, with data in `event.detail`:
 | `ezn:change` | `ChangeBatch` |
 | `ezn:error` | `EzynotaError` |
 
+::: tip
+If an element fails to construct (e.g. an unknown `defaultBlock`), the scan and the auto-scan observer report it on that element — `console.error` plus a bubbling `ezn:error` event with `{ message }` in `detail.payload` — and keep mounting the other elements. One broken mount never aborts the batch.
+:::
+
 ## Explicit initialization
 
 If you need a handle on instances (or you're using the `core` entry), initialize manually:

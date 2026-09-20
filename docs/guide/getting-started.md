@@ -12,14 +12,14 @@ Ezynota is a free, block-style editor with portable JSON output. It ships as a s
 ### npm / pnpm / yarn
 
 ```bash
-npm install @bookklik/ezynota
+npm install ezynota
 ```
 
 Then import the editor and its stylesheet:
 
 ```ts
-import { Ezynota } from "@bookklik/ezynota";
-import "@bookklik/ezynota/dist/ezynota.css";
+import { Ezynota } from "ezynota";
+import "ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
   target: "#app",
@@ -38,7 +38,7 @@ await editor.ready;
 Use the `ezynota/core` entry if you don't want the automatic declarative scanning side effect:
 
 ```ts
-import { Ezynota } from "@bookklik/ezynota/core";
+import { Ezynota } from "ezynota/core";
 ```
 
 The core entry is identical except it does **not** auto-mount `[data-ezn-editor]` elements and does not import the CSS. You call `Ezynota.initAll()` yourself if you want declarative behavior.
@@ -47,11 +47,11 @@ The core entry is identical except it does **not** auto-mount `[data-ezn-editor]
 ### Script tag (UMD)
 
 ```html
-<link rel="stylesheet" href="https://unpkg.com/@bookklik/ezynota/dist/ezynota.css" />
+<link rel="stylesheet" href="https://unpkg.com/ezynota/dist/ezynota.css" />
 
 <div id="editor"></div>
 
-<script src="https://unpkg.com/@bookklik/ezynota/dist/ezynota.umd.cjs"></script>
+<script src="https://unpkg.com/ezynota/dist/ezynota.umd.cjs"></script>
 <script>
   const editor = new Ezynota({ target: "#editor" });
 </script>

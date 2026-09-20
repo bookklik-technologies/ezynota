@@ -1,4 +1,5 @@
 import { EzynotaError } from "../core/errors";
+import { GENERATOR_VERSION } from "../core/schema";
 import type {
   CommitResult,
   StorageAdapter,
@@ -58,12 +59,16 @@ export class IndexedDbStorage implements StorageAdapter {
           // attempt is not cached permanently — close()/re-init retries
           // IndexedDB.
           this.db = null;
-          if (!this.fallback) this.fallback = new MemoryStorage();
+          if (!this.fallback) this.fallback = new MemoryStorage(false);
         }
       } else if (!this.fallback) {
-        this.fallback = new MemoryStorage();
+        this.fallback = new MemoryStorage(false);
       }
-      if (!this.fallback && typeof BroadcastChannel !== "undefined") {
+      // Cross-tab sync must also work in fallback mode (private browsing,
+      // blocked upgrade, quota-blocked open): create the channel regardless
+      // of how storage is backed, so remote commits always reach our
+      // listeners instead of degrading to silent stale-retry loops.
+      if (!this.channel && typeof BroadcastChannel !== "undefined") {
         this.channel = new BroadcastChannel("ezynota:workspace");
         this.channel.onmessage = (event: MessageEvent) => {
           const workspaceId = (event.data as { workspaceId?: string } | undefined)?.workspaceId;
@@ -107,26 +112,35 @@ export class IndexedDbStorage implements StorageAdapter {
       const db = this.ensureDb();
       const tx = db.transaction(STORE_WORKSPACES, "readwrite");
       const store = tx.objectStore(STORE_WORKSPACES);
-      const current = await requestToPromise(store.get(workspaceId) as IDBRequest<StoredWorkspace | undefined>);
-      const storedRevision = current?.revision ?? 0;
-      // Revision check: another tab wrote since we loaded.
-      if (storedRevision !== expectedRevision) {
-        return { ok: false, reason: "stale" };
-      }
-      const next: StoredWorkspace = {
-        id: workspaceId,
-        envelope: cloneEnvelope(envelope),
-        revision: storedRevision + 1
-      };
+      // The put must be issued synchronously inside the get's success
+      // handler: IndexedDB auto-commits a transaction as soon as the event
+      // loop has no pending requests, so awaiting between the two requests
+      // can intermittently throw TransactionInactiveError under load.
       const result = await new Promise<CommitResult>((resolve, reject) => {
-        const put = store.put(next);
-        put.onsuccess = () => resolve({ ok: true, revision: next.revision });
-        put.onerror = () => {
-          // QuotaExceededError and friends surface here.
-          const name = (put.error as { name?: string } | undefined)?.name ?? "";
-          if (name === "QuotaExceededError") resolve({ ok: false, reason: "quota" });
-          else reject(put.error);
+        let pendingRevision = 0;
+        const get = store.get(workspaceId) as IDBRequest<StoredWorkspace | undefined>;
+        get.onsuccess = () => {
+          const storedRevision = get.result?.revision ?? 0;
+          // Revision check: another tab wrote since we loaded.
+          if (storedRevision !== expectedRevision) {
+            resolve({ ok: false, reason: "stale" });
+            return;
+          }
+          pendingRevision = storedRevision + 1;
+          const put = store.put({
+            id: workspaceId,
+            envelope: cloneEnvelope(envelope),
+            revision: pendingRevision
+          });
+          put.onsuccess = () => resolve({ ok: true, revision: pendingRevision });
+          put.onerror = () => {
+            // QuotaExceededError and friends surface here.
+            const name = (put.error as { name?: string } | undefined)?.name ?? "";
+            if (name === "QuotaExceededError") resolve({ ok: false, reason: "quota" });
+            else reject(put.error);
+          };
         };
+        get.onerror = () => reject(get.error ?? new Error("IndexedDB request failed"));
         tx.onabort = () => {
           const name = (tx.error as { name?: string } | undefined)?.name ?? "";
           if (name === "QuotaExceededError") resolve({ ok: false, reason: "quota" });
@@ -340,6 +354,6 @@ export function emptyWorkspace(workspaceId: string): WorkspaceEnvelope {
     notes: [],
     folders: [],
     savedAt: 0,
-    generator: { name: "ezynota", version: "0.1.1" }
+    generator: { name: "ezynota", version: GENERATOR_VERSION }
   };
 }

@@ -16,7 +16,7 @@ Everything that enters the document passes through the same validators:
 A strict allowlist guards every URL that can reach the DOM:
 
 ```ts
-import { isSafeUrl, isSafeImageUrl, sanitizeLinkTarget } from "@bookklik/ezynota";
+import { isSafeUrl, isSafeImageUrl, sanitizeLinkTarget } from "ezynota";
 
 isSafeUrl("https://example.com");   // true
 isSafeUrl("javascript:alert(1)");   // false

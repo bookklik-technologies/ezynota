@@ -50,18 +50,39 @@ export function mountElement(element: HTMLElement): Ezynota | undefined {
   const existing = listInstances().find((instance) => (instance as unknown as { targetEl: Element }).targetEl === element);
   if (existing) return existing;
   const config = configFromAttributes(element);
-  let instance: Ezynota;
-  try {
-    instance = new Ezynota(config);
-  } catch (error) {
-    // Never leave the element flagged as mounted when construction failed —
-    // it would be permanently skipped on retry.
-    element.removeAttribute(MOUNT_FLAG);
-    throw error;
-  }
+  // The MOUNT_FLAG is only set after construction, so a failed mount leaves
+  // the element unflagged and retryable. Callers decide whether the error
+  // propagates (see safeMountElement for the batch paths).
+  const instance = new Ezynota(config);
   instance.declarative = true;
   element.setAttribute(MOUNT_FLAG, "");
   return instance;
+}
+
+/**
+ * Mount one element, converting construction failures into reported errors
+ * (console + bubbling `ezn:error`) instead of propagating them. Used by the
+ * batch scan and the mutation observer so one broken element never aborts
+ * the others. Returns the instance on success, undefined otherwise.
+ */
+export function safeMountElement(element: HTMLElement): Ezynota | undefined {
+  try {
+    return mountElement(element);
+  } catch (error) {
+    reportMountError(element, error);
+    return undefined;
+  }
+}
+
+function reportMountError(element: HTMLElement, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[ezynota] Failed to mount [data-ezn-editor] element: ${message}`, error);
+  try {
+    const detail = { payload: { message } };
+    element.dispatchEvent(new CustomEvent("ezn:error", { bubbles: true, composed: true, detail }));
+  } catch {
+    /* non-DOM environment */
+  }
 }
 
 /** Initialize every `[data-ezn-editor]` under `root` (default: document). */
@@ -70,7 +91,7 @@ export function initAll(root?: ParentNode): Ezynota[] {
   const scope = root ?? document;
   const mounted: Ezynota[] = [];
   for (const element of Array.from(scope.querySelectorAll<HTMLElement>("[data-ezn-editor]"))) {
-    const instance = mountElement(element);
+    const instance = safeMountElement(element);
     if (instance) mounted.push(instance);
   }
   return mounted;
@@ -112,7 +133,7 @@ function startGlobalObserver(): void {
       }
     }
     for (const element of added) {
-      if (!element.hasAttribute(MOUNT_FLAG) && !element.hasAttribute(DESTROY_FLAG)) mountElement(element);
+      if (!element.hasAttribute(MOUNT_FLAG) && !element.hasAttribute(DESTROY_FLAG)) safeMountElement(element);
     }
     scheduleDetachedCleanup();
   });

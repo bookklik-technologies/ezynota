@@ -45,7 +45,7 @@ export default defineConfig({
     // The library itself is never imported by the docs build; keep
     // optimization off so VitePress doesn't try to pre-bundle it.
     optimizeDeps: {
-      exclude: ["@bookklik/ezynota"],
+      exclude: ["ezynota"],
     },
   },
 });

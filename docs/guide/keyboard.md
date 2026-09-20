@@ -66,7 +66,7 @@ Conversions trigger as you type and each is a **single undoable transaction**.
 Typing shortcuts are just one direction of Markdown support. Ezynota converts documents to and from Markdown losslessly:
 
 ```ts
-import { blocksToMarkdown, markdownToBlocks } from "@bookklik/ezynota";
+import { blocksToMarkdown, markdownToBlocks } from "ezynota";
 
 const md = blocksToMarkdown(doc.blocks);
 const blocks = markdownToBlocks(md);

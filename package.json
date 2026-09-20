@@ -30,7 +30,11 @@
     },
     "./core": {
       "types": "./dist/core-entry.d.ts",
-      "import": "./dist/core.esm.js"
+      "import": "./dist/core.esm.js",
+      "require": "./dist/ezynota.umd.cjs"
+    },
+    "./types": {
+      "types": "./dist/index.d.ts"
     },
     "./dist/ezynota.css": "./dist/ezynota.css",
     "./package.json": "./package.json"
@@ -41,7 +45,7 @@
     "LICENSE"
   ],
   "sideEffects": [
-    "*.css",
+    "**/*.css",
     "./dist/ezynota.esm.js"
   ],
   "scripts": {

@@ -3,7 +3,7 @@
 The `Ezynota` class is the editor. One instance mounts into one target element.
 
 ```ts
-import { Ezynota } from "@bookklik/ezynota";
+import { Ezynota } from "ezynota";
 
 const editor = new Ezynota({ target: "#app" });
 await editor.ready;
@@ -33,6 +33,8 @@ Collects every block tool's `save()` output, validates each block, and returns t
 ### `render(document): Promise<void>`
 
 Migrates the document to the current schema version, replaces the in-memory document, and **resets history**.
+
+If the document uses an unsupported schema version, it is preserved verbatim and the editor opens in read-only recovery mode (`isRecoveryMode()` returns `true`). Rendering a valid document afterwards restores the configured editability — the recovery lock is not permanent.
 
 ### `getSnapshot(): Readonly<EzynotaDocument>`
 

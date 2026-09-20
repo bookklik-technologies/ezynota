@@ -34,7 +34,7 @@ See the [document format reference](/api/document-format).
 ## Markdown
 
 ```ts
-import { blocksToMarkdown, markdownToBlocks, parseMarkdownInline } from "@bookklik/ezynota";
+import { blocksToMarkdown, markdownToBlocks, parseMarkdownInline } from "ezynota";
 
 const md = blocksToMarkdown(doc.blocks, {
   noteLinkTitles: true, // render note:<id> links with their titles (workspace)
@@ -50,7 +50,7 @@ Supported round-trip features: headings, bullet/ordered/task lists, quotes, fenc
 **Export** produces standalone HTML with tables and `<details>`-based toggles:
 
 ```ts
-import { blocksToHtml } from "@bookklik/ezynota";
+import { blocksToHtml } from "ezynota";
 
 const html = blocksToHtml(doc.blocks);
 ```
@@ -58,7 +58,7 @@ const html = blocksToHtml(doc.blocks);
 **Import** runs through a strict sanitizer — scripts, styles, event handlers, and unsafe URLs are stripped, and the parsed tree is converted to blocks:
 
 ```ts
-import { htmlToBlocks, textToBlocks } from "@bookklik/ezynota";
+import { htmlToBlocks, textToBlocks } from "ezynota";
 
 const blocks = htmlToBlocks(pastedHtml);
 const fromText = textToBlocks(plainText);
@@ -67,7 +67,7 @@ const fromText = textToBlocks(plainText);
 ## File import & export
 
 ```ts
-import { parseImportFile, blocksToDocument, exportDocumentToString, downloadTextFile, detectFormat } from "@bookklik/ezynota";
+import { parseImportFile, blocksToDocument, exportDocumentToString, downloadTextFile, detectFormat } from "ezynota";
 
 // From a File/Blob (json, md, html, txt, or a workspace backup)
 const parsed = await parseImportFile(file);
@@ -85,7 +85,7 @@ downloadTextFile(text, safeFilename("my note") + ".md");
 Image sources can be `asset:<id>` references into the workspace asset store. For portable exports, resolve them to data URLs:
 
 ```ts
-import { resolveDocumentAssets } from "@bookklik/ezynota";
+import { resolveDocumentAssets } from "ezynota";
 
 const portable = await resolveDocumentAssets(doc, (id) => loadAssetDataUrl(id));
 ```
@@ -93,7 +93,7 @@ const portable = await resolveDocumentAssets(doc, (id) => loadAssetDataUrl(id));
 ## Print / PDF
 
 ```ts
-import { printDocument } from "@bookklik/ezynota";
+import { printDocument } from "ezynota";
 
 printDocument(doc); // opens a sanitized print window
 ```

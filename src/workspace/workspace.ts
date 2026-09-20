@@ -136,7 +136,7 @@ export class WorkspaceState {
     // pending commit. destroy() stays synchronous — the write fires now and
     // the storage is closed once it settles.
     const finalWrite = this.dirty
-      ? this.saveQueue.then(() => this.persistFinal(cloneEnvelope(this.envelope), this.mutationVersion))
+      ? this.enqueue(() => this.persistFinal(cloneEnvelope(this.envelope), this.mutationVersion))
       : this.saveQueue;
     this.dirty = false;
     this.listeners.clear();
@@ -598,6 +598,12 @@ export class WorkspaceState {
     this.mutationVersion += 1;
     this.dirty = true;
     this.cancelSaveTimer();
+    // While a cross-tab conflict is pending, automatic saves cannot succeed
+    // (the loaded revision is stale): scheduling the 500ms autosave here
+    // would only produce a full read + failed commit per keystroke. The
+    // edits stay dirty and recoverable; the conflict banner / retrySave()
+    // consume the remote revision and restore normal autosaving.
+    if (this.conflictRemoteRevision !== null) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
       this.flushSave();
@@ -622,7 +628,24 @@ export class WorkspaceState {
     const snapshot = cloneEnvelope(this.envelope);
     const version = this.mutationVersion;
     this.unsavedSnapshot = snapshot;
-    this.saveQueue = this.saveQueue.then(() => this.persist(snapshot, version));
+    this.enqueue(() => this.persist(snapshot, version));
+  }
+
+  /**
+   * Chain a job onto the serialized save queue. A rejected job must never
+   * poison the queue: the chain always resolves so later autosaves (and
+   * destroy()'s final write) still run. The job's own error handling decides
+   * whether the failure is reported; a rejected promise returned by `job` is
+   * re-thrown to the caller of the awaited queue via `result`.
+   */
+  private enqueue(job: () => Promise<void>): Promise<void> {
+    const run = this.saveQueue.then(job);
+    // Keep the queue itself resolved no matter what the job did.
+    this.saveQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
   }
 
   private async persist(snapshot: WorkspaceEnvelope, version: number): Promise<void> {
@@ -777,7 +800,12 @@ export class WorkspaceState {
     // the restore commit would otherwise revert it (it reads this.revision
     // at execution time).
     this.cancelSaveTimer();
-    this.saveQueue = this.flush().then(async () => {
+    // Flush pending autosaves first, then run the restore through the
+    // guarded queue (enqueue): a throwing job (malformed asset bytes,
+    // failed/stale commit) must not poison the queue — later autosaves and
+    // the destroy-time final write still run.
+    await this.flush();
+    const restore = this.enqueue(async () => {
       if (isBackupWithAssets(backup)) {
         for (const asset of backup.assets) {
           await this.storage.saveAsset(targetId, { ...asset, bytes: decodeAssetBytes(asset.bytes) });
@@ -799,7 +827,18 @@ export class WorkspaceState {
       this.unsavedSnapshot = null;
       this.subscribeCrossTab();
     });
-    await this.saveQueue;
+    try {
+      await restore;
+    } catch (error) {
+      // The restore failed inside the queue: keep the current workspace in
+      // its recoverable dirty state and surface the error to the caller.
+      this.retainFailedSave(
+        error instanceof EzynotaError
+          ? error
+          : new EzynotaError("EZ_IMPORT_FAILED", "Restoring the backup failed", { workspaceId: targetId }, error)
+      );
+      throw error;
+    }
     this.emit({ type: "notes:changed" });
     this.emit({ type: "folders:changed" });
     return { workspaceId: targetId };

@@ -66,7 +66,7 @@ interface BlockTool {
 The editor drives structural edits through tool helpers (`splitAtRange`, `merge`, `updated`, `isEmpty`, …). `TextBlockTool` implements all of these for rich-text blocks, so most custom text-ish tools just extend it:
 
 ```ts
-import { TextBlockTool } from "@bookklik/ezynota";
+import { TextBlockTool } from "ezynota";
 
 class HintTool extends TextBlockTool {
   static toolbox = { title: "Hint", icon: "💡", category: "Basic blocks" };

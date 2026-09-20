@@ -94,7 +94,9 @@ describe("dragging blocks into toggle sections", () => {
     drag(target, "p", target.querySelector<HTMLElement>('[data-ez-block-id="t"]')!);
     expect(editor.getSnapshot().blocks.map((block) => block.id)).toEqual(["t"]);
     expect(editor.getSnapshot().blocks[0]!.children?.[0]).toEqual(before[0]);
-    expect(target.querySelector('[data-ez-nested-id="p"]')?.textContent).toBe("Keep me");
+    // The nested wrapper also holds the drag-grip button whose SVG icon
+    // contributes whitespace text nodes — compare trimmed content.
+    expect(target.querySelector('[data-ez-nested-id="p"]')?.textContent?.trim()).toBe("Keep me");
     expect(target.querySelector(".ez-toggle")?.getAttribute("data-ez-toggle-open")).toBe("true");
     expect(target.querySelector(".ez-drop-target, .ez-dragging")).toBeNull();
     editor.undo();
