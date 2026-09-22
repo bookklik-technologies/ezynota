@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Workspace Storage"
+  short_description: "Build revision-safe Ezynota workspace storage"
+  default_prompt: "Use $ezynota-workspace-storage to add a custom workspace backend with conflict-safe commits and asset support."
+
+policy:
+  allow_implicit_invocation: true

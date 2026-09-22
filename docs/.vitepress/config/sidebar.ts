@@ -27,6 +27,7 @@ export const guideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Custom tools', link: '/guide/custom-tools' },
       { text: 'Theming', link: '/guide/theming' },
       { text: 'Internationalization', link: '/guide/i18n' },
+      { text: 'Development skills', link: '/guide/development-skills' },
       { text: 'Security', link: '/guide/security' },
     ],
   },

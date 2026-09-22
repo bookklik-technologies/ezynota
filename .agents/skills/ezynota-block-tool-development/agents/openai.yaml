@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Block Tool Development"
+  short_description: "Create robust custom Ezynota block tools"
+  default_prompt: "Use $ezynota-block-tool-development to build a rich-text hint block with conversion and read-only support."
+
+policy:
+  allow_implicit_invocation: true

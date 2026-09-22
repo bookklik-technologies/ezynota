@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Document Creation"
+  short_description: "Build editable Ezynota documents and blocks"
+  default_prompt: "Use $ezynota-document-creation to create an editable project brief with structured headings and rich-text blocks."
+
+policy:
+  allow_implicit_invocation: true

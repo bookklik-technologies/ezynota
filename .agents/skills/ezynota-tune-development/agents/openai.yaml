@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Tune Development"
+  short_description: "Create undoable per-block Ezynota tunes"
+  default_prompt: "Use $ezynota-tune-development to create an accessible normal-or-wide block tune with undo support."
+
+policy:
+  allow_implicit_invocation: true

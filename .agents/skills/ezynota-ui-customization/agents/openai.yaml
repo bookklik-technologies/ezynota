@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota UI Customization"
+  short_description: "Configure accessible Ezynota UI and themes"
+  default_prompt: "Use $ezynota-ui-customization to configure a localized RTL document editor with a system-aware theme."
+
+policy:
+  allow_implicit_invocation: true

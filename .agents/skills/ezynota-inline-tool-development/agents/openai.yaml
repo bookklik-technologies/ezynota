@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Inline Tool Development"
+  short_description: "Build selection-safe Ezynota inline tools"
+  default_prompt: "Use $ezynota-inline-tool-development to create a keyboard-accessible small-caps mark tool."
+
+policy:
+  allow_implicit_invocation: true

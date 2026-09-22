@@ -1,0 +1,7 @@
+interface:
+  display_name: "Ezynota Interchange and Migrations"
+  short_description: "Convert and migrate Ezynota documents safely"
+  default_prompt: "Use $ezynota-interchange-migrations to migrate an older document and export it to Markdown with clear fidelity limits."
+
+policy:
+  allow_implicit_invocation: true

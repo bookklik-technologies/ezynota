@@ -24,6 +24,8 @@ comments, and knowledge bases.
 
 Full guides and API reference: <https://bookklik-technologies.github.io/ezynota/>
 
+- [Development skills](docs/guide/development-skills.md) — seven repository skills for AI-assisted document, tool, tune, workspace, interchange and UI development
+
 ## Quick start
 
 ### Declarative (browser bundle)

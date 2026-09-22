@@ -14,6 +14,7 @@ export const nav: DefaultTheme.NavItem[] = [
     items: [
       { text: 'Document format', link: '/api/document-format' },
       { text: 'Custom tools', link: '/guide/custom-tools' },
+      { text: 'Development skills', link: '/guide/development-skills' },
       { text: 'Security', link: '/guide/security' },
       {
         text: 'Changelog (GitHub)',
