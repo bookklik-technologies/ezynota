@@ -1,6 +1,6 @@
 {
   "name": "@bookklik/ezynota",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A free, block-style editor with portable JSON output",
   "type": "module",
   "license": "MIT",
@@ -17,11 +17,21 @@
   ],
   "main": "./dist/ezynota.umd.cjs",
   "module": "./dist/ezynota.esm.js",
+  "unpkg": "./dist/ezynota.umd.cjs",
+  "jsdelivr": "./dist/ezynota.umd.cjs",
   "types": "./dist/index.d.ts",
+  "homepage": "https://bookklik-technologies.github.io/ezynota/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ezynota/ezynota.git"
+    "url": "git+https://github.com/bookklik-technologies/ezynota.git"
   },
+  "bugs": {
+    "url": "https://github.com/bookklik-technologies/ezynota/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.24.0",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -58,7 +68,8 @@
     "format": "prettier --write \"src/**/*\" \"tests/**/*\"",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "prepublishOnly": "npm test && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

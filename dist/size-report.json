@@ -1,0 +1,40 @@
+{
+  "gzipOk": true,
+  "budgetBytes": 100352,
+  "totalRaw": 389450,
+  "totalGzip": 94811,
+  "chunks": [
+    {
+      "file": "core-entry-BeXf_jHg.js",
+      "raw": 377637,
+      "gzip": 89902
+    },
+    {
+      "file": "core.esm.js",
+      "raw": 1965,
+      "gzip": 968
+    },
+    {
+      "file": "ezynota.esm.js",
+      "raw": 2099,
+      "gzip": 1009
+    },
+    {
+      "file": "find-replace-BLaUbXne.js",
+      "raw": 2338,
+      "gzip": 897
+    },
+    {
+      "file": "markdown-shortcuts-Du4C2zMP.js",
+      "raw": 5411,
+      "gzip": 2035
+    }
+  ],
+  "named": [
+    {
+      "file": "ezynota.css",
+      "raw": 42227,
+      "gzip": 8094
+    }
+  ]
+}
