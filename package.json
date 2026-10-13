@@ -1,6 +1,6 @@
 {
   "name": "@bookklik/ezynota",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A free, block-style editor with portable JSON output",
   "type": "module",
   "license": "MIT",
