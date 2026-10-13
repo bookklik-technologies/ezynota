@@ -53,6 +53,7 @@ export declare class WorkspaceState {
     constructor(options: WorkspaceStateOptions);
     load(): Promise<void>;
     isLoaded(): boolean;
+    isPersistent(): boolean;
     getLoadError(): unknown;
     /** Explicit recovery path after a failed load. */
     retryLoad(): Promise<void>;

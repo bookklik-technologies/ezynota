@@ -15,19 +15,20 @@ import type { EzynotaChange } from "../core/types";
  * etc. in the replacement text are never expanded.
  */
 export function createFindReplace(host: Host, target: HTMLElement) {
-  return (query: string, replaceWith: string, replaceAll: boolean): void => {
-    if (!query) return;
+  return (query: string, replaceWith: string, replaceAll: boolean, matchIndex = 0): void => {
+    if (!query || host.readOnly) return;
     void target;
     // Document-order first-match budget: "replace one" replaces exactly the
     // FIRST match in the document, not one match in every block.
     let budget = replaceAll ? Number.POSITIVE_INFINITY : 1;
     let replacedCount = 0;
+    const skip = { remaining: replaceAll ? 0 : Math.max(0, matchIndex) };
     const changes: EzynotaChange[] = [];
     for (const block of host.blocks.blocks) {
       if (budget <= 0) break;
       const previous = cloneJson(block.data);
       const next = cloneJson(previous);
-      const used = replaceInData(next, query, replaceWith, budget);
+      const used = replaceInData(next, query, replaceWith, budget, skip);
       if (used > 0) {
         budget -= used;
         replacedCount += used;
@@ -39,7 +40,9 @@ export function createFindReplace(host: Host, target: HTMLElement) {
       return;
     }
     // ONE transaction for the whole operation (single undo entry).
-    host.commitChanges("user", changes);
+    // These edits originate in the model; api-origin updates also refresh
+    // the tool DOM. User-origin updates assume the DOM was already edited.
+    host.commitChanges("api", changes);
     host.announce(replaceAll ? `Replaced ${replacedCount} match(es)` : "Replaced match");
     if (!replaceAll) {
       // Focus the first replaced block so the user sees the change.
@@ -53,26 +56,26 @@ export function createFindReplace(host: Host, target: HTMLElement) {
  * Replace matches within one block's data IN PLACE (the caller passes a
  * clone). Returns the number of replacements performed.
  */
-function replaceInData(data: unknown, query: string, replaceWith: string, budget: number): number {
+function replaceInData(data: unknown, query: string, replaceWith: string, budget: number, skip: { remaining: number }): number {
   if (!data || typeof data !== "object") return 0;
   let used = 0;
   const d = data as Record<string, unknown>;
   if (typeof d.code === "string") {
-    const { text, count } = replaceString(d.code, query, replaceWith, budget);
+    const { text, count } = replaceString(d.code, query, replaceWith, budget, skip);
     d.code = text;
     used += count;
   }
   if (Array.isArray(d.content)) {
-    used += replaceInInlineList(d.content as unknown[], query, replaceWith, budget - used);
+    used += replaceInInlineList(d.content as unknown[], query, replaceWith, budget - used, skip);
   }
   if (Array.isArray(d.heading)) {
-    used += replaceInInlineList(d.heading as unknown[], query, replaceWith, budget - used);
+    used += replaceInInlineList(d.heading as unknown[], query, replaceWith, budget - used, skip);
   }
   if (Array.isArray(d.items)) {
     for (const item of d.items as Record<string, unknown>[]) {
       if (budget - used <= 0) break;
       if (Array.isArray(item?.content)) {
-        used += replaceInInlineList(item.content as unknown[], query, replaceWith, budget - used);
+        used += replaceInInlineList(item.content as unknown[], query, replaceWith, budget - used, skip);
       }
     }
   }
@@ -82,40 +85,40 @@ function replaceInData(data: unknown, query: string, replaceWith: string, budget
       for (const cell of row as Record<string, unknown>[]) {
         if (budget - used <= 0) break;
         if (Array.isArray(cell?.content)) {
-          used += replaceInInlineList(cell.content as unknown[], query, replaceWith, budget - used);
+          used += replaceInInlineList(cell.content as unknown[], query, replaceWith, budget - used, skip);
         }
       }
     }
   }
   if (typeof d.caption === "string") {
-    const { text, count } = replaceString(d.caption, query, replaceWith, budget - used);
+    const { text, count } = replaceString(d.caption, query, replaceWith, budget - used, skip);
     d.caption = text;
     used += count;
   }
   return used;
 }
 
-function replaceInInlineList(nodes: unknown[], query: string, replaceWith: string, budget: number): number {
+function replaceInInlineList(nodes: unknown[], query: string, replaceWith: string, budget: number, skip: { remaining: number }): number {
   let used = 0;
   for (const node of nodes) {
     if (budget - used <= 0) break;
     if (!node || typeof node !== "object") continue;
     const n = node as Record<string, unknown>;
     if (typeof n.text === "string") {
-      const { text, count } = replaceString(n.text, query, replaceWith, budget - used);
+      const { text, count } = replaceString(n.text, query, replaceWith, budget - used, skip);
       n.text = text;
       used += count;
     }
     // Link nodes carry nested text nodes.
     if (Array.isArray(n.content)) {
-      used += replaceInInlineList(n.content as unknown[], query, replaceWith, budget - used);
+      used += replaceInInlineList(n.content as unknown[], query, replaceWith, budget - used, skip);
     }
   }
   return used;
 }
 
 /** Literal (non-expanding, non-regex) replace of up to `budget` occurrences. */
-function replaceString(text: string, query: string, replaceWith: string, budget: number): { text: string; count: number } {
+function replaceString(text: string, query: string, replaceWith: string, budget: number, skip: { remaining: number }): { text: string; count: number } {
   if (budget <= 0) return { text, count: 0 };
   let out = text;
   let count = 0;
@@ -123,6 +126,11 @@ function replaceString(text: string, query: string, replaceWith: string, budget:
   while (count < budget) {
     const index = out.indexOf(query, from);
     if (index < 0) break;
+    if (skip.remaining > 0) {
+      skip.remaining--;
+      from = index + query.length;
+      continue;
+    }
     out = out.slice(0, index) + replaceWith + out.slice(index + query.length);
     count++;
     // Continue past the inserted replacement (it may itself contain the query).

@@ -310,6 +310,7 @@ export class Renderer {
 
   /** Instantiate a block tool for a nested child (collapsible sections). */
   createToolInstancePublic(block: EzynotaBlock, element: HTMLElement, _parentId: string, api?: import("../types").BlockAPI): BlockTool {
+    if (api) api = Object.assign(Object.create(api) as import("../types").BlockAPI, { assetScope: this.hostApi.target });
     const nested = this.hostApi.nestedHost?.(block.id);
     return this.hostApi.registry.createBlockTool(block.type, {
       api: api ?? this.blockApiForTool(block.id, element),
@@ -324,6 +325,7 @@ export class Renderer {
   private blockApiForTool(id: string, element: HTMLElement): import("../types").BlockAPI {
     const host = this.hostApi;
     return {
+      assetScope: host.target,
       id,
       type: host.getBlockType(id) ?? "",
       get readOnly() { return host.readOnly; },

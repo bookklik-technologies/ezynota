@@ -45,13 +45,13 @@ bubbling `ezn:ready`, `ezn:change` and `ezn:error` DOM events. Attributes
 ### ESM / bundlers
 
 ```bash
-npm install ezynota
+npm install @bookklik/ezynota
 ```
 
 ```ts
-import { Ezynota } from "ezynota";           // main entry (declarative scanning side effect)
-import { Ezynota } from "ezynota/core";     // no automatic scanning
-import "ezynota/dist/ezynota.css";
+import { Ezynota } from "@bookklik/ezynota";           // main entry (declarative scanning side effect)
+import { Ezynota } from "@bookklik/ezynota/core";     // no automatic scanning
+import "@bookklik/ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
   target: "#editor",
@@ -78,7 +78,7 @@ pnpm build       # ESM + UMD (.cjs) + TypeScript declarations + CSS into dist/
 
 ## Status
 
-v0.1.1 — release-candidate quality: browser-local multi-note workspaces, four
+v0.1.2 — release-candidate quality: browser-local multi-note workspaces, four
 lifecycle modes, tables, images, callouts, collapsible sections and Markdown
 interchange. Accounts, server synchronization, collaboration and direct
 DOCX/PDF conversion are not currently included; real-browser checks (mobile,

@@ -8,6 +8,7 @@ import { BRAND_LOGO } from "../../ui/brand";
 import { inlineToPlainText } from "../../rich-text/types";
 import type { EzynotaBlock } from "../../types";
 import { EzynotaError } from "../../core/errors";
+import { findTextMatches, type TextMatch } from "../../features/find-matches";
 
 export interface WorkspaceUIDeps {
   undo(): void;
@@ -42,7 +43,7 @@ export interface WorkspaceUIDeps {
   toggleFullscreen(): void;
   retryLoad(): void;
   downloadOriginal(): void;
-  findInDocument(query: string, replaceWith: string, replaceAll: boolean): void;
+  findInDocument(query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number): void;
   goToBlock(blockId: string): void;
   getWordCount(): number;
   getLegacyDraft(): string | null;
@@ -63,6 +64,7 @@ function statusLabel(status: SaveStatus, error?: unknown): string {
   switch (status) {
     case "saving": return "Saving…";
     case "saved": return "Saved";
+    case "temporary": return "Stored in this tab only";
     case "error": {
       const reason = error instanceof EzynotaError ? error.context?.reason : undefined;
       if (reason === "stale") return "Save conflict — export a backup before reloading";
@@ -84,6 +86,8 @@ export class WorkspaceUI {
   private state: WorkspaceState;
   private deps: WorkspaceUIDeps;
   private showSidebar: boolean;
+  private compactSidebar = false;
+  private desktopSidebarCollapsed = false;
 
   private sidebar: HTMLElement | null = null;
   private sidebarToggle: HTMLElement | null = null;
@@ -108,11 +112,19 @@ export class WorkspaceUI {
   private errorPanel: HTMLElement | null = null;
   private legacyPanel: HTMLElement | null = null;
   private noticeEl: HTMLElement | null = null;
+  private storageNoticeEl: HTMLElement | null = null;
   private noticeTimer: ReturnType<typeof setTimeout> | null = null;
   private findDialog: HTMLElement | null = null;
   private findReturnFocus: HTMLElement | null = null;
   private findInput: HTMLInputElement | null = null;
   private replaceInput: HTMLInputElement | null = null;
+  private findReturnRange: Range | null = null;
+  private findMatches: TextMatch[] = [];
+  private findIndex = 0;
+  private findCounter: HTMLElement | null = null;
+  private findNavigation: HTMLButtonElement[] = [];
+  private replaceButtons: HTMLButtonElement[] = [];
+  private findHighlightName = `ezynota-find-${++findId}`;
   private disposers: (() => void)[] = [];
   private expandedFolders = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -128,15 +140,21 @@ export class WorkspaceUI {
 
   mount(): void {
     this.buildShell();
+    this.observeContainer();
     this.refreshHistory();
     const offNotes = this.state.on((event) => this.handleEvent(event));
     this.disposers.push(offNotes);
     this.renderSidebar();
     this.updateHeader();
     this.maybeShowLegacyDraft();
+    this.updateStorageNotice();
   }
 
   destroy(): void {
+    this.clearFindHighlights();
+    this.findMatches = [];
+    this.setDrawerOpen(false);
+    this.root.classList.remove("ez-workspace-compact", "ez-workspace-narrow");
     this.root.dispatchEvent(new Event("ez-close-popovers"));
     for (const dispose of this.disposers) dispose();
     this.disposers.length = 0;
@@ -283,19 +301,60 @@ export class WorkspaceUI {
 
   private buildSidebarToggle(): HTMLElement {
     this.sidebarToggle = svgButton("ez-icon-btn ez-sidebar-toggle", ICONS.panelLeft, "Toggle notes sidebar");
-    this.sidebarToggle.setAttribute("aria-expanded", String(!window.matchMedia("(max-width: 900px)").matches));
+    this.sidebarToggle.setAttribute("aria-expanded", "true");
     this.sidebarToggle.addEventListener("click", () => {
-      if (window.matchMedia("(max-width: 900px)").matches) {
-        this.root.classList.remove("ez-sidebar-collapsed");
-        const open = this.root.classList.toggle("ez-sidebar-open");
-        this.sidebarToggle?.setAttribute("aria-expanded", String(open));
+      if (this.compactSidebar) {
+        const open = !this.root.classList.contains("ez-sidebar-open");
+        this.setDrawerOpen(open);
         if (open) this.searchInput?.focus();
       } else {
-        const collapsed = this.root.classList.toggle("ez-sidebar-collapsed");
-        this.sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
+        this.desktopSidebarCollapsed = this.root.classList.toggle("ez-sidebar-collapsed");
+        this.sidebarToggle?.setAttribute("aria-expanded", String(!this.desktopSidebarCollapsed));
       }
     });
     return this.sidebarToggle;
+  }
+
+  private observeContainer(): void {
+    const update = (width = this.root.getBoundingClientRect().width || window.innerWidth): void => {
+      this.root.classList.toggle("ez-workspace-narrow", width <= 600);
+      const compact = width <= 900;
+      if (compact === this.compactSidebar) return;
+      const returnFocus = compact && this.sidebar?.contains(document.activeElement);
+      this.compactSidebar = compact;
+      this.root.classList.toggle("ez-workspace-compact", compact);
+      this.root.classList.toggle("ez-sidebar-collapsed", !compact && this.desktopSidebarCollapsed);
+      this.setDrawerOpen(false);
+      if (returnFocus) this.sidebarToggle?.focus();
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries.find((entry) => entry.target === this.root);
+        if (entry) update(entry.contentRect.width);
+      });
+      observer.observe(this.root);
+      this.disposers.push(() => observer.disconnect());
+    }
+    const resize = (): void => update();
+    window.addEventListener("resize", resize);
+    this.disposers.push(() => window.removeEventListener("resize", resize));
+  }
+
+  private setDrawerOpen(open: boolean): void {
+    this.root.classList.toggle("ez-sidebar-open", open);
+    this.sidebarToggle?.setAttribute("aria-expanded", String(this.showSidebar && (this.compactSidebar ? open : !this.desktopSidebarCollapsed)));
+    this.sidebar?.setAttribute("aria-hidden", String(!this.showSidebar || (this.compactSidebar && !open)));
+    if (this.sidebar) {
+      if (open) {
+        this.sidebar.setAttribute("role", "dialog");
+        this.sidebar.setAttribute("aria-modal", "true");
+      } else {
+        this.sidebar.removeAttribute("role");
+        this.sidebar.removeAttribute("aria-modal");
+      }
+    }
+    for (const background of this.root.querySelectorAll<HTMLElement>(".ez-main, .ezy-suite-topbar, .ez-statusbar")) background.inert = open;
   }
 
   /** Suite-standard topbar: brand + document actions, shared with the shell. */
@@ -310,13 +369,24 @@ export class WorkspaceUI {
     this.workspaceTitle = el("input", "ez-topbar-title");
     this.workspaceTitle.type = "text";
     this.workspaceTitle.spellcheck = false;
-    this.workspaceTitle.placeholder = "Untitled workspace";
-    this.workspaceTitle.setAttribute("aria-label", "Workspace name");
-    this.workspaceTitle.addEventListener("change", () => {
-      this.deps.renameWorkspace(this.workspaceTitle?.value ?? "");
-    });
+    this.workspaceTitle.placeholder = this.showSidebar ? "Untitled workspace" : "Untitled";
+    this.workspaceTitle.setAttribute("aria-label", this.showSidebar ? "Workspace name" : "Document name");
+    const renameTitle = (): void => {
+      const title = this.workspaceTitle?.value ?? "";
+      if (this.showSidebar) {
+        if (this.state.getWorkspaceName() !== title) this.deps.renameWorkspace(title);
+      } else if (this.state.activeNoteId && this.state.getNote(this.state.activeNoteId)?.title !== title) {
+        this.deps.renameNote(this.state.activeNoteId, title);
+      }
+    };
+    this.workspaceTitle.addEventListener("change", renameTitle);
     this.workspaceTitle.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") this.workspaceTitle?.blur();
+      if (event.isComposing || event.keyCode === 229) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        renameTitle();
+        this.workspaceTitle?.blur();
+      }
     });
 
     const historyActions = el("div", "ez-topbar-group ez-history-actions");
@@ -474,9 +544,8 @@ export class WorkspaceUI {
   }
 
   private closeMobileSidebar(restoreFocus = true): void {
-    this.root.classList.remove("ez-sidebar-open");
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      this.sidebarToggle?.setAttribute("aria-expanded", "false");
+    this.setDrawerOpen(false);
+    if (this.compactSidebar) {
       if (restoreFocus) this.sidebarToggle?.focus();
     }
   }
@@ -835,7 +904,7 @@ export class WorkspaceUI {
     const note = this.state.activeNoteId ? this.state.getNote(this.state.activeNoteId) : null;
     if (this.workspaceTitle) {
       if (document.activeElement !== this.workspaceTitle) {
-        this.workspaceTitle.value = this.state.getWorkspaceName();
+        this.workspaceTitle.value = this.showSidebar ? this.state.getWorkspaceName() : note?.title ?? "";
       }
     }
     if (this.titleInput) {
@@ -885,10 +954,24 @@ export class WorkspaceUI {
   }
 
   private updateSaveStatus(status: SaveStatus, error?: unknown): void {
+    this.updateStorageNotice();
     if (!this.saveStatusEl || !this.saveStatusDot) return;
     this.saveStatusEl.textContent = statusLabel(status, error);
     const saveState = this.saveStatusEl.closest(".ez-save-state") as HTMLElement | null;
     if (saveState) saveState.setAttribute("data-ez-save-status", status);
+  }
+
+  private updateStorageNotice(): void {
+    if (!this.storageNoticeEl) {
+      this.storageNoticeEl = el("div", "ez-workspace-storage-notice");
+      this.storageNoticeEl.setAttribute("role", "status");
+      const message = el("p", "", "Changes are stored only in this tab. Back up before closing or reloading.");
+      const backup = button("ez-btn", "Download workspace backup");
+      backup.addEventListener("click", () => this.deps.createBackup());
+      this.storageNoticeEl.append(message, backup);
+      this.noticeEl?.before(this.storageNoticeEl);
+    }
+    this.storageNoticeEl.hidden = this.state.isPersistent();
   }
 
   applyTheme(theme: WorkspaceTheme): void {
@@ -960,6 +1043,19 @@ export class WorkspaceUI {
     this.findInput.type = "search";
     this.findInput.placeholder = "Find";
     this.findInput.setAttribute("aria-label", "Find");
+    this.findInput.title = "Find exact text (case-sensitive)";
+    this.findInput.addEventListener("input", () => {
+      this.findIndex = 0;
+      this.refreshFindMatches(true);
+    });
+    const previous = svgButton("ez-icon-btn", ICONS.up, "Previous match");
+    const next = svgButton("ez-icon-btn", ICONS.down, "Next match");
+    previous.addEventListener("click", () => this.navigateFind(-1));
+    next.addEventListener("click", () => this.navigateFind(1));
+    this.findNavigation = [previous, next];
+    this.findCounter = el("span", "ez-find-counter");
+    this.findCounter.setAttribute("role", "status");
+    this.findCounter.setAttribute("aria-live", "polite");
     this.replaceInput = el("input", "ez-find-input");
     this.replaceInput.type = "text";
     this.replaceInput.placeholder = "Replace with";
@@ -970,25 +1066,44 @@ export class WorkspaceUI {
     replaceAllBtn.addEventListener("click", () => this.runReplace(true));
     const close = svgButton("ez-icon-btn", ICONS.x, "Close find and replace");
     close.addEventListener("click", () => this.closeFindDialog());
-    dialog.append(this.findInput, this.replaceInput, replaceBtn, replaceAllBtn, close);
+    this.replaceButtons = [replaceBtn, replaceAllBtn];
+    const highlightStyles = el("style");
+    highlightStyles.textContent = `::highlight(${this.findHighlightName}) { background-color: var(--ez-hover); color: var(--ez-text); }
+      ::highlight(${this.findHighlightName}-active) { background-color: var(--ez-selected); color: var(--ez-text); }`;
+    dialog.append(this.findInput, previous, next, this.findCounter, this.replaceInput, replaceBtn, replaceAllBtn, close, highlightStyles);
     dialog.addEventListener("keydown", (event) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if ((event as KeyboardEvent).key === "Escape") {
+        event.preventDefault();
         event.stopPropagation();
         this.closeFindDialog();
       }
       if ((event as KeyboardEvent).key === "Enter" && event.target === this.findInput) {
+        event.preventDefault();
+        this.navigateFind((event as KeyboardEvent).shiftKey ? -1 : 1);
+      } else if ((event as KeyboardEvent).key === "Enter" && event.target === this.replaceInput) {
+        event.preventDefault();
         this.runReplace(false);
       }
       navigateControls(event as KeyboardEvent, dialog);
     });
+    const observer = new MutationObserver(() => this.refreshFindMatches());
+    observer.observe(this.root.querySelector(".ez-editor") ?? this.root, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["contenteditable"] });
+    this.disposers.push(() => observer.disconnect());
     dialog.hidden = true;
     return dialog;
   }
 
   openFindDialog(): void {
     if (!this.findDialog) return;
-    if (this.findDialog.hidden) this.findReturnFocus = document.activeElement as HTMLElement | null;
+    if (this.findDialog.hidden) {
+      this.findReturnFocus = document.activeElement as HTMLElement | null;
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      this.findReturnRange = range && this.root.querySelector(".ez-editor")?.contains(range.commonAncestorContainer) ? range.cloneRange() : null;
+    }
     this.findDialog.hidden = false;
+    this.refreshFindMatches();
     this.findInput?.focus();
   }
 
@@ -996,19 +1111,68 @@ export class WorkspaceUI {
     if (!this.findDialog) return;
     const restoreFocus = this.findDialog.contains(document.activeElement);
     this.findDialog.hidden = true;
+    this.clearFindHighlights();
+    this.findMatches = [];
     if (restoreFocus) {
       const target = this.findReturnFocus?.getClientRects().length ? this.findReturnFocus : this.docMenu?.querySelector("summary");
       target?.focus();
+      if (this.findReturnRange?.startContainer.isConnected && target?.matches("[data-ez-editable]")) {
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(this.findReturnRange);
+      }
     }
     this.findReturnFocus = null;
-    this.root.querySelectorAll<HTMLElement>(".ez-find-hit").forEach((el) => {
-      el.classList.remove("ez-find-hit");
-      el.removeAttribute("data-ez-find");
-    });
+    this.findReturnRange = null;
   }
 
   private runReplace(all: boolean): void {
-    this.deps.findInDocument(this.findInput?.value ?? "", this.replaceInput?.value ?? "", all);
+    if (!this.findMatches.length || this.replaceButtons[0]?.disabled) return;
+    this.deps.findInDocument(this.findInput?.value ?? "", this.replaceInput?.value ?? "", all, this.findIndex);
+    this.refreshFindMatches(true);
+    this.replaceInput?.focus();
+  }
+
+  private navigateFind(direction: number): void {
+    if (!this.findMatches.length) return;
+    this.findIndex = (this.findIndex + direction + this.findMatches.length) % this.findMatches.length;
+    this.renderFindMatches(true);
+  }
+
+  private refreshFindMatches(scroll = false): void {
+    if (!this.findDialog || this.findDialog.hidden) return;
+    this.clearFindHighlights();
+    const surface = this.root.querySelector<HTMLElement>(".ez-editor");
+    this.findMatches = surface ? findTextMatches(surface, this.findInput?.value ?? "") : [];
+    this.findIndex = Math.min(this.findIndex, Math.max(0, this.findMatches.length - 1));
+    this.renderFindMatches(scroll);
+  }
+
+  private clearFindHighlights(): void {
+    for (const element of this.root.querySelectorAll(".ez-find-hit")) element.classList.remove("ez-find-hit");
+    if (typeof CSS !== "undefined" && CSS.highlights) {
+      CSS.highlights.delete(this.findHighlightName);
+      CSS.highlights.delete(`${this.findHighlightName}-active`);
+    }
+  }
+
+  private renderFindMatches(scroll: boolean): void {
+    this.clearFindHighlights();
+    const current = this.findMatches[this.findIndex];
+    if (this.findCounter) this.findCounter.textContent = !this.findInput?.value ? "Enter text to find" : current ? `${this.findIndex + 1} of ${this.findMatches.length}` : "No matches";
+    for (const control of this.findNavigation) control.disabled = !current;
+    const readOnly = !!this.root.querySelector(".ez-editor.ez-readonly");
+    for (const control of this.replaceButtons) control.disabled = !current || readOnly;
+    if (typeof Highlight !== "undefined" && typeof CSS !== "undefined" && CSS.highlights) {
+      const all = new Highlight();
+      for (const match of this.findMatches) all.add(match.range);
+      CSS.highlights.set(this.findHighlightName, all);
+      if (current) CSS.highlights.set(`${this.findHighlightName}-active`, new Highlight(current.range));
+    }
+    if (current) {
+      current.editable.classList.add("ez-find-hit");
+      if (scroll) current.editable.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
 
   /* ---------- recovery & legacy draft ---------- */
@@ -1111,6 +1275,7 @@ export class WorkspaceUI {
 }
 
 let outlineId = 0;
+let findId = 0;
 
 export function resolveTheme(theme: WorkspaceTheme): "light" | "dark" {
   if (theme === "system") {

@@ -3,7 +3,7 @@
 The `Ezynota` class is the editor. One instance mounts into one target element.
 
 ```ts
-import { Ezynota } from "ezynota";
+import { Ezynota } from "@bookklik/ezynota";
 
 const editor = new Ezynota({ target: "#app" });
 await editor.ready;

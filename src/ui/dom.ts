@@ -54,14 +54,25 @@ export function clampToViewport(node: HTMLElement, margin = 8): void {
   node.style.top = `${top}px`;
 }
 
-/** Anchor a popup using viewport coordinates, flipping above when needed. */
-export function placePopover(node: HTMLElement, anchor: DOMRect): void {
+/** Dismiss a top-layer popup without moving it out of its editor's DOM. */
+export function dismissPopover(node: HTMLElement): void {
+  if (node.hidePopover && node.matches(":popover-open")) node.hidePopover();
+}
+
+/** Anchor a popup in the top layer, with a fixed-position fallback. */
+export function placePopover(node: HTMLElement, anchor: DOMRect, placement: "above" | "below" = "below"): void {
+  if (node.showPopover && node.isConnected) {
+    node.setAttribute("popover", "manual");
+    if (!node.matches(":popover-open")) node.showPopover();
+  }
   node.style.position = "fixed";
   node.style.transform = "none";
+  node.style.margin = "0";
+  node.style.inset = "auto";
   node.style.left = `${anchor.left}px`;
   node.style.top = `${anchor.bottom + 6}px`;
   const height = node.getBoundingClientRect().height;
-  if (anchor.bottom + 6 + height > window.innerHeight - 8 && anchor.top > height + 8) {
+  if ((placement === "above" || anchor.bottom + 6 + height > window.innerHeight - 8) && anchor.top > height + 8) {
     node.style.top = `${anchor.top - height - 6}px`;
   }
   clampToViewport(node);

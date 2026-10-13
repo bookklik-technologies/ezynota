@@ -16,7 +16,7 @@ Ezynota can mount itself without a single line of JavaScript. A `MutationObserve
 ```
 
 ::: warning
-When using the main `ezynota` entry (or the UMD build), scanning happens automatically. If you import from `ezynota/core`, no scanning occurs — call `Ezynota.initAll()` yourself.
+When using the main `@bookklik/ezynota` entry (or the UMD build), scanning happens automatically. If you import from `@bookklik/ezynota/core`, no scanning occurs — call `Ezynota.initAll()` yourself.
 :::
 
 ## Attributes

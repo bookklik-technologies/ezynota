@@ -1,6 +1,6 @@
 import type { EzynotaBlock, EzynotaDocument, JsonValue } from "./types";
 export declare const SCHEMA_VERSION = "1.0.0";
-export declare const GENERATOR_VERSION = "0.1.1";
+export declare const GENERATOR_VERSION = "0.1.2";
 /** Maximum nesting depth accepted for JSON data, tunes, meta and children. */
 export declare const MAX_JSON_DEPTH = 200;
 export interface BlockInput {

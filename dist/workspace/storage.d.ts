@@ -4,6 +4,7 @@ import type { CommitResult, StorageAdapter, WorkspaceAsset, WorkspaceEnvelope } 
  * (revision-checked commits) and one for binary assets.
  */
 export declare class IndexedDbStorage implements StorageAdapter {
+    get persistent(): boolean;
     private db;
     private initPromise;
     private listeners;
@@ -27,6 +28,7 @@ export declare class IndexedDbStorage implements StorageAdapter {
  * headless modes and the fallback when IndexedDB is unavailable.
  */
 export declare class MemoryStorage implements StorageAdapter {
+    readonly persistent = false;
     private workspaces;
     private assets;
     private listeners;

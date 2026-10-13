@@ -119,7 +119,7 @@ export class InputManager {
   private updateEmptyState(editable: HTMLElement): void {
     const text = editable.textContent ?? "";
     const empty = text.replace(/\u200B/g, "").trim() === "";
-    if (editable.hasAttribute("data-ez-placeholder") || editable.hasAttribute("data-ez-note-placeholder")) {
+    if (editable.hasAttribute("data-ez-placeholder") || editable.hasAttribute("data-ez-note-placeholder") || editable.hasAttribute("data-ez-writing-hint")) {
       editable.setAttribute("data-ez-empty", empty ? "true" : "false");
     }
   }

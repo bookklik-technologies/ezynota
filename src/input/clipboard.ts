@@ -276,10 +276,11 @@ export class ClipboardManager {
       // Otherwise a matching tool may convert the files into NEW blocks
       // (e.g. pasting an image while the caret is in a paragraph).
       const converter = (entry.toolClass as unknown as {
-        filesToBlockDataAsync?: (files: File[]) => Promise<{ type: string; data: JsonValue }[]>;
+        filesToBlockDataAsync?: (files: File[], scope?: object) => Promise<{ type: string; data: JsonValue }[]>;
       }).filesToBlockDataAsync;
       if (typeof converter === "function") {
-        const data = await converter(matched);
+        const data = await converter(matched, this.host.target);
+        if (this.host.isDestroyed()) return false;
         if (data.length > 0) {
           this.host.pasteBlocks(data, blockId, "paste");
           return true;

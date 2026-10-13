@@ -21,6 +21,7 @@ import { GENERATOR_VERSION } from "../core/schema";
 
 /** What the controller needs from the Ezynota editor instance. */
 export interface WorkspaceHost {
+  readonly target?: HTMLElement;
   readonly readOnly: boolean;
   undo(): void;
   redo(): void;
@@ -87,7 +88,7 @@ export class WorkspaceController {
       host.on("change", (batch) => {
         this.ui?.refreshHistory();
         if (this.switching) return;
-        if (batch.origin === "history" || batch.origin === "migration") return;
+        if (batch.origin === "migration") return;
         this.persistActiveNote();
       }),
       host.on("history:changed", () => this.ui?.refreshHistory()),
@@ -106,8 +107,9 @@ export class WorkspaceController {
     });
     // Per-instance asset registration tokens: destroying one controller
     // must not rip out another controller's handlers.
-    this.disposers.push(registerAssetStore(this.storeFile.bind(this)));
-    this.disposers.push(registerAssetLoader((assetId) => this.state.loadAsset(assetId)));
+    const assetScope = host.target ?? surface;
+    this.disposers.push(registerAssetStore(this.storeFile.bind(this), assetScope));
+    this.disposers.push(registerAssetLoader((assetId) => this.state.loadAsset(assetId), assetScope));
     this.disposers.push(
       this.state.on((event) => {
         options.onEvent?.(event);
@@ -423,8 +425,8 @@ export class WorkspaceController {
         void this.retryLoad();
       },
       downloadOriginal: () => this.downloadStoredData(),
-      findInDocument: (query, replaceWith, all) => {
-        if (query) void this.findInDocument(query, replaceWith, all);
+      findInDocument: (query, replaceWith, all, matchIndex) => {
+        if (query) void this.findInDocument(query, replaceWith, all, matchIndex);
       },
       goToBlock: (blockId) => {
         this.host.focusBlock(blockId, "start");
@@ -566,13 +568,13 @@ export class WorkspaceController {
     downloadTextFile("ezynota-stored-workspace.json", JSON.stringify(payload, null, 2), "application/json");
   }
 
-  async findInDocument(query: string, replaceWith: string, replaceAll: boolean): Promise<void> {
+  async findInDocument(query: string, replaceWith: string, replaceAll: boolean, matchIndex = 0): Promise<void> {
     // Delegated to the editor's find/replace engine via the host surface.
-    this.findEngine?.(query, replaceWith, replaceAll);
+    this.findEngine?.(query, replaceWith, replaceAll, matchIndex);
   }
 
   /** Set by the editor when it wires the find/replace engine. */
-  findEngine: ((query: string, replaceWith: string, replaceAll: boolean) => void) | null = null;
+  findEngine: ((query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number) => void) | null = null;
 
   wordCount(): number {
     const text = documentText(this.host.getSnapshot().blocks);

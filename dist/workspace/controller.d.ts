@@ -4,6 +4,7 @@ import { WorkspaceState } from "./workspace";
 import type { HistoryState } from "../core/history";
 /** What the controller needs from the Ezynota editor instance. */
 export interface WorkspaceHost {
+    readonly target?: HTMLElement;
     readonly readOnly: boolean;
     undo(): void;
     redo(): void;
@@ -91,9 +92,9 @@ export declare class WorkspaceController {
     retryLoad(): Promise<void>;
     /** Recovery download: retain the last known stored payload. */
     downloadStoredData(): void;
-    findInDocument(query: string, replaceWith: string, replaceAll: boolean): Promise<void>;
+    findInDocument(query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number): Promise<void>;
     /** Set by the editor when it wires the find/replace engine. */
-    findEngine: ((query: string, replaceWith: string, replaceAll: boolean) => void) | null;
+    findEngine: ((query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number) => void) | null;
     wordCount(): number;
     private legacyDraft;
     importLegacyDraft(data: string): Promise<void>;

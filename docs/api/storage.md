@@ -5,14 +5,14 @@ Workspace persistence goes through a small async interface. Ezynota ships with t
 ## Built-in adapters
 
 ```ts
-import { IndexedDbStorage, MemoryStorage, emptyWorkspace } from "ezynota";
+import { Ezynota, IndexedDbStorage, MemoryStorage } from "@bookklik/ezynota";
 
 // Default — persists in the browser via IndexedDB
 const editor = new Ezynota({ target: "#app", mode: "workspace" });
 
 // Explicit
 const editor2 = new Ezynota({
-  target: "#app",
+  target: "#app2",
   mode: "workspace",
   storage: new IndexedDbStorage(),
 });
@@ -21,22 +21,27 @@ const editor2 = new Ezynota({
 const demo = new Ezynota({
   target: "#demo",
   mode: "workspace",
-  storage: new MemoryStorage(emptyWorkspace("demo")),
+  storage: new MemoryStorage(false),
 });
 ```
 
-`emptyWorkspace(id?)` creates a valid, empty `WorkspaceEnvelope`.
+`emptyWorkspace(id)` creates a valid, empty `WorkspaceEnvelope`. `MemoryStorage(crossTab = true)` accepts a boolean, not initial workspace data. Seed it with `commit(id, envelope, 0)` when needed.
+
+::: warning Temporary storage
+`MemoryStorage` and an IndexedDB adapter that falls back after an open failure report `persistent: false`. The editor shows a persistent backup notice and uses the `temporary` save status instead of `saved`. Download a workspace backup before closing or reloading. Custom adapters can expose `persistent`; omitted values retain the existing assumption that successful writes are durable.
+:::
 
 ## StorageAdapter interface
 
 ```ts
 interface StorageAdapter {
+  readonly persistent?: boolean;
   init(): Promise<void>;
   loadWorkspace(id: string): Promise<WorkspaceEnvelope | null>;
-  commit(id: string, envelope: WorkspaceEnvelope): Promise<CommitResult>;
+  commit(id: string, envelope: WorkspaceEnvelope, expectedRevision: number): Promise<CommitResult>;
   loadAsset(workspaceId: string, assetId: string): Promise<WorkspaceAsset | null>;
-  saveAsset(workspaceId: string, asset: WorkspaceAsset): Promise<void>;
-  subscribe?(id: string, cb: () => void): () => void; // cross-tab updates
+  saveAsset(workspaceId: string, asset: WorkspaceAsset): Promise<boolean>;
+  subscribe(id: string, cb: () => void): () => void; // return a no-op disposer if unsupported
   close(): Promise<void>;
 }
 ```
@@ -44,6 +49,14 @@ interface StorageAdapter {
 ### `CommitResult`
 
 Commit may reject stale writes. If another tab saved first, the adapter reports the newer revision and the editor enters a recovery flow instead of clobbering data.
+
+```ts
+type CommitResult =
+  | { ok: true; revision: number }
+  | { ok: false; reason: "stale" | "quota" | "error" | "closed" };
+```
+
+On a stale failure the adapter does not advance the editor's revision; the editor reloads or explicitly resolves the conflict.
 
 ## WorkspaceEnvelope
 
@@ -53,8 +66,9 @@ The persisted unit — one JSON document per workspace:
 interface WorkspaceEnvelope {
   workspaceSchemaVersion: "1.0.0";
   id: string;
+  name: string;
   savedAt: number;
-  storageRevision: number;
+  storageRevision?: number;
   notes: NoteRecord[];
   folders: FolderRecord[];
 }
@@ -82,24 +96,24 @@ Backups include assets (`WorkspaceBackup`), and `encodeBackupForExport` produces
 
 ## Server-backed storage
 
-Implement the interface against your backend:
+Implement the exported `StorageAdapter` interface against your backend. A revision-checked commit can use this HTTP contract: the server atomically compares `expectedRevision`, returns HTTP 409 for conflicts, and returns `{ revision }` on success. Add the remaining interface members for workspace/asset reads, asset writes, subscription and connection cleanup.
 
 ```ts
-class ApiStorage {
-  async init() {}
-  async loadWorkspace(id) {
-    const res = await fetch(`/api/workspaces/${encodeURIComponent(id)}`);
-    return res.ok ? res.json() : null;
-  }
-  async commit(id, envelope) {
-    const res = await fetch(`/api/workspaces/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(envelope),
-    });
-    return { ok: res.ok, storageRevision: envelope.storageRevision };
-  }
-  // loadAsset / saveAsset / subscribe / close …
+import type { CommitResult, WorkspaceEnvelope } from "@bookklik/ezynota";
+
+async function commit(id: string, envelope: WorkspaceEnvelope, expectedRevision: number): Promise<CommitResult> {
+  const res = await fetch(`/api/workspaces/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ envelope, expectedRevision }),
+  });
+  if (res.status === 409) return { ok: false, reason: "stale" };
+  if (res.status === 507) return { ok: false, reason: "quota" };
+  if (!res.ok) return { ok: false, reason: "error" };
+  const data: { revision?: number } = await res.json();
+  return typeof data.revision === "number" && Number.isInteger(data.revision) && data.revision > expectedRevision
+    ? { ok: true, revision: data.revision }
+    : { ok: false, reason: "error" };
 }
 ```
 

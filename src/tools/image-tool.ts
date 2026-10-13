@@ -23,11 +23,11 @@ export class ImageTool implements BlockTool<ImageData> {
   static paste = { files: { mimeTypes: ["image/*"] } };
 
   /** Files → image block data (used by the clipboard router for new blocks). */
-  static readonly filesToBlockDataAsync = async (files: File[]): Promise<{ type: string; data: JsonValue }[]> => {
+  static readonly filesToBlockDataAsync = async (files: File[], scope?: object): Promise<{ type: string; data: JsonValue }[]> => {
     const out: { type: string; data: JsonValue }[] = [];
     for (const file of files) {
       if (!file.type.startsWith("image/")) continue;
-      const src = hasAssetStore() ? await storeFileAsset(file) : await fileToDataUrl(file);
+      const src = hasAssetStore(scope) ? await storeFileAsset(file, scope) : await fileToDataUrl(file);
       if (src) {
         out.push({ type: "image", data: { src, alt: file.name.replace(/\.[^.]+$/, "") } as JsonValue });
       }
@@ -36,6 +36,8 @@ export class ImageTool implements BlockTool<ImageData> {
   };
 
   private api: BlockAPI;
+  private srcGeneration = 0;
+  private destroyed = false;
   private figure!: HTMLElement;
   private img!: HTMLImageElement;
   private resizeInput: HTMLInputElement | null = null;
@@ -146,17 +148,18 @@ export class ImageTool implements BlockTool<ImageData> {
     return this.figure?.querySelector<HTMLElement>(".ez-image-caption") ?? undefined;
   }
 
-  destroy(): void {}
+  destroy(): void { this.destroyed = true; this.srcGeneration++; }
 
   /* ---------- implementation ---------- */
 
   private applySrcToImg(src: string): void {
+    const generation = ++this.srcGeneration;
     if (!this.img) return;
     this.clearBrokenImageState();
     if (typeof src !== "string" || src === "") return;
     if (src.startsWith("asset:")) {
-      void resolveAssetSrc(src).then((url) => {
-        if (!this.img?.isConnected) return;
+      void resolveAssetSrc(src, this.api.assetScope).then((url) => {
+        if (this.destroyed || generation !== this.srcGeneration || !this.img?.isConnected) return;
         if (url) this.img.src = url;
         else this.showBrokenImage("This image could not be loaded.");
       });
@@ -262,8 +265,9 @@ export class ImageTool implements BlockTool<ImageData> {
     this.figure.setAttribute("aria-busy", "true");
     this.showFeedback("Adding image…");
     try {
-      if (hasAssetStore()) {
-        const src = await storeFileAsset(file);
+      if (hasAssetStore(this.api.assetScope)) {
+        const src = await storeFileAsset(file, this.api.assetScope);
+        if (this.destroyed) return;
         if (src) {
           this.applyImage(src, file.name.replace(/\.[^.]+$/, ""));
           this.showFeedback("");

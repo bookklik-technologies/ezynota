@@ -93,6 +93,10 @@ Emits `readOnly:changed`.
 
 Typing `/` opens the searchable block picker. Programmatically:
 
+An empty paragraph shows a focused hint for this shortcut. Open **Block actions → Turn into…** to search for a different block type; Duplicate, Move and Delete stay in the shorter actions menu. Explicit conversion preserves literal text beginning with `/`.
+
+Conversion controls offer declared built-in text conversions and explicit tool-provided data mappers. A compound or custom block without a mapper is not offered a conversion that could discard its data. Use **Add content below** or the slash picker to add images, tables and other new blocks without replacing existing text.
+
 ```ts
 editor.openBlockPicker();               // pick for the active block
 editor.openBlockPicker(blockId);        // convert a specific block
@@ -112,12 +116,22 @@ See the [Commands reference](/api/commands).
 
 ## Find & replace
 
+In workspace and document modes, open **Find in document** to search without changing your content. The match counter and Previous/Next controls show where you are. In the Find field, `Enter` moves forward and `Shift+Enter` moves backward; `Escape` closes the bar and returns focus. Replacement only runs through **Replace**, **Replace all**, or `Enter` in the Replace with field. Replace targets the current match, and Replace all is one Undo step.
+
+Matching is literal and case-sensitive, within individual text runs. A phrase split across formatting boundaries and text inside nested child blocks is not included. Search highlights are a view over the document and do not become saved formatting.
+
 ```ts
 editor.findReplace("TODO", "DONE");     // replace first match
 editor.findReplace("TODO", "DONE", true); // replace all (one undo step)
 ```
 
 In workspace mode, `editor.workspace.findInDocument(...)` wraps the same engine.
+
+## Editing in a narrow container
+
+The notes sidebar becomes a drawer when the editor container is 900px or narrower, including embeds on wide pages. Use **Toggle notes sidebar** to open it. `Escape` or **Close notes sidebar** returns you to the document. On wider containers, the sidebar keeps your collapsed/expanded preference.
+
+Document mode hides note navigation and uses the topbar title to rename the active document. Workspace mode keeps the workspace name in the topbar and the note title above the content.
 
 ## Workspace convenience
 

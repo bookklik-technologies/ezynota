@@ -1,8 +1,9 @@
 import type { Host } from "../host";
 import type { EditorSelection, InlineTool } from "../types";
 import { activeMarks, findAncestor } from "../inline/inline-tools";
-import { button, el, clearChildren, placePopover, navigateControls, svgButton } from "./dom";
+import { button, el, clearChildren, placePopover, dismissPopover, navigateControls, svgButton } from "./dom";
 import { ICONS } from "./icons";
+import { canConvertBlock } from "./conversion";
 
 /** Shared formatting controls for floating and persistent toolbars. */
 export class InlineToolbar {
@@ -61,7 +62,7 @@ export class InlineToolbar {
       this.refresh();
     } else this.root.style.display = "none";
     const reposition = (): void => {
-      if (!this.documentMode && this.visible && this.savedRange?.startContainer.isConnected) placePopover(this.root, this.savedRange.getBoundingClientRect());
+      if (!this.documentMode && this.visible && this.savedRange?.startContainer.isConnected) placePopover(this.root, this.savedRange.getBoundingClientRect(), "above");
       if (this.more?.open && this.morePanel) placePopover(this.morePanel, this.more.getBoundingClientRect());
     };
     window.addEventListener("resize", reposition);
@@ -105,6 +106,7 @@ export class InlineToolbar {
     this.more.append(summary, this.morePanel);
     this.more.addEventListener("toggle", () => {
       if (this.more!.open) placePopover(this.morePanel!, summary.getBoundingClientRect());
+      else dismissPopover(this.morePanel!);
     });
     const outside = (event: Event): void => {
       if (!this.more!.contains(event.target as Node)) this.more!.open = false;
@@ -150,7 +152,7 @@ export class InlineToolbar {
       }
       this.visible = true;
       this.root.style.display = "flex";
-      placePopover(this.root, range.getBoundingClientRect());
+      placePopover(this.root, range.getBoundingClientRect(), "above");
     }
     this.refresh();
   }
@@ -176,7 +178,10 @@ export class InlineToolbar {
     this.redoButton!.disabled = this.host.readOnly || !this.host.canRedo();
     this.blockType!.disabled = !selection || this.host.readOnly;
     const block = selection ? this.host.blocks.getById(selection.blockId) : undefined;
-    if (block) this.blockType!.value = block.type;
+    if (block) {
+      this.blockType!.value = block.type;
+      for (const option of Array.from(this.blockType!.options)) option.disabled = !canConvertBlock(this.host, block.type, option.value);
+    }
     const data = block?.data as { level?: number; style?: string } | undefined;
     const key = `${block?.id}:${block?.type}:${data?.level}:${data?.style}:${this.host.readOnly}`;
     if (key !== this.settingsKey) {
@@ -215,6 +220,7 @@ export class InlineToolbar {
     if (this.more) this.more.open = false;
     if (this.documentMode) return;
     this.visible = false;
+    dismissPopover(this.root);
     this.root.style.display = "none";
   }
 

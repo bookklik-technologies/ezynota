@@ -292,6 +292,8 @@ export interface BlockToolConstructor<TData extends JsonValue = JsonValue> {
     enterKey?: "split" | "newline" | "ignore";
 }
 export interface BlockAPI<TData extends JsonValue = JsonValue> {
+    /** Editor-owned scope for local asset storage and resolution. */
+    readonly assetScope?: object;
     readonly id: string;
     readonly type: string;
     readonly readOnly: boolean;

@@ -12,14 +12,14 @@ Ezynota is a free, block-style editor with portable JSON output. It ships as a s
 ### npm / pnpm / yarn
 
 ```bash
-npm install ezynota
+npm install @bookklik/ezynota
 ```
 
 Then import the editor and its stylesheet:
 
 ```ts
-import { Ezynota } from "ezynota";
-import "ezynota/dist/ezynota.css";
+import { Ezynota } from "@bookklik/ezynota";
+import "@bookklik/ezynota/dist/ezynota.css";
 
 const editor = new Ezynota({
   target: "#app",
@@ -35,10 +35,10 @@ await editor.ready;
 ```
 
 ::: tip
-Use the `ezynota/core` entry if you don't want the automatic declarative scanning side effect:
+Use the `@bookklik/ezynota/core` entry if you don't want the automatic declarative scanning side effect:
 
 ```ts
-import { Ezynota } from "ezynota/core";
+import { Ezynota } from "@bookklik/ezynota/core";
 ```
 
 The core entry is identical except it does **not** auto-mount `[data-ezn-editor]` elements and does not import the CSS. You call `Ezynota.initAll()` yourself if you want declarative behavior.
@@ -107,9 +107,9 @@ Declarative editors emit `ezn:ready`, `ezn:change`, and `ezn:error` DOM events f
 
 | Export path | Contents |
 | --- | --- |
-| `ezynota` | Full public API + CSS + declarative auto-scan |
-| `ezynota/core` | Same API, no CSS, no auto-scan |
-| `ezynota/dist/ezynota.css` | The stylesheet |
+| `@bookklik/ezynota` | Full public API + CSS + declarative auto-scan |
+| `@bookklik/ezynota/core` | Same API, no CSS, no auto-scan |
+| `@bookklik/ezynota/dist/ezynota.css` | The stylesheet |
 
 ## Next steps
 

@@ -163,7 +163,7 @@ export function openPopover(content: HTMLElement, anchor: Range | HTMLElement, o
   parent.appendChild(pop);
   const reposition = (): void => {
     const reference = trigger?.isConnected && trigger.getClientRects().length ? trigger : anchor;
-    placePopover(pop, reference.getBoundingClientRect());
+    placePopover(pop, reference.getBoundingClientRect(), anchor instanceof HTMLElement ? "below" : "above");
   };
   reposition();
   let closed = false;

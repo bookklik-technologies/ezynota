@@ -6,11 +6,11 @@ import "./styles/ezynota.css";
  * Main entry: importing this module enables declarative initialization —
  * every element with `data-ezn-editor` mounts a workspace editor after DOM
  * readiness, and elements inserted later are picked up automatically.
- * For an entry without the automatic scanning side effect use `ezynota/core`.
+ * For an entry without the automatic scanning side effect use `@bookklik/ezynota/core`.
  *
  * @example
- * import { Ezynota } from "ezynota";
- * import "ezynota/dist/ezynota.css";
+ * import { Ezynota } from "@bookklik/ezynota";
+ * import "@bookklik/ezynota/dist/ezynota.css";
  *
  * const editor = new Ezynota({ target: "#editor" });
  * const auto = Ezynota.initAll(); // or rely on the automatic scan

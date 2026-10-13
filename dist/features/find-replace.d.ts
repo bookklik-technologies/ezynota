@@ -12,4 +12,4 @@ import type { Host } from "../host";
  * Replacements use literal string splicing (split/join), so `$&`, `$\``
  * etc. in the replacement text are never expanded.
  */
-export declare function createFindReplace(host: Host, target: HTMLElement): (query: string, replaceWith: string, replaceAll: boolean) => void;
+export declare function createFindReplace(host: Host, target: HTMLElement): (query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number) => void;

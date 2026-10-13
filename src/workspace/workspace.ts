@@ -112,6 +112,8 @@ export class WorkspaceState {
     return this.loaded;
   }
 
+  isPersistent(): boolean { return this.storage.persistent !== false; }
+
   getLoadError(): unknown {
     return this.loadError;
   }
@@ -662,7 +664,7 @@ export class WorkspaceState {
         if (version === this.mutationVersion) {
           this.dirty = false;
           this.unsavedSnapshot = null;
-          this.emitStatus("saved");
+          this.emitStatus(this.isPersistent() ? "saved" : "temporary");
         }
         return;
       }
@@ -808,7 +810,8 @@ export class WorkspaceState {
     const restore = this.enqueue(async () => {
       if (isBackupWithAssets(backup)) {
         for (const asset of backup.assets) {
-          await this.storage.saveAsset(targetId, { ...asset, bytes: decodeAssetBytes(asset.bytes) });
+          const saved = await this.storage.saveAsset(targetId, { ...asset, bytes: decodeAssetBytes(asset.bytes) });
+          if (!saved) throw new EzynotaError("EZ_IMPORT_FAILED", "Could not restore an image asset. The current workspace was retained.", { assetId: asset.id });
         }
       }
       const expected = targetId === this.activeWorkspaceId ? this.revision : 0;

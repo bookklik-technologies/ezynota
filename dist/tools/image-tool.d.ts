@@ -24,11 +24,13 @@ export declare class ImageTool implements BlockTool<ImageData> {
         };
     };
     /** Files → image block data (used by the clipboard router for new blocks). */
-    static readonly filesToBlockDataAsync: (files: File[]) => Promise<{
+    static readonly filesToBlockDataAsync: (files: File[], scope?: object) => Promise<{
         type: string;
         data: JsonValue;
     }[]>;
     private api;
+    private srcGeneration;
+    private destroyed;
     private figure;
     private img;
     private resizeInput;

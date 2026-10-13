@@ -83,8 +83,8 @@ export default defineConfig({
         ezynota: resolve(__dirname, "src/index.ts"),
         core: resolve(__dirname, "src/core-entry.ts")
       },
-      formats: ["es"],
-      fileName: (format, entryName) => (entryName === "ezynota" ? "ezynota.esm.js" : `${entryName}.esm.js`)
+      formats: ["es", "cjs"],
+      fileName: (format, entryName) => format === "cjs" ? `${entryName}.cjs` : `${entryName}.esm.js`
     },
     cssCodeSplit: false,
     outDir: "dist",

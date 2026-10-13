@@ -2,6 +2,7 @@ import type { Host } from "../host";
 import type { BlockTune } from "../types";
 import { el, svgButton, clearChildren, placePopover, navigateControls } from "./dom";
 import { ICONS, isSvgIcon, renderIcon } from "./icons";
+import { canConvertBlock } from "./conversion";
 
 /**
  * One horizontal group beside the active block: add and a combined drag/menu control.
@@ -161,6 +162,9 @@ export class BlockToolbar {
 
   hide(): void {
     this.closeSettings();
+    if (this.root.contains(document.activeElement) && this.activeBlockId && !this.host.readOnly && !this.host.isDestroyed()) {
+      this.host.focusBlock(this.activeBlockId, "end");
+    }
     this.root.hidden = true;
     this.root.classList.remove("ez-visible", "ez-hovered");
     this.hoveredBlockId = null;
@@ -197,7 +201,7 @@ export class BlockToolbar {
     placePopover(this.settingsPopover, this.settingsButton.getBoundingClientRect());
     this.open = true;
     this.settingsButton.setAttribute("aria-expanded", "true");
-    this.settingsPopover.querySelector<HTMLButtonElement>("button")?.focus();
+    this.settingsPopover.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
   }
 
   private closeSettings(): void {
@@ -210,6 +214,9 @@ export class BlockToolbar {
     this.menuTunes = [];
     this.open = false;
     this.settingsButton.setAttribute("aria-expanded", "false");
+    // Move focus before removing a top-layer popup. Otherwise the browser
+    // can restore an older shell control and dismiss the next picker.
+    if (popover?.contains(document.activeElement) && !this.root.hidden) this.settingsButton.focus({ preventScroll: true });
     popover?.remove();
     for (const tune of tunes) tune.destroy?.();
   }
@@ -224,19 +231,13 @@ export class BlockToolbar {
     const toolSettings = this.host.getTool(blockId)?.renderSettings?.();
     if (toolSettings) menu.appendChild(toolSettings);
 
-    const convertibles = this.host.registry.listBlockTools().filter((t) => t.name !== type && t.name !== "delimiter");
+    const convertibles = this.host.registry.listBlockTools().filter((tool) => tool.toolbox && tool.name !== type && canConvertBlock(this.host, type, tool.name));
     if (convertibles.length > 0) {
-      menu.appendChild(el("div", "ez-menu-category", this.host.i18n.t("settings.convert")));
-      for (const tool of convertibles) {
-        if (!tool.toolbox) continue;
-        const item = this.menuButton(tool.toolbox.icon ?? "•", tool.toolbox.title, () => {
-          this.closeSettings();
-          this.hide();
-          this.host.convertBlock(blockId, tool.name);
-          this.host.focusBlock(blockId, "end");
-        });
-        menu.appendChild(item);
-      }    }
+      menu.appendChild(this.menuButton(ICONS.chevronRight, this.host.i18n.t("settings.convertPicker"), () => {
+        this.hide();
+        this.host.openBlockPicker(blockId);
+      }));
+    }
 
     menu.appendChild(el("div", "ez-menu-category", this.host.i18n.t("toolbar.settings")));
 

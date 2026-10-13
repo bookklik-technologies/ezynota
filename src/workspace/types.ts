@@ -80,6 +80,8 @@ export type CommitResult = CommitResultOk | CommitResultFailed;
  * configured.
  */
 export interface StorageAdapter {
+  /** False when writes survive only for the lifetime of this adapter/tab. */
+  readonly persistent?: boolean;
   /** Prepare the adapter (open databases, wire subscriptions). */
   init(): Promise<void>;
   /** Read the current workspace and its storageRevision atomically, or null
@@ -134,6 +136,6 @@ export type WorkspaceEvent =
   | { type: "workspaceRenamed"; name: string }
   | { type: "fullscreen"; on: boolean };
 
-export type SaveStatus = "idle" | "saving" | "saved" | "error";
+export type SaveStatus = "idle" | "saving" | "saved" | "temporary" | "error";
 
 export type { JsonValue };

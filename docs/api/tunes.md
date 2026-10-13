@@ -5,7 +5,7 @@ Tunes are per-block plugins that add behavior or settings without changing the b
 ## Built-in tune: AlignmentTune
 
 ```ts
-import { AlignmentTune } from "ezynota";
+import { AlignmentTune } from "@bookklik/ezynota";
 ```
 
 - Adds left / center / right actions to the block settings menu (and the document toolbar's alignment buttons).
@@ -43,7 +43,7 @@ Construction receives `BlockTuneOptions`, which includes:
 ## Writing a tune
 
 ```ts
-import type { BlockTune, BlockTuneOptions } from "ezynota/types";
+import type { BlockTune, BlockTuneOptions } from "@bookklik/ezynota/types";
 
 class WidthTune implements BlockTune {
   private value = "normal";

@@ -40,6 +40,7 @@ function isIdbAvailable(): boolean {
  * (revision-checked commits) and one for binary assets.
  */
 export class IndexedDbStorage implements StorageAdapter {
+  get persistent(): boolean { return this.db !== null && this.fallback === null; }
   private db: IDBDatabase | null = null;
   private initPromise: Promise<void> | null = null;
   private listeners = new Map<string, Set<() => void>>();
@@ -269,6 +270,7 @@ function cloneAsset(asset: WorkspaceAsset): WorkspaceAsset {
  * headless modes and the fallback when IndexedDB is unavailable.
  */
 export class MemoryStorage implements StorageAdapter {
+  readonly persistent = false;
   private workspaces = new Map<string, StoredWorkspace>();
   private assets = new Map<string, WorkspaceAsset>();
   private listeners = new Map<string, Set<() => void>>();

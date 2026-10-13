@@ -1,6 +1,7 @@
 import type { Host } from "../host";
-import { el, clearChildren, placePopover } from "./dom";
+import { el, clearChildren, placePopover, dismissPopover } from "./dom";
 import { isSvgIcon, renderIcon } from "./icons";
+import { canConvertBlock } from "./conversion";
 
 export interface SlashEntry {
   name: string;
@@ -45,6 +46,7 @@ export class SlashMenu {
   private blockId: string | null = null;
   private unsubOutside: (() => void) | null = null;
   private insertMode = false;
+  private typedSlash = false;
   private prefix = `ez-slash-${++slashMenuId}`;
 
   constructor(host: Host) {
@@ -67,14 +69,18 @@ export class SlashMenu {
     return this.root;
   }
 
-  open(blockId: string, insert = false): void {
+  open(blockId: string, insert = false, typedSlash = false): void {
     if (this.host.readOnly) return;
     this.close();
     this.blockId = blockId;
     this.insertMode = insert;
+    this.typedSlash = typedSlash;
+    this.root.setAttribute("aria-label", this.host.i18n.t(insert || typedSlash ? "toolbar.add" : "settings.convertPicker"));
+    const sourceType = this.host.getBlockType(blockId) ?? "";
     this.entries = this.host.registry
       .listBlockTools()
       .filter((t) => !!t.toolbox)
+      .filter((tool) => insert || typedSlash || canConvertBlock(this.host, sourceType, tool.name))
       .map((t) => ({ name: t.name, title: t.toolbox!.title, icon: t.toolbox!.icon ?? "•", category: t.toolbox!.category }));
     this.isOpen = true;
     this.buildDom();
@@ -83,7 +89,7 @@ export class SlashMenu {
     this.focusedIndex = 0;
     this.renderList();
     this.position();
-    this.input.focus();
+    this.input.focus({ preventScroll: true });
   }
 
   isOpenMenu(): boolean {
@@ -141,6 +147,7 @@ export class SlashMenu {
     const id = this.blockId;
     this.isOpen = false;
     this.blockId = null;
+    dismissPopover(this.root);
     this.root.style.display = "none";
     this.unsubOutside?.();
     this.input.setAttribute("aria-expanded", "false");
@@ -229,13 +236,14 @@ export class SlashMenu {
   private select(entry: SlashEntry): void {
     const blockId = this.blockId;
     const insert = this.insertMode;
+    const typedSlash = this.typedSlash;
     this.close();
     if (!blockId || this.host.readOnly) return;
     const data = this.host.getBlockData(blockId) as Record<string, unknown> | undefined;
     const text = this.host.getEditableElement(blockId)?.textContent ?? "";
     // The typed slash query ("/head", "/") lives in the block's saved
     // content; strip it so it never leaks into the converted block.
-    if (text.trim().startsWith("/") && Array.isArray(data?.content)) {
+    if (typedSlash && text.trim().startsWith("/") && Array.isArray(data?.content)) {
       this.host.updateBlockData(blockId, { ...data, content: [] } as never);
     }
     if (insert && !(this.host.getBlockType(blockId) === "paragraph" && text.trim() === "")) {

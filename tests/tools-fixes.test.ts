@@ -147,11 +147,14 @@ describe("dragging blocks into toggle sections", () => {
 });
 
 describe("slash menu conversion strips the typed query", () => {
-  it("typing /head and choosing Heading yields a heading with empty content", () => {
+  it("typing / and searching Heading yields a heading with empty content", () => {
     const { editor, target } = create({
-      data: doc([{ id: "p0", type: "paragraph", data: { content: text("/head") } }])
+      data: doc([{ id: "p0", type: "paragraph", data: { content: [] } }])
     });
-    editor.openBlockPicker("p0");
+    const editable = editor.getEditableElement("p0")!;
+    editable.focus();
+    editable.textContent = "/";
+    editable.dispatchEvent(new InputEvent("input", { inputType: "insertText", data: "/", bubbles: true }));
     const search = target.querySelector<HTMLInputElement>(".ez-menu-search")!;
     search.value = "head";
     search.dispatchEvent(new Event("input", { bubbles: true }));
@@ -163,9 +166,12 @@ describe("slash menu conversion strips the typed query", () => {
 
   it("a bare / converts to an empty block as before", () => {
     const { editor, target } = create({
-      data: doc([{ id: "p0", type: "paragraph", data: { content: text("/") } }])
+      data: doc([{ id: "p0", type: "paragraph", data: { content: [] } }])
     });
-    editor.openBlockPicker("p0");
+    const editable = editor.getEditableElement("p0")!;
+    editable.focus();
+    editable.textContent = "/";
+    editable.dispatchEvent(new InputEvent("input", { inputType: "insertText", data: "/", bubbles: true }));
     const search = target.querySelector<HTMLInputElement>(".ez-menu-search")!;
     search.value = "quote";
     search.dispatchEvent(new Event("input", { bubbles: true }));

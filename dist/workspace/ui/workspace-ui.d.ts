@@ -37,7 +37,7 @@ export interface WorkspaceUIDeps {
     toggleFullscreen(): void;
     retryLoad(): void;
     downloadOriginal(): void;
-    findInDocument(query: string, replaceWith: string, replaceAll: boolean): void;
+    findInDocument(query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number): void;
     goToBlock(blockId: string): void;
     getWordCount(): number;
     getLegacyDraft(): string | null;
@@ -55,6 +55,8 @@ export declare class WorkspaceUI {
     private state;
     private deps;
     private showSidebar;
+    private compactSidebar;
+    private desktopSidebarCollapsed;
     private sidebar;
     private sidebarToggle;
     private notesTree;
@@ -78,11 +80,19 @@ export declare class WorkspaceUI {
     private errorPanel;
     private legacyPanel;
     private noticeEl;
+    private storageNoticeEl;
     private noticeTimer;
     private findDialog;
     private findReturnFocus;
     private findInput;
     private replaceInput;
+    private findReturnRange;
+    private findMatches;
+    private findIndex;
+    private findCounter;
+    private findNavigation;
+    private replaceButtons;
+    private findHighlightName;
     private disposers;
     private expandedFolders;
     private refreshTimer;
@@ -101,6 +111,8 @@ export declare class WorkspaceUI {
     private scheduleHeaderRefresh;
     private buildShell;
     private buildSidebarToggle;
+    private observeContainer;
+    private setDrawerOpen;
     /** Suite-standard topbar: brand + document actions, shared with the shell. */
     private buildTopbar;
     private buildSidebarContent;
@@ -125,6 +137,7 @@ export declare class WorkspaceUI {
     private updateHeader;
     private refreshThemeIcons;
     private updateSaveStatus;
+    private updateStorageNotice;
     applyTheme(theme: WorkspaceTheme): void;
     setFullscreen(on: boolean): void;
     private buildOutline;
@@ -133,6 +146,10 @@ export declare class WorkspaceUI {
     openFindDialog(): void;
     closeFindDialog(): void;
     private runReplace;
+    private navigateFind;
+    private refreshFindMatches;
+    private clearFindHighlights;
+    private renderFindMatches;
     private buildErrorPanel;
     private showErrorPanel;
     /** Public entry point used when a load fails before the UI listener exists. */

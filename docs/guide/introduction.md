@@ -17,7 +17,7 @@ It ships as a single ESM bundle, a UMD build, TypeScript types, and one CSS file
 
 - Built-in block types: paragraph, headings (H1–H6), lists (bulleted, ordered, tasks), quote, code, delimiter, tables with rich-text cells, images, callouts, and collapsible toggle sections
 - Four lifecycle modes: **workspace**, **document**, **embedded**, and **headless**
-- Declarative `data-ezn-editor` initialization with `ezn:ready`, `ezn:change`, and `ezn:error` DOM events, plus an `ezynota/core` entry without the auto-scan side effect
+- Declarative `data-ezn-editor` initialization with `ezn:ready`, `ezn:change`, and `ezn:error` DOM events, plus an `@bookklik/ezynota/core` entry without the auto-scan side effect
 - A browser-local workspace: notes, folders, linked notes, trash, search, autosave, and backups on IndexedDB
 - Document-level undo/redo, find/replace, slash menu, and Markdown typing shortcuts
 - Versioned JSON schema with deterministic offline migrations; unknown schema versions are preserved

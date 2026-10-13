@@ -102,6 +102,7 @@ export function initAll(root?: ParentNode): Ezynota[] {
  * performs the initial scan. `ezynota/core` never calls this.
  */
 export function setupDeclarativeScanning(): void {
+  if (typeof document === "undefined") return;
   initAll();
 }
 

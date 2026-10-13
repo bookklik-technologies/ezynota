@@ -3,6 +3,7 @@ import type { I18nMessages } from "../types";
 export const EN_MESSAGES: I18nMessages = {
   "core.placeholder": "Start writing...",
   "core.emptyDocument": "This document is empty.",
+  "core.blockHint": "Type / to choose a block",
   "toolbar.formatting": "Text formatting",
   "toolbar.blockActions": "Block actions",
   "toolbar.blockType": "Block type",
@@ -14,6 +15,7 @@ export const EN_MESSAGES: I18nMessages = {
   "toolbar.settings": "Block settings",
   "toolbar.drag": "Drag to reorder",
   "settings.convert": "Convert to",
+  "settings.convertPicker": "Turn into…",
   "settings.duplicate": "Duplicate",
   "settings.moveUp": "Move up",
   "settings.moveDown": "Move down",

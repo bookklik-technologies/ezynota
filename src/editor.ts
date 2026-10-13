@@ -1,4 +1,6 @@
 import { EventBus } from "./core/event-bus";
+import { MarkdownShortcuts } from "./input/markdown-shortcuts";
+import { createFindReplace } from "./features/find-replace";
 import { DocumentState } from "./core/document-state";
 import { TransactionManager } from "./core/transaction-manager";
 import { BlockManager } from "./core/block-manager";
@@ -263,7 +265,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
         onEvent: (event) => this.onWorkspaceEvent(event)
       }
     );
-    this.workspaceController.findEngine = (query, replaceWith, all) => this.findReplace(query, replaceWith, all);
+    this.workspaceController.findEngine = (query, replaceWith, all, matchIndex) => this.findReplaceEngine?.(query, replaceWith, all, matchIndex);
     this.ready = new Promise<void>((resolve) => {
       this.resolveReady = resolve;
     });
@@ -584,6 +586,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     this.bus.emit("destroyed");
     this.bus.destroy();
     this.targetEl.classList.remove("ez-editor-mount", "ez-editor", "ez-readonly", "ez-has-block-toolbar", "ez-loading");
+    this.targetEl.removeAttribute("data-ezynota-root");
     this.targetEl.removeAttribute("data-ez-mode");
     this.targetEl.removeAttribute("data-ez-theme");
     this.targetEl.innerHTML = "";
@@ -1049,7 +1052,8 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     if (this.blockToolbar) this.blockToolbar.hide();
     this.inlineToolbar?.hide();
     this.documentToolbar?.hide();
-    this.targetEl.dispatchEvent(new Event("ez-close-popovers"));
+    this.surfaceEl.dispatchEvent(new Event("ez-close-popovers"));
+    if (this.targetEl !== this.surfaceEl) this.targetEl.dispatchEvent(new Event("ez-close-popovers"));
   }
 
   undoInternal(): void {
@@ -1096,24 +1100,19 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
     this.findReplaceEngine?.(query, replaceWith, replaceAll);
   }
 
-  private findReplaceEngine: ((query: string, replaceWith: string, replaceAll: boolean) => void) | null = null;
+  private findReplaceEngine: ((query: string, replaceWith: string, replaceAll: boolean, matchIndex?: number) => void) | null = null;
 
   /** Register the find/replace engine once loaded (called during setup). */
   private wireFindReplace(): void {
-    void import("./features/find-replace").then(({ createFindReplace }) => {
-      this.findReplaceEngine = createFindReplace(this, this.surfaceEl);
-    });
+    this.findReplaceEngine = createFindReplace(this, this.surfaceEl);
   }
 
   /** Markdown typing shortcuts (headings, lists, quotes, inline marks). */
   private setupMarkdownShortcuts(): void {
     if (this.mode === "headless" || this.config.readOnly) return;
-    void import("./input/markdown-shortcuts").then(({ MarkdownShortcuts }) => {
-      if (this.destroyed) return;
-      const shortcuts = new MarkdownShortcuts(this, this.surfaceEl);
-      shortcuts.start();
-      this.disposers.push(() => shortcuts.stop());
-    });
+    const shortcuts = new MarkdownShortcuts(this, this.surfaceEl);
+    shortcuts.start();
+    this.disposers.push(() => shortcuts.stop());
   }
 
   /* ===================== Internals ===================== */
@@ -1288,12 +1287,14 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
 
   private setupDom(): void {
     this.targetEl.classList.add("ez-editor-mount");
+    this.targetEl.setAttribute("data-ezynota-root", "");
     if (this.mode === "workspace" || this.mode === "document") {
       // The engine mounts into an inner surface; the target becomes the
       // workspace shell root (sidebar + header are built by the controller).
       this.targetEl.setAttribute("data-ez-mode", this.mode);
       this.surfaceEl = document.createElement("div");
       this.surfaceEl.className = "ez-editor";
+      this.surfaceEl.setAttribute("data-ezynota-root", "");
       this.targetEl.appendChild(this.surfaceEl);
     } else {
       this.targetEl.classList.add("ez-editor");
@@ -1345,6 +1346,9 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
       this.emitDomEvent("ezn:error", { message: error.message, code: error.code });
     });
     const offSelection = this.selectionManager.on("selection", (selection) => {
+      if (selection && this.slashMenu && this.getBlockType(selection.blockId) === "paragraph") {
+        this.getEditableElement(selection.blockId)?.setAttribute("data-ez-writing-hint", this.i18n.t("core.blockHint"));
+      }
       this.inlineToolbar?.updateSelection(selection);
       this.documentToolbar?.updateSelection(selection);
       this.bus.emit("selection:changed", selection);
@@ -1363,7 +1367,7 @@ export class Ezynota implements Host, EzynotaEditorAPI, WorkspaceHost {
       if (!this.slashMenu) return;
       const text = (this.getEditableElement(blockId)?.textContent ?? "").trim();
       if (text === "/") {
-        this.slashMenu.open(blockId);
+        this.slashMenu.open(blockId, false, true);
       } else if (this.slashMenu.isOpenMenu()) {
         if (text === "" || text.startsWith("/")) {
           this.slashMenu.setQuery(text.replace(/^\//, ""));

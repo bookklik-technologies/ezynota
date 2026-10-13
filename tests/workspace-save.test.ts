@@ -111,7 +111,7 @@ describe("workspace autosave recovery", () => {
 
     state.retrySave();
     await state.flush();
-    expect(events.at(-1)).toMatchObject({ type: "saveStatus", status: "saved" });
+    expect(events.at(-1)).toMatchObject({ type: "saveStatus", status: "temporary" });
     expect((await storage.loadWorkspace(state.workspaceId))?.notes[0]?.title).toBe("Keep this draft");
   });
 });

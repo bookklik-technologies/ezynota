@@ -4,7 +4,8 @@ import { Window } from "happy-dom";
 import { it, expect } from "vitest";
 
   it("UMD bundle loads and the programmatic embed flow works end-to-end", async () => {
-  const window = new Window({ url: "http://localhost/examples/programmatic.html" });
+  // Only this trusted local bundle smoke test opts into script evaluation.
+  const window = new Window({ url: "http://localhost/examples/programmatic.html", settings: { enableJavaScriptEvaluation: true } });
   const document = window.document;
   const globals = globalThis as unknown as Record<string, unknown>;
   globals.window = window;

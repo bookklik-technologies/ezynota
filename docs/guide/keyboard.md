@@ -30,6 +30,10 @@ Ezynota is keyboard-complete. All shortcuts are IME-safe (composition events and
 | `Ctrl/Cmd+Shift+C` | Toggle code block |
 | `Alt+↑` / `Alt+↓` | Move block up / down |
 
+### Find and replace
+
+Open **Find in document** from the workspace topbar (or More in a narrow container). Within the Find field, `Enter` goes to the next match and `Shift+Enter` to the previous match. `Escape` closes search and returns focus. Search never replaces text; use Replace or Replace all explicitly, or press `Enter` in the Replace with field.
+
 ## Markdown typing shortcuts
 
 Conversions trigger as you type and each is a **single undoable transaction**.
@@ -66,7 +70,7 @@ Conversions trigger as you type and each is a **single undoable transaction**.
 Typing shortcuts are just one direction of Markdown support. Ezynota converts documents to and from Markdown losslessly:
 
 ```ts
-import { blocksToMarkdown, markdownToBlocks } from "ezynota";
+import { blocksToMarkdown, markdownToBlocks } from "@bookklik/ezynota";
 
 const md = blocksToMarkdown(doc.blocks);
 const blocks = markdownToBlocks(md);

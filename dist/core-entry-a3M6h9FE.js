@@ -1,4 +1,4 @@
-class Us {
+class Qs {
   constructor() {
     this.listeners = /* @__PURE__ */ new Map(), this.destroyed = !1;
   }
@@ -24,7 +24,7 @@ class Us {
     this.destroyed = !0, this.listeners.clear();
   }
 }
-class qs {
+class tn {
   constructor() {
     this.listeners = /* @__PURE__ */ new Map(), this.destroyed = !1;
   }
@@ -57,21 +57,231 @@ class qs {
     this.destroyed = !0, this.listeners.clear();
   }
 }
+let Ht = 0, le = 0;
+function en() {
+  Ht++;
+}
+function sn() {
+  Ht = Math.max(0, Ht - 1), le = Date.now();
+}
+function nn() {
+  return Ht > 0;
+}
+function rn(o = 50) {
+  return le !== 0 && Date.now() - le < o;
+}
+function Ts(o) {
+  if (nn() || rn() || o.isComposing) return !0;
+  const t = o.keyCode;
+  return t === void 0 ? !1 : t === 229;
+}
+const on = [
+  // The italic pattern avoids a regex lookbehind (`(?<!\*)`) which is a
+  // syntax error on Safari < 16.4 — the prefix is captured instead and the
+  // opening marker is located via the `open` string.
+  { pattern: /\*\*([^*]+)\*\*$/, mark: "bold", open: "**" },
+  { pattern: /__([^_]+)__$/, mark: "bold", open: "__" },
+  { pattern: /(?:^|[^*])\*([^*\s][^*]*)\*$/, mark: "italic", open: "*" },
+  { pattern: /~~([^~]+)~~$/, mark: "strike", open: "~~" },
+  { pattern: /`([^`]+)`$/, mark: "code", open: "`" },
+  { pattern: /==([^=]+)==$/, mark: "mark", open: "==" }
+], an = { bold: "strong", italic: "em", code: "code", mark: "mark", strike: "span" };
+class ln {
+  constructor(t, e) {
+    this.disposers = [], this.host = t, this.surface = e;
+  }
+  start() {
+    const t = (e) => {
+      const s = e;
+      if (this.host.readOnly || this.host.isDestroyed() || Ts(s) || s.target.closest("[data-ez-ui]") || s.key !== " " && s.key !== "Enter") return;
+      (s.key === " " ? this.handleSpace() : this.handleEnter()) && s.preventDefault();
+    };
+    this.surface.addEventListener("keydown", t, !0), this.disposers.push(() => this.surface.removeEventListener("keydown", t, !0));
+  }
+  stop() {
+    for (const t of this.disposers) t();
+    this.disposers.length = 0;
+  }
+  currentBlock() {
+    const t = this.host.getSelectionInfo();
+    if (!t) return null;
+    const e = this.host.getEditableElement(t.blockId);
+    if (!e) return null;
+    const s = this.host.getBlockType(t.blockId);
+    return s ? { id: t.blockId, type: s, editable: e } : null;
+  }
+  handleSpace() {
+    const t = this.currentBlock();
+    if (!t || t.type === "code") return !1;
+    const e = this.host.getRange();
+    if (!e || !e.collapsed) return !1;
+    const s = Ve(t.editable, e), n = t.editable.textContent ?? "";
+    for (const a of on) {
+      const l = a.pattern.exec(s);
+      if (l && l[1] !== void 0)
+        return this.applyInlinePattern(t.editable, e, a);
+    }
+    const i = /^(#{1,6}|>|[-*+]|\d+[.)]|\[\]|\[x\])$/.exec(s);
+    if (!i || n !== s) return !1;
+    const r = i[1];
+    return r.startsWith("#") ? this.convert(t.id, "heading", { level: r.length, content: [] }) : r === ">" ? this.convert(t.id, "quote", { content: [] }) : r === "-" || r === "*" ? this.convert(t.id, "list", { style: "unordered", items: [{ content: [] }] }) : r === "[]" ? this.convert(t.id, "list", { style: "task", items: [{ content: [], checked: !1 }] }) : r === "[x]" ? this.convert(t.id, "list", { style: "task", items: [{ content: [], checked: !0 }] }) : /^\d/.test(r) ? this.convert(t.id, "list", { style: "ordered", items: [{ content: [] }] }) : !1;
+  }
+  handleEnter() {
+    const t = this.currentBlock();
+    if (!t || t.type === "code") return !1;
+    const e = this.host.getRange();
+    if (!e || !e.collapsed) return !1;
+    const s = Ve(t.editable, e);
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(s) && Ke(t.editable, e).trim() === "") {
+      this.host.convertBlock(t.id, "delimiter");
+      const n = this.host.insertBlock(this.host.defaultBlock, void 0, { after: t.id, focus: !0 });
+      return this.host.focusBlock(n, "start"), this.host.announce("Divider created"), !0;
+    }
+    return /^```$/.test(s) && Ke(t.editable, e).trim() === "" ? (this.host.convertBlock(t.id, "code"), this.host.focusBlock(t.id, "start"), this.host.announce("Code block created"), !0) : !1;
+  }
+  /** Convert a block in ONE transaction (undoable via history). */
+  convert(t, e, s) {
+    const n = this.host.blocks.getById(t);
+    return n ? (this.host.commitChanges("user", [
+      { type: "block:update", id: t, previous: cn(n.data), current: s },
+      { type: "block:convert", id: t, fromType: n.type, toType: e }
+    ]), this.host.focusBlock(t, "end"), this.host.announce(`Converted to ${e}`), !0) : !1;
+  }
+  /** Strip inline markers from the DOM and wrap the inner text in the mark. */
+  applyInlinePattern(t, e, s) {
+    const n = e.startContainer;
+    if (n.nodeType !== Node.TEXT_NODE) return !1;
+    const i = n, r = e.startOffset, a = i.data.slice(0, r), l = s.pattern.exec(a);
+    if (!l || l[1] === void 0) return !1;
+    const c = a.length - l[1].length - s.open.length, d = l[1], u = i.ownerDocument;
+    try {
+      const m = u.createRange();
+      m.setStart(i, c), m.setEnd(i, r), m.deleteContents();
+    } catch {
+      return !1;
+    }
+    const h = an[s.mark] ?? "span", f = u.createElement(h);
+    (s.mark === "strike" || s.mark === "mark") && f.setAttribute("data-ez-mark", s.mark), f.textContent = d, e.insertNode(f);
+    const g = window.getSelection();
+    if (g) {
+      const m = u.createRange();
+      m.setStartAfter(f), m.collapse(!0), g.removeAllRanges(), g.addRange(m);
+    }
+    return t.dispatchEvent(new Event("input", { bubbles: !0 })), this.host.announce(`Formatted as ${s.mark}`), !0;
+  }
+}
+function Ve(o, t) {
+  try {
+    const e = (o.ownerDocument ?? document).createRange();
+    return e.selectNodeContents(o), e.setEnd(t.startContainer, t.startOffset), e.toString();
+  } catch {
+    return "";
+  }
+}
+function Ke(o, t) {
+  try {
+    const e = (o.ownerDocument ?? document).createRange();
+    return e.selectNodeContents(o), e.setStart(t.endContainer, t.endOffset), e.toString();
+  } catch {
+    return "";
+  }
+}
+function cn(o) {
+  return JSON.parse(JSON.stringify(o));
+}
+function dn(o, t) {
+  return (e, s, n, i = 0) => {
+    if (!e || o.readOnly) return;
+    let r = n ? Number.POSITIVE_INFINITY : 1, a = 0;
+    const l = { remaining: n ? 0 : Math.max(0, i) }, c = [];
+    for (const d of o.blocks.blocks) {
+      if (r <= 0) break;
+      const u = Je(d.data), h = Je(u), f = hn(h, e, s, r, l);
+      f > 0 && (r -= f, a += f, c.push({ type: "block:update", id: d.id, previous: u, current: h }));
+    }
+    if (c.length === 0) {
+      o.announce(`No matches for "${e}"`);
+      return;
+    }
+    if (o.commitChanges("api", c), o.announce(n ? `Replaced ${a} match(es)` : "Replaced match"), !n) {
+      const d = c[0];
+      o.focusBlock(d.id, "start");
+    }
+  };
+}
+function hn(o, t, e, s, n) {
+  if (!o || typeof o != "object") return 0;
+  let i = 0;
+  const r = o;
+  if (typeof r.code == "string") {
+    const { text: a, count: l } = ce(r.code, t, e, s, n);
+    r.code = a, i += l;
+  }
+  if (Array.isArray(r.content) && (i += wt(r.content, t, e, s - i, n)), Array.isArray(r.heading) && (i += wt(r.heading, t, e, s - i, n)), Array.isArray(r.items))
+    for (const a of r.items) {
+      if (s - i <= 0) break;
+      Array.isArray(a == null ? void 0 : a.content) && (i += wt(a.content, t, e, s - i, n));
+    }
+  if (Array.isArray(r.rows)) {
+    for (const a of r.rows)
+      if (Array.isArray(a))
+        for (const l of a) {
+          if (s - i <= 0) break;
+          Array.isArray(l == null ? void 0 : l.content) && (i += wt(l.content, t, e, s - i, n));
+        }
+  }
+  if (typeof r.caption == "string") {
+    const { text: a, count: l } = ce(r.caption, t, e, s - i, n);
+    r.caption = a, i += l;
+  }
+  return i;
+}
+function wt(o, t, e, s, n) {
+  let i = 0;
+  for (const r of o) {
+    if (s - i <= 0) break;
+    if (!r || typeof r != "object") continue;
+    const a = r;
+    if (typeof a.text == "string") {
+      const { text: l, count: c } = ce(a.text, t, e, s - i, n);
+      a.text = l, i += c;
+    }
+    Array.isArray(a.content) && (i += wt(a.content, t, e, s - i, n));
+  }
+  return i;
+}
+function ce(o, t, e, s, n) {
+  if (s <= 0) return { text: o, count: 0 };
+  let i = o, r = 0, a = 0;
+  for (; r < s; ) {
+    const l = i.indexOf(t, a);
+    if (l < 0) break;
+    if (n.remaining > 0) {
+      n.remaining--, a = l + t.length;
+      continue;
+    }
+    i = i.slice(0, l) + e + i.slice(l + t.length), r++, a = l + e.length;
+  }
+  return { text: i, count: r };
+}
+function Je(o) {
+  return JSON.parse(JSON.stringify(o));
+}
 class k extends Error {
   constructor(t, e, s, n) {
     super(e), this.name = "EzynotaError", this.code = t, s !== void 0 && (this.context = s), n !== void 0 && (this.cause = n);
   }
 }
-function tt(r) {
-  return new k("EZ_TOOL_NOT_FOUND", `Tool "${r}" is not registered`, { tool: r });
+function tt(o) {
+  return new k("EZ_TOOL_NOT_FOUND", `Tool "${o}" is not registered`, { tool: o });
 }
-function q(r, t) {
-  return new k("EZ_INVALID_DOCUMENT", `Invalid document: ${r}`, t);
+function q(o, t) {
+  return new k("EZ_INVALID_DOCUMENT", `Invalid document: ${o}`, t);
 }
-const Ws = ["http:", "https:", "mailto:", "tel:"];
-function G(r) {
-  if (typeof r != "string") return !1;
-  const t = r.trim();
+const un = ["http:", "https:", "mailto:", "tel:"];
+function G(o) {
+  if (typeof o != "string") return !1;
+  const t = o.trim();
   if (t === "") return !1;
   if (t.startsWith("#") || t.startsWith("./") || t.startsWith("../"))
     return !0;
@@ -79,67 +289,67 @@ function G(r) {
     return !1;
   try {
     const e = new URL(t, "https://ezynota.invalid");
-    return Ws.includes(e.protocol);
+    return un.includes(e.protocol);
   } catch {
     return !1;
   }
 }
-function Z(r) {
-  if (typeof r != "string") return !1;
-  const t = r.trim();
+function Z(o) {
+  if (typeof o != "string") return !1;
+  const t = o.trim();
   return t === "" ? !1 : t.startsWith("data:image/") ? /^data:image\/(png|jpe?g|gif|webp|avif|bmp|x-icon|svg\+xml)[;,]/i.test(t) : G(t);
 }
-function wo(r) {
-  if (typeof r != "string") return null;
-  const t = r.trim();
+function $o(o) {
+  if (typeof o != "string") return null;
+  const t = o.trim();
   return G(t) ? t : null;
 }
-const $ = "1.0.0", Gt = "0.1.1", U = 200, Vs = /* @__PURE__ */ new Set(["id", "type", "data", "tunes", "meta", "children"]);
-function B(r) {
+const P = "1.0.0", Xt = "0.1.2", U = 200, fn = /* @__PURE__ */ new Set(["id", "type", "data", "tunes", "meta", "children"]);
+function L(o) {
   var e;
-  if (r === null || typeof r != "object" || Array.isArray(r)) return !1;
-  const t = Object.getPrototypeOf(r);
+  if (o === null || typeof o != "object" || Array.isArray(o)) return !1;
+  const t = Object.getPrototypeOf(o);
   return t === null ? !0 : t === Object.prototype || ((e = t.constructor) == null ? void 0 : e.name) === "Object";
 }
-function mt(r) {
-  return r === null || typeof r == "string" || typeof r == "number" || typeof r == "boolean" ? !0 : Array.isArray(r) ? r.every((t) => mt(t)) : B(r) ? Object.values(r).every((t) => mt(t)) : !1;
+function mt(o) {
+  return o === null || typeof o == "string" || typeof o == "number" || typeof o == "boolean" ? !0 : Array.isArray(o) ? o.every((t) => mt(t)) : L(o) ? Object.values(o).every((t) => mt(t)) : !1;
 }
-function Ks(r) {
+function pn(o) {
   let t = 0;
-  const e = [{ v: r, d: 0 }];
+  const e = [{ v: o, d: 0 }];
   for (; e.length > 0; ) {
     const { v: s, d: n } = e.pop();
     if (n > t && (t = n), t > U) return t;
     if (Array.isArray(s))
       for (const i of s) e.push({ v: i, d: n + 1 });
-    else if (B(s))
+    else if (L(s))
       for (const i of Object.values(s)) e.push({ v: i, d: n + 1 });
   }
   return t;
 }
-function wt(r) {
-  return Ks(r) > U;
+function Et(o) {
+  return pn(o) > U;
 }
-function et(r, t = 0) {
+function et(o, t = 0) {
   if (t > U)
     throw q(`value exceeds the maximum nesting depth of ${U}`);
-  if (Array.isArray(r))
-    return r.map((e) => et(e, t + 1));
-  if (B(r)) {
+  if (Array.isArray(o))
+    return o.map((e) => et(e, t + 1));
+  if (L(o)) {
     const e = {};
-    for (const [s, n] of Object.entries(r))
+    for (const [s, n] of Object.entries(o))
       s === "__proto__" || s === "constructor" || s === "prototype" || (e[s] = et(n, t + 1));
     return e;
   }
-  return r;
+  return o;
 }
-function ot(r) {
-  if (Array.isArray(r)) {
+function ot(o) {
+  if (Array.isArray(o)) {
     const t = [];
-    for (const e of r) {
-      if (B(e) && e.type === "link") {
+    for (const e of o) {
+      if (L(e) && e.type === "link") {
         const s = e;
-        if (_e(s.href) === null) {
+        if (Ze(s.href) === null) {
           const i = Array.isArray(s.content) ? ot(s.content) : [];
           Array.isArray(i) && t.push(...i);
           continue;
@@ -151,14 +361,14 @@ function ot(r) {
     }
     return t;
   }
-  if (B(r)) {
+  if (L(o)) {
     const t = {};
-    for (const [e, s] of Object.entries(r)) {
+    for (const [e, s] of Object.entries(o)) {
       if (e === "marks" && Array.isArray(s)) {
         t[e] = s.filter((n) => {
-          if (!B(n) || n.type !== "link") return !0;
-          const i = n.attrs, o = n.href ?? (i == null ? void 0 : i.href);
-          return typeof o == "string" && _e(o) !== null;
+          if (!L(n) || n.type !== "link") return !0;
+          const i = n.attrs, r = n.href ?? (i == null ? void 0 : i.href);
+          return typeof r == "string" && Ze(r) !== null;
         }).map((n) => ot(n));
         continue;
       }
@@ -166,155 +376,155 @@ function ot(r) {
     }
     return t;
   }
-  return r;
+  return o;
 }
-function Ce(r, t, e = 0) {
+function De(o, t, e = 0) {
   if (e > U)
     throw q(`block nesting exceeds ${U} levels`);
-  if (!B(r))
-    throw new k("EZ_INVALID_BLOCK", "Block must be an object", { received: typeof r });
-  if (typeof r.type != "string" || r.type === "")
-    throw new k("EZ_INVALID_BLOCK", 'Block is missing a valid "type"', { id: String(r.id ?? "") });
-  const s = r.data;
+  if (!L(o))
+    throw new k("EZ_INVALID_BLOCK", "Block must be an object", { received: typeof o });
+  if (typeof o.type != "string" || o.type === "")
+    throw new k("EZ_INVALID_BLOCK", 'Block is missing a valid "type"', { id: String(o.id ?? "") });
+  const s = o.data;
   if (s === void 0)
-    throw new k("EZ_INVALID_BLOCK", 'Block is missing "data"', { type: r.type });
-  if (wt(s))
-    throw q(`block data exceeds the maximum nesting depth of ${U}`, { type: r.type });
+    throw new k("EZ_INVALID_BLOCK", 'Block is missing "data"', { type: o.type });
+  if (Et(s))
+    throw q(`block data exceeds the maximum nesting depth of ${U}`, { type: o.type });
   if (!mt(s))
-    throw new k("EZ_INVALID_BLOCK", "Block data is not JSON-serializable", { type: r.type });
-  const n = typeof r.id == "string" && r.id !== "" ? r.id : t(), i = {
+    throw new k("EZ_INVALID_BLOCK", "Block data is not JSON-serializable", { type: o.type });
+  const n = typeof o.id == "string" && o.id !== "" ? o.id : t(), i = {
     id: n,
-    type: r.type,
+    type: o.type,
     data: ot(et(s))
-  }, o = r.tunes;
-  if (B(o)) {
-    if (wt(o))
+  }, r = o.tunes;
+  if (L(r)) {
+    if (Et(r))
       throw q(`block tunes exceed the maximum nesting depth of ${U}`, { id: n });
-    mt(o) && (i.tunes = et(o));
+    mt(r) && (i.tunes = et(r));
   }
-  const a = r.meta;
-  if (B(a)) {
+  const a = o.meta;
+  if (L(a)) {
     const c = {};
     typeof a.createdAt == "number" && (c.createdAt = a.createdAt), typeof a.updatedAt == "number" && (c.updatedAt = a.updatedAt), (c.createdAt !== void 0 || c.updatedAt !== void 0) && (i.meta = c);
   }
-  const l = r.children;
-  Array.isArray(l) && (i.children = l.map((c) => Ce(c, t, e + 1)));
-  for (const c of Object.keys(r)) {
-    if (Vs.has(c) || c === "__proto__" || c === "constructor" || c === "prototype") continue;
-    const d = r[c];
-    if (wt(d))
+  const l = o.children;
+  Array.isArray(l) && (i.children = l.map((c) => De(c, t, e + 1)));
+  for (const c of Object.keys(o)) {
+    if (fn.has(c) || c === "__proto__" || c === "constructor" || c === "prototype") continue;
+    const d = o[c];
+    if (Et(d))
       throw q(`block field "${c}" exceeds the maximum nesting depth of ${U}`, { id: n });
     mt(d) && (i[c] = et(d));
   }
   return i;
 }
-function Js() {
-  let r = 0;
-  return () => `ez_salvaged_${(++r).toString(36)}`;
+function gn() {
+  let o = 0;
+  return () => `ez_salvaged_${(++o).toString(36)}`;
 }
-function oe(r, t) {
-  let e = `${r}_2`;
-  for (let s = 2; t.has(e); s++) e = `${r}_${s}`;
+function de(o, t) {
+  let e = `${o}_2`;
+  for (let s = 2; t.has(e); s++) e = `${o}_${s}`;
   return e;
 }
-function Zs(r) {
+function mn(o) {
   try {
-    const t = JSON.parse(JSON.stringify(r));
-    return wt(t) ? null : et(t);
+    const t = JSON.parse(JSON.stringify(o));
+    return Et(t) ? null : et(t);
   } catch {
     return null;
   }
 }
-function vs(r, t) {
+function Ls(o, t) {
   let e = 0;
   const s = (n) => {
     if (Array.isArray(n.children))
       for (const i of n.children)
-        t.has(i.id) && (i.id = oe(i.id, t), e++), t.add(i.id), s(i);
+        t.has(i.id) && (i.id = de(i.id, t), e++), t.add(i.id), s(i);
   };
-  for (const n of r) s(n);
+  for (const n of o) s(n);
   return e;
 }
-function ws(r, t) {
-  const s = { schemaVersion: typeof r.schemaVersion == "string" ? r.schemaVersion : $, blocks: t }, n = r.meta;
-  if (B(n)) {
-    if (wt(n))
+function Ds(o, t) {
+  const s = { schemaVersion: typeof o.schemaVersion == "string" ? o.schemaVersion : P, blocks: t }, n = o.meta;
+  if (L(n)) {
+    if (Et(n))
       throw q("document meta exceeds the maximum nesting depth");
     mt(n) && (s.meta = et(n));
   }
-  typeof r.createdAt == "number" && (s.createdAt = r.createdAt), typeof r.updatedAt == "number" && (s.updatedAt = r.updatedAt);
-  const i = r.generator;
-  return B(i) && i.name === "ezynota" && typeof i.version == "string" && (s.generator = { name: "ezynota", version: i.version }), s;
+  typeof o.createdAt == "number" && (s.createdAt = o.createdAt), typeof o.updatedAt == "number" && (s.updatedAt = o.updatedAt);
+  const i = o.generator;
+  return L(i) && i.name === "ezynota" && typeof i.version == "string" && (s.generator = { name: "ezynota", version: i.version }), s;
 }
-function _t(r, t) {
-  if (r == null) {
+function jt(o, t) {
+  if (o == null) {
     const i = Date.now();
-    return { schemaVersion: $, blocks: [], createdAt: i, updatedAt: i, generator: { name: "ezynota", version: Gt } };
+    return { schemaVersion: P, blocks: [], createdAt: i, updatedAt: i, generator: { name: "ezynota", version: Xt } };
   }
-  if (!B(r))
-    throw q("expected an object", { received: typeof r });
-  const e = r.blocks;
+  if (!L(o))
+    throw q("expected an object", { received: typeof o });
+  const e = o.blocks;
   if (!Array.isArray(e))
     throw q('"blocks" must be an array');
   const s = /* @__PURE__ */ new Set(), n = e.map((i) => {
-    const o = Ce(i, t);
-    if (s.has(o.id))
-      throw q(`duplicate block id "${o.id}"`);
-    return s.add(o.id), o;
+    const r = De(i, t);
+    if (s.has(r.id))
+      throw q(`duplicate block id "${r.id}"`);
+    return s.add(r.id), r;
   });
-  return vs(n, s), ws(r, n);
+  return Ls(n, s), Ds(o, n);
 }
-function ae(r, t) {
-  const e = t ?? Js();
-  if (r == null)
-    return { document: _t(null, e), salvaged: !1, dropped: [] };
-  if (!B(r))
+function he(o, t) {
+  const e = t ?? gn();
+  if (o == null)
+    return { document: jt(null, e), salvaged: !1, dropped: [] };
+  if (!L(o))
     return { document: null, salvaged: !1, dropped: [] };
-  const s = r.blocks;
+  const s = o.blocks;
   if (!Array.isArray(s))
     return { document: null, salvaged: !1, dropped: [] };
-  const n = [], i = /* @__PURE__ */ new Set(), o = [];
+  const n = [], i = /* @__PURE__ */ new Set(), r = [];
   let a = !1;
   for (let c = 0; c < s.length; c++) {
     const d = s[c];
     try {
-      const h = Ce(d, e);
-      i.has(h.id) && (h.id = oe(h.id, i), a = !0), i.add(h.id), o.push(h);
+      const u = De(d, e);
+      i.has(u.id) && (u.id = de(u.id, i), a = !0), i.add(u.id), r.push(u);
     } catch {
       a = !0;
-      const h = B(d) && typeof d.id == "string" ? d.id : "";
-      n.push(h !== "" ? h : `#${c}`);
-      const u = Zs(d);
-      if (u === null) continue;
-      const p = B(u) ? u.id : void 0;
-      let g = typeof p == "string" && p !== "" ? p : e();
-      i.has(g) && (g = oe(g, i)), i.add(g), o.push({ id: g, type: "unknown", data: { raw: u } });
+      const u = L(d) && typeof d.id == "string" ? d.id : "";
+      n.push(u !== "" ? u : `#${c}`);
+      const h = mn(d);
+      if (h === null) continue;
+      const f = L(h) ? h.id : void 0;
+      let g = typeof f == "string" && f !== "" ? f : e();
+      i.has(g) && (g = de(g, i)), i.add(g), r.push({ id: g, type: "unknown", data: { raw: h } });
     }
   }
-  vs(o, i) > 0 && (a = !0);
+  Ls(r, i) > 0 && (a = !0);
   let l;
   try {
-    l = ws(r, o);
+    l = Ds(o, r);
   } catch {
-    l = { schemaVersion: $, blocks: o };
+    l = { schemaVersion: P, blocks: r };
   }
   return { document: l, salvaged: a, dropped: n };
 }
-function J(r) {
-  return typeof structuredClone == "function" ? structuredClone(r) : JSON.parse(JSON.stringify(r));
+function J(o) {
+  return typeof structuredClone == "function" ? structuredClone(o) : JSON.parse(JSON.stringify(o));
 }
-function Gs(r) {
-  const t = Object.freeze(r.blocks.map((e) => Object.freeze({ ...e })));
-  return Object.freeze({ ...r, blocks: t });
+function bn(o) {
+  const t = Object.freeze(o.blocks.map((e) => Object.freeze({ ...e })));
+  return Object.freeze({ ...o, blocks: t });
 }
-function _e(r) {
-  if (typeof r != "string") return null;
-  const t = r.trim();
+function Ze(o) {
+  if (typeof o != "string") return null;
+  const t = o.trim();
   return t !== "" && G(t) ? t : null;
 }
-class te {
+class se {
   constructor(t, e) {
-    this.version = 0, this.document = _t(t ?? null, e);
+    this.version = 0, this.document = jt(t ?? null, e);
   }
   getVersion() {
     return this.version;
@@ -336,10 +546,10 @@ class te {
    * never mutate nested values in place.
    */
   snapshot() {
-    return Gs(J(this.document));
+    return bn(J(this.document));
   }
   replace(t, e) {
-    this.document = _t(t, e), this.version++;
+    this.document = jt(t, e), this.version++;
   }
   updatedAt() {
     this.document.updatedAt = Date.now();
@@ -348,8 +558,8 @@ class te {
     return J(this.document);
   }
 }
-let He = 0;
-class Ys {
+let Ge = 0;
+class yn {
   constructor(t, e) {
     this.state = t, this.onCommit = e;
   }
@@ -367,14 +577,14 @@ class Ys {
     if (e.length === 0) return { batch: this.emptyBatch(t), changed: !1 };
     const s = this.state.raw(), n = J({ blocks: s.blocks, meta: s.meta ?? null });
     try {
-      for (const o of e)
-        this.applyChange(s, o);
-    } catch (o) {
-      throw s.blocks = n.blocks, s.meta = n.meta ?? void 0, o instanceof k ? o : new k("EZ_UNKNOWN_ERROR", "Transaction failed and was rolled back", { origin: t, changes: e.length }, o);
+      for (const r of e)
+        this.applyChange(s, r);
+    } catch (r) {
+      throw s.blocks = n.blocks, s.meta = n.meta ?? void 0, r instanceof k ? r : new k("EZ_UNKNOWN_ERROR", "Transaction failed and was rolled back", { origin: t, changes: e.length }, r);
     }
     this.state.updatedAt(), this.state.bump();
     const i = {
-      id: `ch_${Date.now().toString(36)}_${(He++).toString(36)}`,
+      id: `ch_${Date.now().toString(36)}_${(Ge++).toString(36)}`,
       origin: t,
       timestamp: Date.now(),
       changes: e
@@ -385,7 +595,7 @@ class Ys {
   applyChange(t, e) {
     switch (e.type) {
       case "block:insert": {
-        t.blocks.splice(Math.max(0, Math.min(e.index, t.blocks.length)), 0, Xs(e.block));
+        t.blocks.splice(Math.max(0, Math.min(e.index, t.blocks.length)), 0, kn(e.block));
         break;
       }
       case "block:remove": {
@@ -399,7 +609,7 @@ class Ys {
         break;
       }
       case "block:move": {
-        Qs(t.blocks, e.id, e.to);
+        vn(t.blocks, e.id, e.to);
         break;
       }
       case "block:convert": {
@@ -432,7 +642,7 @@ class Ys {
     }
   }
   emptyBatch(t) {
-    return { id: `ch_${Date.now().toString(36)}_${(He++).toString(36)}`, origin: t, timestamp: Date.now(), changes: [] };
+    return { id: `ch_${Date.now().toString(36)}_${(Ge++).toString(36)}`, origin: t, timestamp: Date.now(), changes: [] };
   }
   /** Invert a set of changes (mechanical, payload-driven). */
   invert(t) {
@@ -472,18 +682,18 @@ class Ys {
     return e;
   }
 }
-function Xs(r) {
-  return J(r);
+function kn(o) {
+  return J(o);
 }
-function Qs(r, t, e) {
-  const s = r.findIndex((o) => o.id === t);
+function vn(o, t, e) {
+  const s = o.findIndex((r) => r.id === t);
   if (s < 0) return;
-  const [n] = r.splice(s, 1);
+  const [n] = o.splice(s, 1);
   if (!n) return;
-  const i = Math.max(0, Math.min(e, r.length));
-  r.splice(i, 0, n);
+  const i = Math.max(0, Math.min(e, o.length));
+  o.splice(i, 0, n);
 }
-class tn {
+class wn {
   constructor(t, e, s) {
     this.tm = t, this.generateId = e, this.callbacks = s;
   }
@@ -528,25 +738,25 @@ class tn {
     return this.blocks.findIndex((e) => e.id === t);
   }
   insert(t, e, s = "api", n = -1, i) {
-    const o = this.blocks;
+    const r = this.blocks;
     let a = (i == null ? void 0 : i.withId) ?? this.generateId();
-    if (o.some((d) => d.id === a)) {
+    if (r.some((d) => d.id === a)) {
       const d = a;
-      let h = 2;
-      for (; o.some((u) => u.id === `${d}_${h}`); ) h++;
-      a = `${d}_${h}`;
+      let u = 2;
+      for (; r.some((h) => h.id === `${d}_${u}`); ) u++;
+      a = `${d}_${u}`;
     }
-    const l = { id: a, type: t, data: e }, c = n >= 0 ? Math.max(0, Math.min(n, o.length)) : o.length;
+    const l = { id: a, type: t, data: e }, c = n >= 0 ? Math.max(0, Math.min(n, r.length)) : r.length;
     return this.run(s, () => [{ type: "block:insert", block: l, index: c }]), a;
   }
   update(t, e, s = "api") {
     const n = this.getById(t);
     if (!n || ct(n.data) === ct(e)) return;
-    const i = nt(n.data), o = nt(e);
-    this.run(s, () => [{ type: "block:update", id: t, previous: i, current: o }]);
+    const i = nt(n.data), r = nt(e);
+    this.run(s, () => [{ type: "block:update", id: t, previous: i, current: r }]);
   }
   remove(t, e = "api") {
-    const s = this.blocks, n = s.findIndex((o) => o.id === t);
+    const s = this.blocks, n = s.findIndex((r) => r.id === t);
     if (n < 0) return;
     const i = JSON.parse(JSON.stringify(s[n]));
     this.run(e, () => [{ type: "block:remove", id: t, index: n, block: i }]);
@@ -558,101 +768,101 @@ class tn {
   move(t, e, s = "api") {
     const n = this.blocks, i = n.findIndex((a) => a.id === t);
     if (i < 0) return;
-    let o;
+    let r;
     if (typeof e == "number")
-      o = e;
+      r = e;
     else if ("before" in e) {
       const a = n.findIndex((l) => l.id === e.before);
       if (a < 0) return;
-      o = a > i ? a - 1 : a;
+      r = a > i ? a - 1 : a;
     } else if ("after" in e) {
       const a = n.findIndex((l) => l.id === e.after);
       if (a < 0) return;
-      o = a > i ? a : a + 1;
+      r = a > i ? a : a + 1;
     } else
-      o = e.at === "start" ? 0 : n.length;
-    o = Math.max(0, Math.min(o, n.length)), o !== i && this.run(s, () => [{ type: "block:move", id: t, from: i, to: o }]);
+      r = e.at === "start" ? 0 : n.length;
+    r = Math.max(0, Math.min(r, n.length)), r !== i && this.run(s, () => [{ type: "block:move", id: t, from: i, to: r }]);
   }
   /** Move between root and nested lists atomically, preserving the whole subtree. */
   relocate(t, e, s, n = "user") {
-    var p;
+    var f;
     if (t === e) return;
-    const i = this.blocks, o = JSON.parse(JSON.stringify(i)), a = (g, m) => {
+    const i = this.blocks, r = JSON.parse(JSON.stringify(i)), a = (g, m) => {
       for (let y = 0; y < g.length; y++) {
         const v = g[y];
         if (v.id === m) return { block: v, siblings: g, index: y };
         const w = a(v.children ?? [], m);
         if (w) return w;
       }
-    }, l = a(o, t), c = a(o, e);
+    }, l = a(r, t), c = a(r, e);
     if (!l || !c || a(l.block.children ?? [], e) || s === "inside" && c.block.type !== "toggle") return;
-    if (s !== "inside" && l.siblings === o && c.siblings === o) {
+    if (s !== "inside" && l.siblings === r && c.siblings === r) {
       this.move(t, s === "before" ? { before: e } : { after: e }, n);
       return;
     }
     l.siblings.splice(l.index, 1);
-    const d = s === "inside" ? (p = c.block).children ?? (p.children = []) : c.siblings, h = s === "inside" ? d.length : d.indexOf(c.block) + (s === "after" ? 1 : 0);
-    d.splice(h, 0, l.block), s === "inside" && (c.block.data = { ...c.block.data, open: !0 });
-    const u = [];
+    const d = s === "inside" ? (f = c.block).children ?? (f.children = []) : c.siblings, u = s === "inside" ? d.length : d.indexOf(c.block) + (s === "after" ? 1 : 0);
+    d.splice(u, 0, l.block), s === "inside" && (c.block.data = { ...c.block.data, open: !0 });
+    const h = [];
     for (let g = 0; g < i.length; g++) {
       const m = i[g];
-      o.some((y) => y.id === m.id) || u.push({ type: "block:remove", id: m.id, index: g, block: m });
+      r.some((y) => y.id === m.id) || h.push({ type: "block:remove", id: m.id, index: g, block: m });
     }
-    for (const g of o) {
+    for (const g of r) {
       const m = i.find((y) => y.id === g.id);
-      m && (JSON.stringify(m.data) !== JSON.stringify(g.data) && u.push({ type: "block:update", id: g.id, previous: m.data, current: g.data }), JSON.stringify(m.children ?? []) !== JSON.stringify(g.children ?? []) && u.push({ type: "children:update", id: g.id, previous: m.children ?? [], current: g.children ?? [] }));
+      m && (JSON.stringify(m.data) !== JSON.stringify(g.data) && h.push({ type: "block:update", id: g.id, previous: m.data, current: g.data }), JSON.stringify(m.children ?? []) !== JSON.stringify(g.children ?? []) && h.push({ type: "children:update", id: g.id, previous: m.children ?? [], current: g.children ?? [] }));
     }
-    o.forEach((g, m) => {
-      i.some((y) => y.id === g.id) || u.push({ type: "block:insert", block: g, index: m });
-    }), this.run(n, () => u);
+    r.forEach((g, m) => {
+      i.some((y) => y.id === g.id) || h.push({ type: "block:insert", block: g, index: m });
+    }), this.run(n, () => h);
   }
   duplicate(t, e = "api") {
     const s = this.getIndex(t), n = this.getById(t);
     if (s < 0 || !n) return "";
-    const i = this.generateId(), o = JSON.parse(JSON.stringify(n));
-    return o.id = i, o.meta = {}, Es(o, this.generateId), this.run(e, () => [{ type: "block:insert", block: o, index: s + 1 }]), i;
+    const i = this.generateId(), r = JSON.parse(JSON.stringify(n));
+    return r.id = i, r.meta = {}, Ns(r, this.generateId), this.run(e, () => [{ type: "block:insert", block: r, index: s + 1 }]), i;
   }
   convert(t, e, s, n = "api") {
     const i = this.getById(t);
     if (!i) return;
-    const o = i.type;
-    if (o === e) return;
+    const r = i.type;
+    if (r === e) return;
     const a = nt(i.data), l = nt(s);
     this.run(n, () => [
       { type: "block:update", id: t, previous: a, current: l },
-      { type: "block:convert", id: t, fromType: o, toType: e }
+      { type: "block:convert", id: t, fromType: r, toType: e }
     ]);
   }
   setTune(t, e, s, n = "user") {
     var a;
     const i = this.getById(t);
     if (!i) return;
-    const o = nt(((a = i.tunes) == null ? void 0 : a[e]) ?? null);
-    ct(o) !== ct(s) && this.run(n, () => [{ type: "tune:update", id: t, tune: e, previous: o, value: nt(s) }]);
+    const r = nt(((a = i.tunes) == null ? void 0 : a[e]) ?? null);
+    ct(r) !== ct(s) && this.run(n, () => [{ type: "tune:update", id: t, tune: e, previous: r, value: nt(s) }]);
   }
 }
-function nt(r) {
-  return JSON.parse(JSON.stringify(r));
+function nt(o) {
+  return JSON.parse(JSON.stringify(o));
 }
-function ct(r) {
-  return r === null || typeof r != "object" ? JSON.stringify(r) ?? "null" : Array.isArray(r) ? `[${r.map(ct).join(",")}]` : `{${Object.keys(r).sort().map((e) => `${JSON.stringify(e)}:${ct(r[e])}`).join(",")}}`;
+function ct(o) {
+  return o === null || typeof o != "object" ? JSON.stringify(o) ?? "null" : Array.isArray(o) ? `[${o.map(ct).join(",")}]` : `{${Object.keys(o).sort().map((e) => `${JSON.stringify(e)}:${ct(o[e])}`).join(",")}}`;
 }
-function Es(r, t) {
-  if (Array.isArray(r.children))
-    for (const e of r.children)
-      e.id = t(), Es(e, t);
+function Ns(o, t) {
+  if (Array.isArray(o.children))
+    for (const e of o.children)
+      e.id = t(), Ns(e, t);
 }
-const en = 50, sn = 2e4;
-class nn {
+const En = 50, An = 2e4;
+class Sn {
   constructor(t, e = {}, s = 900) {
     this.tm = t, this.callbacks = e, this.undoStack = [], this.redoStack = [], this.coalesceWindowMs = s;
   }
   record(t, e) {
     if (t.changes.length === 0 || t.origin === "remote") return;
-    const s = this.tm.invert(t.changes), n = this.callbacks.onCaptureSelection ? this.callbacks.onCaptureSelection() : e ?? null, i = this.undoStack[this.undoStack.length - 1], o = t.changes.every(
+    const s = this.tm.invert(t.changes), n = this.callbacks.onCaptureSelection ? this.callbacks.onCaptureSelection() : e ?? null, i = this.undoStack[this.undoStack.length - 1], r = t.changes.every(
       (d) => d.type === "block:update" || d.type === "tune:update" || d.type === "title:update"
-    ), a = (i == null ? void 0 : i.groupStart) ?? (i == null ? void 0 : i.time) ?? 0, l = ((i == null ? void 0 : i.changes.length) ?? 0) + t.changes.length > en, c = t.timestamp - a >= sn;
-    if (i && o && !l && !c && i.origin === "user" && t.origin === "user" && t.timestamp - i.time < this.coalesceWindowMs && rn(i.changes, t.changes)) {
+    ), a = (i == null ? void 0 : i.groupStart) ?? (i == null ? void 0 : i.time) ?? 0, l = ((i == null ? void 0 : i.changes.length) ?? 0) + t.changes.length > En, c = t.timestamp - a >= An;
+    if (i && r && !l && !c && i.origin === "user" && t.origin === "user" && t.timestamp - i.time < this.coalesceWindowMs && xn(i.changes, t.changes)) {
       i.changes = i.changes.concat(t.changes), i.inverse = this.tm.invert(i.changes), i.time = t.timestamp, i.postSelection = n, this.redoStack.length = 0;
       return;
     }
@@ -705,15 +915,15 @@ class nn {
     this.undoStack.length = 0, this.redoStack.length = 0, this.undoStack.push(...t.undo), this.redoStack.push(...t.redo);
   }
 }
-function rn(r, t) {
+function xn(o, t) {
   const e = (s) => Array.from(
     new Set(
       s.map((n) => n.type === "title:update" ? "title" : "id" in n ? n.id : "block" in n ? n.block.id : "")
     )
   ).sort().join("|");
-  return e(r) === e(t);
+  return e(o) === e(t);
 }
-class on {
+class In {
   constructor() {
     this.commands = /* @__PURE__ */ new Map();
   }
@@ -733,7 +943,7 @@ class on {
     return Array.from(this.commands.keys());
   }
 }
-const R = {
+const O = {
   INSERT_BLOCK: "EZ_INSERT_BLOCK",
   DELETE_BLOCK: "EZ_DELETE_BLOCK",
   MOVE_BLOCK: "EZ_MOVE_BLOCK",
@@ -747,12 +957,12 @@ const R = {
   SET_READ_ONLY: "EZ_SET_READ_ONLY",
   SELECT_BLOCK: "EZ_SELECT_BLOCK"
 };
-class an {
+class Cn {
   constructor() {
     this.blockTools = /* @__PURE__ */ new Map(), this.blockToolLoaders = /* @__PURE__ */ new Map(), this.inlineTools = [], this.tunes = [], this.defaultBlock = "paragraph";
   }
   registerBlockTool(t, e, s = !1) {
-    const n = ln(e);
+    const n = zn(e);
     this.blockTools.set(t, {
       name: t,
       toolClass: n.cls,
@@ -820,7 +1030,7 @@ class an {
     this.defaultBlock = t;
   }
   registerInlineTool(t, e) {
-    const s = cn(e);
+    const s = Bn(e);
     this.inlineTools.push({ name: t, toolClass: s.cls, config: s.config ?? {} });
   }
   listInlineTools() {
@@ -832,7 +1042,7 @@ class an {
     return new s.toolClass({ ...e, config: { ...s.config, ...e.config } });
   }
   registerTune(t, e) {
-    const s = dn(e);
+    const s = Tn(e);
     this.tunes.push({ name: t, toolClass: s.cls, config: s.config ?? {} });
   }
   listTunes() {
@@ -844,37 +1054,37 @@ class an {
     return new s.toolClass({ ...e, config: { ...s.config, ...e.config } });
   }
 }
-function ln(r) {
-  if (typeof r == "function") return { cls: r, config: void 0 };
-  const t = r;
+function zn(o) {
+  if (typeof o == "function") return { cls: o, config: void 0 };
+  const t = o;
   if (!t || typeof t.class != "function")
     throw new k("EZ_TOOL_LOAD_FAILED", "Tool definition must be a class or { class, config }");
   return { cls: t.class, config: t.config, shortcut: t.shortcut };
 }
-function cn(r) {
-  if (typeof r == "function") return { cls: r, config: void 0 };
-  if (!r || typeof r.class != "function")
+function Bn(o) {
+  if (typeof o == "function") return { cls: o, config: void 0 };
+  if (!o || typeof o.class != "function")
     throw new k("EZ_TOOL_LOAD_FAILED", "Inline tool definition must be a class or { class, config }");
-  return { cls: r.class, config: r.config };
+  return { cls: o.class, config: o.config };
 }
-function dn(r) {
-  if (typeof r == "function") return { cls: r, config: void 0 };
-  if (!r || typeof r.class != "function")
+function Tn(o) {
+  if (typeof o == "function") return { cls: o, config: void 0 };
+  if (!o || typeof o.class != "function")
     throw new k("EZ_TOOL_LOAD_FAILED", "Tune definition must be a class or { class, config }");
-  return { cls: r.class, config: r.config };
+  return { cls: o.class, config: o.config };
 }
-function je(r) {
-  const t = r.indexOf("-"), e = t >= 0 ? r.slice(0, t) : r, s = t >= 0 ? r.slice(t + 1) : null, n = e.split(".").map((i) => parseInt(i, 10) || 0);
+function Ye(o) {
+  const t = o.indexOf("-"), e = t >= 0 ? o.slice(0, t) : o, s = t >= 0 ? o.slice(t + 1) : null, n = e.split(".").map((i) => parseInt(i, 10) || 0);
   for (; n.length < 3; ) n.push(0);
   return { core: n.slice(0, 3), pre: s };
 }
-function hn(r, t) {
-  const e = r.split("."), s = t.split("."), n = Math.max(e.length, s.length);
+function Ln(o, t) {
+  const e = o.split("."), s = t.split("."), n = Math.max(e.length, s.length);
   for (let i = 0; i < n; i++) {
-    const o = e[i], a = s[i];
-    if (o === void 0) return -1;
+    const r = e[i], a = s[i];
+    if (r === void 0) return -1;
     if (a === void 0) return 1;
-    const l = /^\d+$/.test(o) ? parseInt(o, 10) : null, c = /^\d+$/.test(a) ? parseInt(a, 10) : null;
+    const l = /^\d+$/.test(r) ? parseInt(r, 10) : null, c = /^\d+$/.test(a) ? parseInt(a, 10) : null;
     if (l !== null && c !== null) {
       if (l !== c) return l - c;
     } else {
@@ -882,19 +1092,19 @@ function hn(r, t) {
         return -1;
       if (c !== null)
         return 1;
-      if (o !== a)
-        return o < a ? -1 : 1;
+      if (r !== a)
+        return r < a ? -1 : 1;
     }
   }
   return 0;
 }
-function Q(r, t) {
-  const e = je(r), s = je(t);
+function Q(o, t) {
+  const e = Ye(o), s = Ye(t);
   for (let n = 0; n < 3; n++)
     if (e.core[n] !== s.core[n]) return e.core[n] - s.core[n];
-  return e.pre === null && s.pre === null ? 0 : e.pre === null ? 1 : s.pre === null ? -1 : hn(e.pre, s.pre);
+  return e.pre === null && s.pre === null ? 0 : e.pre === null ? 1 : s.pre === null ? -1 : Ln(e.pre, s.pre);
 }
-class un {
+class Dn {
   constructor() {
     this.migrations = [];
   }
@@ -921,8 +1131,8 @@ class un {
     for (const i of s)
       try {
         n = i.migrate(n), n.schemaVersion = i.to;
-      } catch (o) {
-        throw new k("EZ_MIGRATION_FAILED", `Migration ${i.from} -> ${i.to} failed`, { from: i.from, to: i.to }, o);
+      } catch (r) {
+        throw new k("EZ_MIGRATION_FAILED", `Migration ${i.from} -> ${i.to} failed`, { from: i.from, to: i.to }, r);
       }
     return n.schemaVersion = e, n;
   }
@@ -934,19 +1144,20 @@ class un {
     const s = [{ version: t, path: [] }], n = /* @__PURE__ */ new Set([t]);
     for (; s.length > 0; ) {
       const i = s.shift();
-      for (const o of this.migrations) {
-        if (o.from !== i.version || n.has(o.to)) continue;
-        const a = [...i.path, o];
-        if (Q(o.to, e) === 0) return a;
-        Q(o.to, e) < 0 && (n.add(o.to), s.push({ version: o.to, path: a }));
+      for (const r of this.migrations) {
+        if (r.from !== i.version || n.has(r.to)) continue;
+        const a = [...i.path, r];
+        if (Q(r.to, e) === 0) return a;
+        Q(r.to, e) < 0 && (n.add(r.to), s.push({ version: r.to, path: a }));
       }
     }
     throw new k("EZ_MIGRATION_FAILED", `No migration path from "${t}" to "${e}"`, { from: t, to: e });
   }
 }
-const pn = {
+const Nn = {
   "core.placeholder": "Start writing...",
   "core.emptyDocument": "This document is empty.",
+  "core.blockHint": "Type / to choose a block",
   "toolbar.formatting": "Text formatting",
   "toolbar.blockActions": "Block actions",
   "toolbar.blockType": "Block type",
@@ -958,6 +1169,7 @@ const pn = {
   "toolbar.settings": "Block settings",
   "toolbar.drag": "Drag to reorder",
   "settings.convert": "Convert to",
+  "settings.convertPicker": "Turn into…",
   "settings.duplicate": "Duplicate",
   "settings.moveUp": "Move up",
   "settings.moveDown": "Move down",
@@ -1018,18 +1230,18 @@ const pn = {
   "tune.alignment.right": "Right",
   "error.toolNotFound": "Tool not found"
 };
-class fn {
+class Mn {
   constructor(t = "en", e = {}) {
-    this.messages = {}, this.locale = t, this.messages.en = { ...pn };
+    this.messages = {}, this.locale = t, this.messages.en = { ...Nn };
     for (const [s, n] of Object.entries(e))
       this.messages[s] = { ...this.messages[s] ?? {}, ...n };
   }
   t(t, e) {
-    var i, o, a;
+    var i, r, a;
     const s = Object.keys(this.messages).sort((l, c) => c.length - l.length);
     for (const l of s)
       if (l !== "en" && t.startsWith(`${l}.`)) {
-        const c = ((i = this.messages[l]) == null ? void 0 : i[t.slice(l.length + 1)]) ?? ((o = this.messages[l]) == null ? void 0 : o[t]);
+        const c = ((i = this.messages[l]) == null ? void 0 : i[t.slice(l.length + 1)]) ?? ((r = this.messages[l]) == null ? void 0 : r[t]);
         if (c !== void 0) return this.substitute(c, e);
       }
     const n = (a = this.messages.en) == null ? void 0 : a[t];
@@ -1042,107 +1254,107 @@ class fn {
     return this.locale;
   }
 }
-const Ue = "abcdefghijklmnopqrstuvwxyz0123456789";
-function gn() {
-  let r = "ez_";
+const Xe = "abcdefghijklmnopqrstuvwxyz0123456789";
+function Rn() {
+  let o = "ez_";
   for (let t = 0; t < 12; t++)
-    r += Ue[Math.floor(Math.random() * Ue.length)];
-  return r;
+    o += Xe[Math.floor(Math.random() * Xe.length)];
+  return o;
 }
-function Yt() {
-  const r = typeof crypto < "u" ? crypto : void 0;
-  return r && typeof r.randomUUID == "function" ? () => r.randomUUID() : gn;
+function Qt() {
+  const o = typeof crypto < "u" ? crypto : void 0;
+  return o && typeof o.randomUUID == "function" ? () => o.randomUUID() : Rn;
 }
-function N(r) {
-  const t = Yt();
-  return r ? () => {
-    const e = r();
+function M(o) {
+  const t = Qt();
+  return o ? () => {
+    const e = o();
     return typeof e == "string" && e !== "" ? e : t();
   } : t;
 }
-function st(r, t) {
-  const e = { type: "text", text: r };
+function st(o, t) {
+  const e = { type: "text", text: o };
   return t && t.length > 0 && (e.marks = t), e;
 }
-function _(r) {
-  return r.type === "text";
+function H(o) {
+  return o.type === "text";
 }
-function Lt(r) {
-  return r.type === "link" && Array.isArray(r.content);
+function Dt(o) {
+  return o.type === "link" && Array.isArray(o.content);
 }
-const qe = ["bold", "italic", "underline", "strike", "code", "mark", "link", "color", "background"];
-function le(r) {
-  return r.attrs ? `${r.type}:${JSON.stringify(r.attrs)}` : r.type;
+const Qe = ["bold", "italic", "underline", "strike", "code", "mark", "link", "color", "background"];
+function ue(o) {
+  return o.attrs ? `${o.type}:${JSON.stringify(o.attrs)}` : o.type;
 }
-function O(r) {
-  if (!r) return [];
+function R(o) {
+  if (!o) return [];
   const t = [];
-  for (const e of r) {
-    if (Lt(e)) {
-      const i = O(e.content);
-      if (i.length === 0 || i.every((o) => o.text === "")) continue;
+  for (const e of o) {
+    if (Dt(e)) {
+      const i = R(e.content);
+      if (i.length === 0 || i.every((r) => r.text === "")) continue;
       t.push({ type: "link", href: e.href, content: i });
       continue;
     }
     const s = e;
     if (typeof s.text != "string" || s.text === "") continue;
     const n = t[t.length - 1];
-    if (n && _(n) && _(s) && bn(n.marks, s.marks))
+    if (n && H(n) && H(s) && Fn(n.marks, s.marks))
       n.text += s.text;
-    else if (_(s)) {
-      const i = { type: "text", text: s.text }, o = mn(s.marks);
-      o && (i.marks = o), t.push(i);
+    else if (H(s)) {
+      const i = { type: "text", text: s.text }, r = On(s.marks);
+      r && (i.marks = r), t.push(i);
     } else
       t.push(s);
   }
   return t;
 }
-function mn(r) {
-  if (!r || r.length === 0) return;
+function On(o) {
+  if (!o || o.length === 0) return;
   const t = /* @__PURE__ */ new Set(), e = [];
-  for (const s of r) {
-    const n = le(s);
+  for (const s of o) {
+    const n = ue(s);
     t.has(n) || (t.add(n), e.push(s));
   }
-  return e.sort((s, n) => qe.indexOf(s.type) - qe.indexOf(n.type)), e;
+  return e.sort((s, n) => Qe.indexOf(s.type) - Qe.indexOf(n.type)), e;
 }
-function bn(r, t) {
-  const e = (r ?? []).map(le).sort().join(","), s = (t ?? []).map(le).sort().join(",");
+function Fn(o, t) {
+  const e = (o ?? []).map(ue).sort().join(","), s = (t ?? []).map(ue).sort().join(",");
   return e === s;
 }
-function yn(r, t) {
-  if (t <= 0) return [[], O(r)];
+function $n(o, t) {
+  if (t <= 0) return [[], R(o)];
   const e = [], s = [];
   let n = 0;
-  for (const i of r) {
-    const o = _(i) ? i.text : i.content.map((l) => l.text).join("");
+  for (const i of o) {
+    const r = H(i) ? i.text : i.content.map((l) => l.text).join("");
     if (n >= t) {
       s.push(i);
       continue;
     }
-    if (n + o.length <= t) {
-      e.push(i), n += o.length;
+    if (n + r.length <= t) {
+      e.push(i), n += r.length;
       continue;
     }
     const a = t - n;
-    if (_(i))
+    if (H(i))
       e.push(st(i.text.slice(0, a), i.marks)), s.push(st(i.text.slice(a), i.marks));
     else {
-      const [l, c] = yn(i.content, a);
+      const [l, c] = $n(i.content, a);
       l.length > 0 && e.push({ type: "link", href: i.href, content: l }), c.length > 0 && s.push({ type: "link", href: i.href, content: c });
     }
-    n += o.length;
+    n += r.length;
   }
-  return [O(e), O(s)];
+  return [R(e), R(s)];
 }
-const We = {
+const ts = {
   bold: "strong",
   italic: "em",
   underline: "u",
   code: "code",
   mark: "mark",
   strike: "s"
-}, kn = {
+}, Pn = {
   B: "bold",
   STRONG: "bold",
   I: "italic",
@@ -1152,29 +1364,29 @@ const We = {
   MARK: "mark",
   S: "strike",
   DEL: "strike"
-}, vn = /* @__PURE__ */ new Set(["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "UL", "OL"]);
-function Ht(r) {
-  return typeof r == "string" && (G(r) || r.startsWith("note:"));
+}, _n = /* @__PURE__ */ new Set(["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "PRE", "UL", "OL"]);
+function Ut(o) {
+  return typeof o == "string" && (G(o) || o.startsWith("note:"));
 }
-function ce(r) {
+function fe(o) {
   var e, s;
-  if (!r) return [];
+  if (!o) return [];
   const t = [];
-  for (const n of r) {
-    if (Lt(n)) {
-      Ht(n.href) ? t.push({ type: "link", href: n.href, content: ce(n.content) }) : t.push(...ce(n.content));
+  for (const n of o) {
+    if (Dt(n)) {
+      Ut(n.href) ? t.push({ type: "link", href: n.href, content: fe(n.content) }) : t.push(...fe(n.content));
       continue;
     }
-    if (_(n)) {
-      const i = (e = n.marks) == null ? void 0 : e.filter((o) => {
+    if (H(n)) {
+      const i = (e = n.marks) == null ? void 0 : e.filter((r) => {
         var l;
-        if (o.type !== "link") return !0;
-        const a = ((l = o.attrs) == null ? void 0 : l.href) ?? o.href;
-        return Ht(a);
+        if (r.type !== "link") return !0;
+        const a = ((l = r.attrs) == null ? void 0 : l.href) ?? r.href;
+        return Ut(a);
       });
       if (i && i.length !== (((s = n.marks) == null ? void 0 : s.length) ?? 0)) {
-        const o = { type: "text", text: n.text };
-        i.length > 0 && (o.marks = i), t.push(o);
+        const r = { type: "text", text: n.text };
+        i.length > 0 && (r.marks = i), t.push(r);
         continue;
       }
     }
@@ -1182,53 +1394,53 @@ function ce(r) {
   }
   return t;
 }
-function F(r, t = document) {
+function F(o, t = document) {
   const e = t.createDocumentFragment();
-  if (!r) return e;
-  for (const s of O(ce(r)))
-    if (_(s))
-      e.appendChild(Ft(s, s.marks ?? [], t));
-    else if (Lt(s)) {
-      if (!Ht(s.href)) {
+  if (!o) return e;
+  for (const s of R(fe(o)))
+    if (H(s))
+      e.appendChild($t(s, s.marks ?? [], t));
+    else if (Dt(s)) {
+      if (!Ut(s.href)) {
         for (const i of s.content)
-          e.appendChild(Ft(i, i.marks ?? [], t));
+          e.appendChild($t(i, i.marks ?? [], t));
         continue;
       }
       const n = t.createElement("a");
       n.setAttribute("href", s.href), n.setAttribute("rel", "noopener noreferrer");
       for (const i of s.content)
-        n.appendChild(Ft(i, i.marks ?? [], t));
+        n.appendChild($t(i, i.marks ?? [], t));
       e.appendChild(n);
     }
   return e;
 }
-function Ft(r, t, e) {
+function $t(o, t, e) {
   if (t.length === 0)
-    return e.createTextNode(r.text);
-  const [s, ...n] = t, i = We[s.type] ?? "span", o = e.createElement(i);
-  if (!We[s.type]) {
-    o.setAttribute("data-ez-mark", s.type);
+    return e.createTextNode(o.text);
+  const [s, ...n] = t, i = ts[s.type] ?? "span", r = e.createElement(i);
+  if (!ts[s.type]) {
+    r.setAttribute("data-ez-mark", s.type);
     const a = s.attrs;
     if (a)
       for (const [l, c] of Object.entries(a))
-        (typeof c == "string" || typeof c == "number") && (o.setAttribute(`data-ez-${wn(l)}`, String(c)), s.type === "color" && l === "color" && (o.style.color = String(c)), s.type === "background" && l === "color" && (o.style.backgroundColor = String(c)));
+        (typeof c == "string" || typeof c == "number") && (r.setAttribute(`data-ez-${Hn(l)}`, String(c)), s.type === "color" && l === "color" && (r.style.color = String(c)), s.type === "background" && l === "color" && (r.style.backgroundColor = String(c)));
   }
-  return n && n.length > 0 ? o.appendChild(Ft(r, n, e)) : o.textContent = r.text, o;
+  return n && n.length > 0 ? r.appendChild($t(o, n, e)) : r.textContent = o.text, r;
 }
-function wn(r) {
-  return r.replace(/[A-Z]/g, (t) => `-${t.toLowerCase()}`);
+function Hn(o) {
+  return o.replace(/[A-Z]/g, (t) => `-${t.toLowerCase()}`);
 }
-function C(r) {
+function z(o) {
   const t = [];
-  return As(r, [], t), O(En(t));
+  return Ms(o, [], t), R(jn(t));
 }
-function En(r) {
+function jn(o) {
   var s, n;
   const t = [];
   let e = null;
-  for (const i of r) {
-    if (_(i) && ((s = i.marks) != null && s.some((o) => o.type === "link"))) {
-      const o = i.marks.find((d) => d.type === "link"), a = String(((n = o.attrs) == null ? void 0 : n.href) ?? ""), l = i.marks.filter((d) => d !== o), c = { type: "text", text: i.text };
+  for (const i of o) {
+    if (H(i) && ((s = i.marks) != null && s.some((r) => r.type === "link"))) {
+      const r = i.marks.find((d) => d.type === "link"), a = String(((n = r.attrs) == null ? void 0 : n.href) ?? ""), l = i.marks.filter((d) => d !== r), c = { type: "text", text: i.text };
       l.length > 0 && (c.marks = l), (!e || e.href !== a) && (e = { type: "link", href: a, content: [] }, t.push(e)), e.content.push(c);
       continue;
     }
@@ -1236,62 +1448,62 @@ function En(r) {
   }
   return t;
 }
-function As(r, t, e) {
-  if (r.nodeType === Node.TEXT_NODE) {
-    const o = r.nodeValue ?? "";
-    o !== "" && e.push(st(o, t.length ? t : void 0));
+function Ms(o, t, e) {
+  if (o.nodeType === Node.TEXT_NODE) {
+    const r = o.nodeValue ?? "";
+    r !== "" && e.push(st(r, t.length ? t : void 0));
     return;
   }
-  if (r.nodeType !== Node.ELEMENT_NODE) return;
-  const s = r, n = s.tagName;
+  if (o.nodeType !== Node.ELEMENT_NODE) return;
+  const s = o, n = s.tagName;
   if (n === "BR") {
     e.push(st(`
 `, t.length ? t : void 0));
     return;
   }
-  vn.has(n) && (s.textContent ?? "").trim() !== "" && e.length > 0 && e.push(st(`
+  _n.has(n) && (s.textContent ?? "").trim() !== "" && e.length > 0 && e.push(st(`
 `, void 0));
-  const i = An(s, t);
-  for (const o of Array.from(s.childNodes))
-    As(o, i, e);
+  const i = Un(s, t);
+  for (const r of Array.from(s.childNodes))
+    Ms(r, i, e);
 }
-function An(r, t) {
-  const e = r.tagName;
+function Un(o, t) {
+  const e = o.tagName;
   let s = t;
-  const n = kn[e];
+  const n = Pn[e];
   if (n && (s = [...s, { type: n }]), e === "A") {
-    const o = r.getAttribute("href") ?? "";
-    Ht(o) && (s = [...s, { type: "link", attrs: { href: o } }]);
+    const r = o.getAttribute("href") ?? "";
+    Ut(r) && (s = [...s, { type: "link", attrs: { href: r } }]);
   }
-  const i = r.getAttribute("data-ez-mark");
+  const i = o.getAttribute("data-ez-mark");
   if (i) {
-    const o = {};
-    for (const a of Array.from(r.attributes))
-      a.name.startsWith("data-ez-") && a.name !== "data-ez-mark" && (o[Sn(a.name.slice(8))] = a.value);
-    s = [...s, { type: i, attrs: Object.keys(o).length > 0 ? o : void 0 }];
+    const r = {};
+    for (const a of Array.from(o.attributes))
+      a.name.startsWith("data-ez-") && a.name !== "data-ez-mark" && (r[qn(a.name.slice(8))] = a.value);
+    s = [...s, { type: i, attrs: Object.keys(r).length > 0 ? r : void 0 }];
   }
   return s;
 }
-function Sn(r) {
-  return r.replace(/-([a-z])/g, (t, e) => e.toUpperCase());
+function qn(o) {
+  return o.replace(/-([a-z])/g, (t, e) => e.toUpperCase());
 }
-function Eo(r) {
-  if (typeof document > "u" || !r) return "";
+function Po(o) {
+  if (typeof document > "u" || !o) return "";
   const t = document.createElement("div");
-  return t.appendChild(F(r, document)), t.innerHTML;
+  return t.appendChild(F(o, document)), t.innerHTML;
 }
-function xn(r, t) {
-  const e = r.ownerDocument ?? document, s = e.createRange();
-  s.setStart(t.endContainer, t.endOffset), s.setEndAfter(r);
+function Wn(o, t) {
+  const e = o.ownerDocument ?? document, s = e.createRange();
+  s.setStart(t.endContainer, t.endOffset), s.setEndAfter(o);
   const n = s.extractContents(), i = e.createElement("div");
   i.appendChild(n);
-  const o = C(i);
-  return { before: C(r), after: o };
+  const r = z(i);
+  return { before: z(o), after: r };
 }
-function Dt(r) {
-  return r ? r.map((e) => _(e) ? e.text : Lt(e) ? e.content.map((s) => s.text).join("") : "").join("").replace(/\u200B/g, "").trim() === "" : !0;
+function Nt(o) {
+  return o ? o.map((e) => H(e) ? e.text : Dt(e) ? e.content.map((s) => s.text).join("") : "").join("").replace(/\u200B/g, "").trim() === "" : !0;
 }
-const In = `<!-- @license lucide-static v1.43.0 - ISC -->
+const Vn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-save"
   xmlns="http://www.w3.org/2000/svg"
@@ -1308,7 +1520,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
   <path d="M7 3v4a1 1 0 0 0 1 1h7" />
 </svg>
-`, Cn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Kn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-plus"
   xmlns="http://www.w3.org/2000/svg"
@@ -1324,7 +1536,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M5 12h14" />
   <path d="M12 5v14" />
 </svg>
-`, zn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Jn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-grip-vertical"
   xmlns="http://www.w3.org/2000/svg"
@@ -1344,7 +1556,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <circle cx="15" cy="5" r="1" />
   <circle cx="15" cy="19" r="1" />
 </svg>
-`, Bn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Zn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-trash-2"
   xmlns="http://www.w3.org/2000/svg"
@@ -1363,7 +1575,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 6h18" />
   <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
 </svg>
-`, Tn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Gn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-copy"
   xmlns="http://www.w3.org/2000/svg"
@@ -1379,7 +1591,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
   <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
 </svg>
-`, Ln = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Yn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-chevron-up"
   xmlns="http://www.w3.org/2000/svg"
@@ -1394,7 +1606,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="m18 15-6-6-6 6" />
 </svg>
-`, Ve = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, es = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-chevron-down"
   xmlns="http://www.w3.org/2000/svg"
@@ -1409,7 +1621,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="m6 9 6 6 6-6" />
 </svg>
-`, Dn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Xn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-pilcrow"
   xmlns="http://www.w3.org/2000/svg"
@@ -1426,7 +1638,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M17 4v16" />
   <path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13" />
 </svg>
-`, Mn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Qn = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-heading"
   xmlns="http://www.w3.org/2000/svg"
@@ -1443,7 +1655,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M6 20V4" />
   <path d="M18 20V4" />
 </svg>
-`, Nn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ti = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-list"
   xmlns="http://www.w3.org/2000/svg"
@@ -1463,7 +1675,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M8 12h13" />
   <path d="M8 19h13" />
 </svg>
-`, On = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ei = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-quote"
   xmlns="http://www.w3.org/2000/svg"
@@ -1479,7 +1691,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" />
   <path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" />
 </svg>
-`, Ss = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Rs = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-code-xml"
   xmlns="http://www.w3.org/2000/svg"
@@ -1496,7 +1708,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m6 8-4 4 4 4" />
   <path d="m14.5 4-5 16" />
 </svg>
-`, Rn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, si = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-separator-horizontal"
   xmlns="http://www.w3.org/2000/svg"
@@ -1513,7 +1725,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 12h18" />
   <path d="m8 8 4-4 4 4" />
 </svg>
-`, Fn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ni = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-align-left"
   xmlns="http://www.w3.org/2000/svg"
@@ -1530,7 +1742,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M15 12H3" />
   <path d="M17 19H3" />
 </svg>
-`, $n = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ii = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-align-center"
   xmlns="http://www.w3.org/2000/svg"
@@ -1547,7 +1759,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M17 12H7" />
   <path d="M19 19H5" />
 </svg>
-`, Pn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ri = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-align-right"
   xmlns="http://www.w3.org/2000/svg"
@@ -1564,7 +1776,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M21 12H9" />
   <path d="M21 19H7" />
 </svg>
-`, _n = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, oi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-search"
   xmlns="http://www.w3.org/2000/svg"
@@ -1580,7 +1792,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m21 21-4.34-4.34" />
   <circle cx="11" cy="11" r="8" />
 </svg>
-`, Hn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ai = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-file-text"
   xmlns="http://www.w3.org/2000/svg"
@@ -1599,7 +1811,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M16 13H8" />
   <path d="M16 17H8" />
 </svg>
-`, jn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, li = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-folder"
   xmlns="http://www.w3.org/2000/svg"
@@ -1614,7 +1826,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
 </svg>
-`, Un = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ci = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-folder-open"
   xmlns="http://www.w3.org/2000/svg"
@@ -1629,7 +1841,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
 </svg>
-`, qn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, di = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-folder-plus"
   xmlns="http://www.w3.org/2000/svg"
@@ -1646,7 +1858,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M9 13h6" />
   <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
 </svg>
-`, Wn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, hi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-moon"
   xmlns="http://www.w3.org/2000/svg"
@@ -1661,7 +1873,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
 </svg>
-`, Vn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ui = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-sun"
   xmlns="http://www.w3.org/2000/svg"
@@ -1684,7 +1896,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m6.34 17.66-1.41 1.41" />
   <path d="m19.07 4.93-1.41 1.41" />
 </svg>
-`, Kn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, fi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-monitor"
   xmlns="http://www.w3.org/2000/svg"
@@ -1701,7 +1913,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <line x1="8" x2="16" y1="21" y2="21" />
   <line x1="12" x2="12" y1="17" y2="21" />
 </svg>
-`, Jn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, pi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-maximize"
   xmlns="http://www.w3.org/2000/svg"
@@ -1719,7 +1931,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 16v3a2 2 0 0 0 2 2h3" />
   <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
 </svg>
-`, Zn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, gi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-minimize"
   xmlns="http://www.w3.org/2000/svg"
@@ -1737,7 +1949,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 16h3a2 2 0 0 1 2 2v3" />
   <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
 </svg>
-`, Gn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, mi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-x"
   xmlns="http://www.w3.org/2000/svg"
@@ -1753,7 +1965,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M18 6 6 18" />
   <path d="m6 6 12 12" />
 </svg>
-`, xs = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, pe = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-chevron-right"
   xmlns="http://www.w3.org/2000/svg"
@@ -1768,7 +1980,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="m9 18 6-6-6-6" />
 </svg>
-`, Yn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, bi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-undo-2"
   xmlns="http://www.w3.org/2000/svg"
@@ -1784,7 +1996,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M9 14 4 9l5-5" />
   <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />
 </svg>
-`, Xn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, yi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-redo-2"
   xmlns="http://www.w3.org/2000/svg"
@@ -1800,7 +2012,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m15 14 5-5-5-5" />
   <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />
 </svg>
-`, Qn = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, ki = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-download"
   xmlns="http://www.w3.org/2000/svg"
@@ -1817,7 +2029,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
   <path d="m7 10 5 5 5-5" />
 </svg>
-`, ti = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, vi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-upload"
   xmlns="http://www.w3.org/2000/svg"
@@ -1834,7 +2046,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m17 8-5-5-5 5" />
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
 </svg>
-`, ei = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, wi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-rotate-ccw"
   xmlns="http://www.w3.org/2000/svg"
@@ -1850,7 +2062,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
   <path d="M3 3v5h5" />
 </svg>
-`, si = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ei = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-list-tree"
   xmlns="http://www.w3.org/2000/svg"
@@ -1869,7 +2081,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 10a2 2 0 0 0 2 2h3" />
   <path d="M3 5v12a2 2 0 0 0 2 2h3" />
 </svg>
-`, ni = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ai = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-strikethrough"
   xmlns="http://www.w3.org/2000/svg"
@@ -1886,7 +2098,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M14 12a4 4 0 0 1 0 8H6" />
   <line x1="4" x2="20" y1="12" y2="12" />
 </svg>
-`, ii = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Si = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-highlighter"
   xmlns="http://www.w3.org/2000/svg"
@@ -1902,7 +2114,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m9 11-6 6v3h9l3-3" />
   <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
 </svg>
-`, ri = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, xi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-baseline"
   xmlns="http://www.w3.org/2000/svg"
@@ -1919,7 +2131,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="m6 16 6-12 6 12" />
   <path d="M8 12h8" />
 </svg>
-`, oi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ii = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-paint-bucket"
   xmlns="http://www.w3.org/2000/svg"
@@ -1937,7 +2149,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M21.145 18.38A3.34 3.34 0 0 1 20 16.5a3.3 3.3 0 0 1-1.145 1.88c-.575.46-.855 1.02-.855 1.595A2 2 0 0 0 20 22a2 2 0 0 0 2-2.025c0-.58-.285-1.13-.855-1.595" />
   <path d="m8.5 4.5 2.148-2.148a1.205 1.205 0 0 1 1.704 0l7.296 7.296a1.205 1.205 0 0 1 0 1.704l-7.592 7.592a3.615 3.615 0 0 1-5.112 0l-3.888-3.888a3.615 3.615 0 0 1 0-5.112L5.67 7.33" />
 </svg>
-`, ai = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ci = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-table"
   xmlns="http://www.w3.org/2000/svg"
@@ -1955,23 +2167,23 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M3 9h18" />
   <path d="M3 15h18" />
 </svg>
-`, li = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+`, zi = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <rect x="3" y="3" width="18" height="11" rx="2" />
   <path d="M3 8h18M12 3v11M9 20h6M12 17v6" />
 </svg>
-`, ci = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+`, Bi = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <rect x="3" y="3" width="11" height="18" rx="2" />
   <path d="M8 3v18M3 12h11M17 12h6M20 9v6" />
 </svg>
-`, di = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+`, Ti = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <rect x="3" y="3" width="18" height="11" rx="2" />
   <path d="M3 8h18M12 3v11M9 20h6" />
 </svg>
-`, hi = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+`, Li = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <rect x="3" y="3" width="11" height="18" rx="2" />
   <path d="M8 3v18M3 12h11M17 12h6" />
 </svg>
-`, ui = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Di = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-panel-top"
   xmlns="http://www.w3.org/2000/svg"
@@ -1987,7 +2199,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <rect width="18" height="18" x="3" y="3" rx="2" />
   <path d="M3 9h18" />
 </svg>
-`, pi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ni = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-image"
   xmlns="http://www.w3.org/2000/svg"
@@ -2004,7 +2216,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <circle cx="9" cy="9" r="2" />
   <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
 </svg>
-`, Is = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Os = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-info"
   xmlns="http://www.w3.org/2000/svg"
@@ -2021,7 +2233,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M12 16v-4" />
   <path d="M12 8h.01" />
 </svg>
-`, fi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Mi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-panel-left"
   xmlns="http://www.w3.org/2000/svg"
@@ -2037,7 +2249,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <rect width="18" height="18" x="3" y="3" rx="2" />
   <path d="M9 3v18" />
 </svg>
-`, gi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Ri = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-link"
   xmlns="http://www.w3.org/2000/svg"
@@ -2053,7 +2265,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
 </svg>
-`, mi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Oi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-ellipsis-vertical"
   xmlns="http://www.w3.org/2000/svg"
@@ -2070,7 +2282,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <circle cx="12" cy="5" r="1" />
   <circle cx="12" cy="19" r="1" />
 </svg>
-`, bi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Fi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-bold"
   xmlns="http://www.w3.org/2000/svg"
@@ -2085,7 +2297,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
 >
   <path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" />
 </svg>
-`, yi = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, $i = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-italic"
   xmlns="http://www.w3.org/2000/svg"
@@ -2102,7 +2314,7 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <line x1="14" x2="5" y1="20" y2="20" />
   <line x1="15" x2="9" y1="4" y2="20" />
 </svg>
-`, ki = `<!-- @license lucide-static v1.43.0 - ISC -->
+`, Pi = `<!-- @license lucide-static v1.43.0 - ISC -->
 <svg
   class="lucide lucide-underline"
   xmlns="http://www.w3.org/2000/svg"
@@ -2119,70 +2331,71 @@ const In = `<!-- @license lucide-static v1.43.0 - ISC -->
   <line x1="4" x2="20" y1="20" y2="20" />
 </svg>
 `, b = {
-  save: In,
-  plus: Cn,
-  grip: zn,
-  trash: Bn,
-  copy: Tn,
-  up: Ln,
-  down: Ve,
-  alignLeft: Fn,
-  alignCenter: $n,
-  alignRight: Pn,
-  search: _n,
-  file: Hn,
-  folder: jn,
-  folderOpen: Un,
-  folderPlus: qn,
-  moon: Wn,
-  sun: Vn,
-  monitor: Kn,
-  maximize: Jn,
-  minimize: Zn,
-  x: Gn,
-  undo: Yn,
-  redo: Xn,
-  download: Qn,
-  upload: ti,
-  restore: ei,
-  outline: si,
-  strikethrough: ni,
-  highlighter: ii,
-  code: Ss,
-  textColor: ri,
-  backgroundColor: oi,
-  tableRowAdd: li,
-  tableColumnAdd: ci,
-  tableRowDelete: di,
-  tableColumnDelete: hi,
-  tableHeader: ui,
-  info: Is,
-  caretRight: xs,
-  caretDown: Ve,
-  panelLeft: fi,
-  link: gi,
-  ellipsis: mi,
-  bold: bi,
-  italic: yi,
-  underline: ki
-}, H = {
-  paragraph: Dn,
-  heading: Mn,
-  list: Nn,
-  quote: On,
-  code: Ss,
-  delimiter: Rn,
-  table: ai,
-  image: pi,
-  callout: Is,
-  toggle: xs
+  save: Vn,
+  plus: Kn,
+  grip: Jn,
+  trash: Zn,
+  copy: Gn,
+  up: Yn,
+  down: es,
+  alignLeft: ni,
+  alignCenter: ii,
+  alignRight: ri,
+  search: oi,
+  file: ai,
+  folder: li,
+  folderOpen: ci,
+  folderPlus: di,
+  moon: hi,
+  sun: ui,
+  monitor: fi,
+  maximize: pi,
+  minimize: gi,
+  x: mi,
+  chevronRight: pe,
+  undo: bi,
+  redo: yi,
+  download: ki,
+  upload: vi,
+  restore: wi,
+  outline: Ei,
+  strikethrough: Ai,
+  highlighter: Si,
+  code: Rs,
+  textColor: xi,
+  backgroundColor: Ii,
+  tableRowAdd: zi,
+  tableColumnAdd: Bi,
+  tableRowDelete: Ti,
+  tableColumnDelete: Li,
+  tableHeader: Di,
+  info: Os,
+  caretRight: pe,
+  caretDown: es,
+  panelLeft: Mi,
+  link: Ri,
+  ellipsis: Oi,
+  bold: Fi,
+  italic: $i,
+  underline: Pi
+}, j = {
+  paragraph: Xn,
+  heading: Qn,
+  list: ti,
+  quote: ei,
+  code: Rs,
+  delimiter: si,
+  table: Ci,
+  image: Ni,
+  callout: Os,
+  toggle: pe
 };
-function Cs(r) {
-  return typeof r == "string" && /^(?:\s|<!--[\s\S]*?-->)*<svg(?:\s|>)/i.test(r);
+function Fs(o) {
+  return typeof o == "string" && /^(?:\s|<!--[\s\S]*?-->)*<svg(?:\s|>)/i.test(o);
 }
-function L(r) {
+function D(o) {
   const t = document.createElement("span");
-  t.className = "ez-menu-icon", t.innerHTML = r, t.setAttribute("aria-hidden", "true");
+  t.className = "ez-menu-icon", t.innerHTML = o, t.setAttribute("aria-hidden", "true");
   for (const e of Array.from(t.querySelectorAll("svg")))
     e.setAttribute("stroke-width", "1.8");
   return t;
@@ -2196,22 +2409,22 @@ class Mt {
     const t = ((n = this.editable) == null ? void 0 : n.ownerDocument) ?? document, e = t.createElement(this.tag());
     e.classList.add("ez-text-input"), e.contentEditable = "true", e.setAttribute("data-ez-editable", "true"), this.placeholder && e.setAttribute("data-ez-placeholder", this.placeholder), this.multiline && e.setAttribute("data-ez-multiline", "true");
     const s = this.api.getData();
-    return s != null && s.content && !Dt(s.content) && e.appendChild(F(s.content, t)), this.editable = e, e;
+    return s != null && s.content && !Nt(s.content) && e.appendChild(F(s.content, t)), this.editable = e, e;
   }
   validate(t) {
     return !!t;
   }
   merge(t) {
-    var o;
-    const e = ((o = this.api.getData()) == null ? void 0 : o.content) ?? [], s = (t == null ? void 0 : t.content) ?? [], n = O([...e, ...s]), i = { content: n };
+    var r;
+    const e = ((r = this.api.getData()) == null ? void 0 : r.content) ?? [], s = (t == null ? void 0 : t.content) ?? [], n = R([...e, ...s]), i = { content: n };
     return this.replaceEditableContent(this.editable, F(n, this.editable.ownerDocument)), this.api.update(i), i;
   }
   /** Sync the DOM after an external transaction updated this block. */
   updated() {
     const t = this.api.getData();
     if (!this.editable) return;
-    const e = C(this.editable);
-    JSON.stringify(O(e)) !== JSON.stringify(O((t == null ? void 0 : t.content) ?? [])) && this.replaceEditableContent(this.editable, F((t == null ? void 0 : t.content) ?? [], this.editable.ownerDocument));
+    const e = z(this.editable);
+    JSON.stringify(R(e)) !== JSON.stringify(R((t == null ? void 0 : t.content) ?? [])) && this.replaceEditableContent(this.editable, F((t == null ? void 0 : t.content) ?? [], this.editable.ownerDocument));
   }
   replaceEditableContent(t, e) {
     for (; t.firstChild; ) t.removeChild(t.firstChild);
@@ -2235,8 +2448,8 @@ class Mt {
    */
   splitAtRange(t) {
     if (!this.editable) return null;
-    const { before: e, after: s } = xn(this.editable, t), n = this.tagDataShape(), i = { ...n, content: e }, o = { ...n, content: s };
-    return [i, o];
+    const { before: e, after: s } = Wn(this.editable, t), n = this.tagDataShape(), i = { ...n, content: e }, r = { ...n, content: s };
+    return [i, r];
   }
   /** Extra fields kept on split (e.g. heading level). */
   tagDataShape() {
@@ -2245,7 +2458,7 @@ class Mt {
   destroy() {
   }
 }
-const Et = class Et extends Mt {
+const At = class At extends Mt {
   constructor(t) {
     var s;
     const e = (s = t.config) == null ? void 0 : s.placeholder;
@@ -2255,19 +2468,19 @@ const Et = class Et extends Mt {
     return "p";
   }
   save(t) {
-    return { content: C(this.editable) };
+    return { content: z(this.editable) };
   }
 };
-Et.toolbox = { icon: H.paragraph, title: "Paragraph", category: "Basic blocks" }, Et.conversion = { to: ["heading", "list", "quote", "code", "delimiter"] }, Et.enableInlineTools = !0;
-let de = Et;
+At.toolbox = { icon: j.paragraph, title: "Paragraph", category: "Basic blocks" }, At.conversion = { to: ["heading", "list", "quote", "code", "delimiter"] }, At.enableInlineTools = !0;
+let ge = At;
 const ut = class ut extends Mt {
   constructor(t) {
     var i;
     super(t, "", !1), this.levels = [1, 2, 3], this.level = 2;
     const e = (i = t.config) == null ? void 0 : i.levels;
     if (Array.isArray(e)) {
-      const o = e.filter((a) => typeof a == "number" && a >= 1 && a <= 6);
-      o.length > 0 && (this.levels = o);
+      const r = e.filter((a) => typeof a == "number" && a >= 1 && a <= 6);
+      r.length > 0 && (this.levels = r);
     }
     const s = this.api.getData(), n = Number(s == null ? void 0 : s.level);
     this.level = this.levels.includes(n) ? n : this.levels[0] ?? 2;
@@ -2276,7 +2489,7 @@ const ut = class ut extends Mt {
     return `h${this.level}`;
   }
   save(t) {
-    return { level: this.level, content: C(this.editable) };
+    return { level: this.level, content: z(this.editable) };
   }
   tagDataShape() {
     return { level: this.level };
@@ -2289,7 +2502,7 @@ const ut = class ut extends Mt {
     for (const e of this.levels) {
       const s = document.createElement("button");
       s.type = "button", s.className = "ez-inline-btn" + (e === this.level ? " ez-active" : ""), s.textContent = `H${e}`, s.setAttribute("aria-label", `Heading level ${e}`), s.setAttribute("aria-pressed", String(e === this.level)), s.addEventListener("click", () => {
-        this.api.readOnly || (this.level = e, this.api.update({ level: this.level, content: C(this.editable) }), this.refreshElement(), this.api.focus("end"));
+        this.api.readOnly || (this.level = e, this.api.update({ level: this.level, content: z(this.editable) }), this.refreshElement(), this.api.focus("end"));
       }), t.appendChild(s);
     }
     return t;
@@ -2309,9 +2522,9 @@ const ut = class ut extends Mt {
     t.replaceWith(e), this.editable = e;
   }
 };
-ut.toolbox = { icon: H.heading, title: "Heading", category: "Basic blocks" }, ut.shortcut = "CMD+SHIFT+2", ut.conversion = { to: ["paragraph", "list", "quote"] }, ut.enableInlineTools = !0;
-let he = ut;
-const At = class At extends Mt {
+ut.toolbox = { icon: j.heading, title: "Heading", category: "Basic blocks" }, ut.shortcut = "CMD+SHIFT+2", ut.conversion = { to: ["paragraph", "list", "quote"] }, ut.enableInlineTools = !0;
+let me = ut;
+const St = class St extends Mt {
   constructor(t) {
     super(t, "", !1);
   }
@@ -2319,12 +2532,12 @@ const At = class At extends Mt {
     return "blockquote";
   }
   save(t) {
-    return { content: C(this.editable) };
+    return { content: z(this.editable) };
   }
 };
-At.toolbox = { icon: H.quote, title: "Quote", category: "Basic blocks" }, At.conversion = { to: ["paragraph", "heading", "list"] }, At.enableInlineTools = !0;
-let ue = At;
-const pt = class pt extends Mt {
+St.toolbox = { icon: j.quote, title: "Quote", category: "Basic blocks" }, St.conversion = { to: ["paragraph", "heading", "list"] }, St.enableInlineTools = !0;
+let be = St;
+const ft = class ft extends Mt {
   constructor(t) {
     super(t, "Enter code...", !0);
   }
@@ -2350,9 +2563,9 @@ const pt = class pt extends Mt {
     this.editable.textContent !== (t == null ? void 0 : t.code) && (this.editable.textContent = (t == null ? void 0 : t.code) ?? "");
   }
 };
-pt.toolbox = { icon: H.code, title: "Code", category: "Basic blocks" }, pt.shortcut = "CMD+SHIFT+C", pt.enterKey = "newline", pt.conversion = { to: ["paragraph", "delimiter"] };
-let pe = pt;
-const St = class St {
+ft.toolbox = { icon: j.code, title: "Code", category: "Basic blocks" }, ft.shortcut = "CMD+SHIFT+C", ft.enterKey = "newline", ft.conversion = { to: ["paragraph", "delimiter"] };
+let ye = ft;
+const xt = class xt {
   constructor(t) {
     this.api = t.api;
   }
@@ -2371,9 +2584,9 @@ const St = class St {
   destroy() {
   }
 };
-St.toolbox = { icon: H.delimiter, title: "Divider", category: "Basic blocks" }, St.enterKey = "ignore", St.conversion = { to: ["paragraph"] };
-let fe = St;
-const ft = class ft {
+xt.toolbox = { icon: j.delimiter, title: "Divider", category: "Basic blocks" }, xt.enterKey = "ignore", xt.conversion = { to: ["paragraph"] };
+let ke = xt;
+const pt = class pt {
   constructor(t) {
     var n;
     this.style = "unordered", this.api = t.api;
@@ -2386,13 +2599,13 @@ const ft = class ft {
     return this.style === "ordered" ? "ol" : "ul";
   }
   render() {
-    var o;
-    const t = ((o = this.editable) == null ? void 0 : o.ownerDocument) ?? document, e = t.createElement("div");
+    var r;
+    const t = ((r = this.editable) == null ? void 0 : r.ownerDocument) ?? document, e = t.createElement("div");
     e.classList.add("ez-text-input", "ez-list"), e.contentEditable = "true", e.setAttribute("data-ez-editable", "true"), e.setAttribute("data-ez-multiline", "true");
     const s = t.createElement(this.tag()), n = this.api.getData();
     return (Array.isArray(n == null ? void 0 : n.items) && n.items.length > 0 ? n.items : [{ content: [] }]).forEach((a, l) => {
       const c = t.createElement("li");
-      this.style === "task" && (c.appendChild(this.createCheckbox((a == null ? void 0 : a.checked) === !0, l, c)), c.classList.toggle("ez-task-checked", (a == null ? void 0 : a.checked) === !0)), a != null && a.content && !Dt(a.content) && c.appendChild(F(a.content, t)), s.appendChild(c);
+      this.style === "task" && (c.appendChild(this.createCheckbox((a == null ? void 0 : a.checked) === !0, l, c)), c.classList.toggle("ez-task-checked", (a == null ? void 0 : a.checked) === !0)), a != null && a.content && !Nt(a.content) && c.appendChild(F(a.content, t)), s.appendChild(c);
     }), e.appendChild(s), e.addEventListener("input", () => this.ensureCheckboxes()), this.editable = e, this.listEl = s, e;
   }
   createCheckbox(t, e, s) {
@@ -2412,21 +2625,21 @@ const ft = class ft {
     const e = [];
     for (const s of Array.from(this.listEl.children)) {
       if (s.tagName !== "LI") continue;
-      const n = { content: C(s) };
+      const n = { content: z(s) };
       if (this.style === "task") {
         const i = s.querySelector(".ez-task-checkbox");
         n.checked = (i == null ? void 0 : i.checked) === !0;
       }
       e.push(n);
     }
-    return e.length === 0 && e.push({ content: [] }), { style: this.style, items: Ke(e) };
+    return e.length === 0 && e.push({ content: [] }), { style: this.style, items: ss(e) };
   }
   validate(t) {
     return !!t && Array.isArray(t.items);
   }
   merge(t) {
     var i;
-    const e = ((i = this.api.getData()) == null ? void 0 : i.items) ?? [], s = Ke([...e, ...(t == null ? void 0 : t.items) ?? []]), n = { style: this.style, items: s };
+    const e = ((i = this.api.getData()) == null ? void 0 : i.items) ?? [], s = ss([...e, ...(t == null ? void 0 : t.items) ?? []]), n = { style: this.style, items: s };
     return this.api.update(n), n;
   }
   /** Toggle between ordered and unordered (block settings entry). */
@@ -2443,7 +2656,7 @@ const ft = class ft {
     return e;
   }
   updated() {
-    var i, o;
+    var i, r;
     const t = this.api.getData(), e = (t == null ? void 0 : t.style) === "ordered" ? "ordered" : (t == null ? void 0 : t.style) === "unordered" ? "unordered" : (t == null ? void 0 : t.style) === "task" ? "task" : this.style;
     if (!this.editable || !this.listEl || e !== this.style) {
       this.style = e, this.refreshElement();
@@ -2455,16 +2668,16 @@ const ft = class ft {
       return;
     }
     for (let a = 0; a < s.length; a++) {
-      const l = s[a], c = ((i = n[a]) == null ? void 0 : i.content) ?? [], d = C(l);
-      if (JSON.stringify(O(d)) !== JSON.stringify(O(c))) {
+      const l = s[a], c = ((i = n[a]) == null ? void 0 : i.content) ?? [], d = z(l);
+      if (JSON.stringify(R(d)) !== JSON.stringify(R(c))) {
         for (; l.firstChild; ) l.removeChild(l.firstChild);
         l.appendChild(F(c, l.ownerDocument));
       }
       if (this.style === "task") {
-        const h = l.querySelector(".ez-task-checkbox");
-        if (h) {
-          const u = ((o = n[a]) == null ? void 0 : o.checked) === !0;
-          h.checked !== u && (h.checked = u, l.classList.toggle("ez-task-checked", u));
+        const u = l.querySelector(".ez-task-checkbox");
+        if (u) {
+          const h = ((r = n[a]) == null ? void 0 : r.checked) === !0;
+          u.checked !== h && (u.checked = h, l.classList.toggle("ez-task-checked", h));
         }
       }
     }
@@ -2478,7 +2691,7 @@ const ft = class ft {
     this.editable.focus();
     const e = window.getSelection();
     if (!e) return;
-    const s = Array.from(this.listEl.children).filter((o) => o.tagName === "LI"), n = t === "end" ? s[s.length - 1] : s[0];
+    const s = Array.from(this.listEl.children).filter((r) => r.tagName === "LI"), n = t === "end" ? s[s.length - 1] : s[0];
     if (!n) return;
     const i = this.editable.ownerDocument.createRange();
     i.selectNodeContents(n), i.collapse(t !== "end"), e.removeAllRanges(), e.addRange(i);
@@ -2495,65 +2708,68 @@ const ft = class ft {
     t.replaceWith(e), this.editable = e, this.listEl = e.firstElementChild ?? e;
   }
 };
-ft.toolbox = { icon: H.list, title: "List", category: "Basic blocks" }, ft.shortcut = "CMD+SHIFT+L", ft.conversion = { to: ["paragraph", "quote", "heading"] }, ft.enableInlineTools = !0;
-let ge = ft;
-function Ke(r) {
-  return r.map((t) => {
-    const e = { content: O((t == null ? void 0 : t.content) ?? []) };
+pt.toolbox = { icon: j.list, title: "List", category: "Basic blocks" }, pt.shortcut = "CMD+SHIFT+L", pt.conversion = { to: ["paragraph", "quote", "heading"] }, pt.enableInlineTools = !0;
+let ve = pt;
+function ss(o) {
+  return o.map((t) => {
+    const e = { content: R((t == null ? void 0 : t.content) ?? []) };
     return (t == null ? void 0 : t.checked) !== void 0 && (e.checked = t.checked), e;
   });
 }
-function f(r, t, e) {
-  const s = document.createElement(r);
+function p(o, t, e) {
+  const s = document.createElement(o);
   return t && (s.className = t), e !== void 0 && (s.textContent = e), s;
 }
-function S(r, t, e) {
-  const s = f("button", r);
+function A(o, t, e) {
+  const s = p("button", o);
   return s.type = "button", s.textContent = t, s.setAttribute("aria-label", e ?? t), s;
 }
-function E(r, t, e) {
-  const s = f("button", r);
+function E(o, t, e) {
+  const s = p("button", o);
   s.type = "button", s.setAttribute("aria-label", e), s.title = e, s.innerHTML = t;
   for (const n of Array.from(s.querySelectorAll("svg")))
     n.setAttribute("stroke-width", "1.8");
   return s;
 }
-function D(r) {
-  for (; r.firstChild; ) r.removeChild(r.firstChild);
+function N(o) {
+  for (; o.firstChild; ) o.removeChild(o.firstChild);
 }
-function vi(r, t = 8) {
-  r.style.maxWidth = `calc(100vw - ${t * 2}px)`, r.style.maxHeight = `calc(100dvh - ${t * 2}px)`;
-  const e = r.getBoundingClientRect(), s = Math.max(t, Math.min(e.left, window.innerWidth - t - e.width)), n = Math.max(t, Math.min(e.top, window.innerHeight - t - e.height));
-  r.style.transform = "none", r.style.position = "fixed", r.style.left = `${s}px`, r.style.top = `${n}px`;
+function _i(o, t = 8) {
+  o.style.maxWidth = `calc(100vw - ${t * 2}px)`, o.style.maxHeight = `calc(100dvh - ${t * 2}px)`;
+  const e = o.getBoundingClientRect(), s = Math.max(t, Math.min(e.left, window.innerWidth - t - e.width)), n = Math.max(t, Math.min(e.top, window.innerHeight - t - e.height));
+  o.style.transform = "none", o.style.position = "fixed", o.style.left = `${s}px`, o.style.top = `${n}px`;
 }
-function P(r, t) {
-  r.style.position = "fixed", r.style.transform = "none", r.style.left = `${t.left}px`, r.style.top = `${t.bottom + 6}px`;
-  const e = r.getBoundingClientRect().height;
-  t.bottom + 6 + e > window.innerHeight - 8 && t.top > e + 8 && (r.style.top = `${t.top - e - 6}px`), vi(r);
+function we(o) {
+  o.hidePopover && o.matches(":popover-open") && o.hidePopover();
 }
-function Xt(r, t) {
+function _(o, t, e = "below") {
+  o.showPopover && o.isConnected && (o.setAttribute("popover", "manual"), o.matches(":popover-open") || o.showPopover()), o.style.position = "fixed", o.style.transform = "none", o.style.margin = "0", o.style.inset = "auto", o.style.left = `${t.left}px`, o.style.top = `${t.bottom + 6}px`;
+  const s = o.getBoundingClientRect().height;
+  (e === "above" || t.bottom + 6 + s > window.innerHeight - 8) && t.top > s + 8 && (o.style.top = `${t.top - s - 6}px`), _i(o);
+}
+function te(o, t) {
   var i;
-  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(r.key) || r.target.matches("input, select, textarea")) return;
-  const e = Array.from(t.querySelectorAll("button:not(:disabled), select:not(:disabled)")), s = e.indexOf(document.activeElement), n = r.key === "Home" ? 0 : r.key === "End" ? e.length - 1 : (s + (r.key === "ArrowDown" ? 1 : -1) + e.length) % e.length;
-  (i = e[n]) == null || i.focus(), r.preventDefault();
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(o.key) || o.target.matches("input, select, textarea")) return;
+  const e = Array.from(t.querySelectorAll("button:not(:disabled), select:not(:disabled)")), s = e.indexOf(document.activeElement), n = o.key === "Home" ? 0 : o.key === "End" ? e.length - 1 : (s + (o.key === "ArrowDown" ? 1 : -1) + e.length) % e.length;
+  (i = e[n]) == null || i.focus(), o.preventDefault();
 }
-function ze(r, t, e) {
+function Ne(o, t, e) {
   var s;
   try {
-    (s = r.ownerDocument) == null || s.execCommand(t, !1, e);
+    (s = o.ownerDocument) == null || s.execCommand(t, !1, e);
   } catch {
   }
 }
-function bt(r, t) {
+function bt(o, t) {
   var e;
   try {
-    return ((e = r.ownerDocument) == null ? void 0 : e.queryCommandState(t)) ?? !1;
+    return ((e = o.ownerDocument) == null ? void 0 : e.queryCommandState(t)) ?? !1;
   } catch {
     return !1;
   }
 }
-function Qt(r, t, e) {
-  let s = r.startContainer;
+function ee(o, t, e) {
+  let s = o.startContainer;
   for (; s && s !== t; ) {
     if (s.nodeType === Node.ELEMENT_NODE && e(s))
       return s;
@@ -2561,14 +2777,14 @@ function Qt(r, t, e) {
   }
   return null;
 }
-function wi(r) {
+function Hi(o) {
   const t = window.getSelection(), e = /* @__PURE__ */ new Set();
   if (!t || t.rangeCount === 0) return e;
   const s = t.getRangeAt(0);
-  if (!r.contains(s.commonAncestorContainer)) return e;
-  bt(r, "bold") && e.add("bold"), bt(r, "italic") && e.add("italic"), bt(r, "underline") && e.add("underline");
+  if (!o.contains(s.commonAncestorContainer)) return e;
+  bt(o, "bold") && e.add("bold"), bt(o, "italic") && e.add("italic"), bt(o, "underline") && e.add("underline");
   let n = s.startContainer;
-  for (; n && n !== r; ) {
+  for (; n && n !== o; ) {
     if (n.nodeType === Node.ELEMENT_NODE) {
       const i = n.tagName;
       i === "CODE" && e.add("code"), i === "MARK" && e.add("mark"), i === "A" && e.add("link"), i === "SPAN" && n.hasAttribute("data-ez-mark") && e.add(n.getAttribute("data-ez-mark"));
@@ -2577,73 +2793,73 @@ function wi(r) {
   }
   return e;
 }
-function Ct(r, t) {
-  const e = r.startContainer.ownerDocument ?? t.ownerDocument, s = r.extractContents();
-  t.appendChild(s), r.insertNode(t);
+function zt(o, t) {
+  const e = o.startContainer.ownerDocument ?? t.ownerDocument, s = o.extractContents();
+  t.appendChild(s), o.insertNode(t);
   const n = window.getSelection();
   if (n) {
     const i = e.createRange();
     i.selectNodeContents(t), n.removeAllRanges(), n.addRange(i);
   }
 }
-function me(r) {
-  const t = r.parentNode;
+function Ee(o) {
+  const t = o.parentNode;
   if (!t) return;
-  const e = r.ownerDocument, s = r.firstChild, n = r.lastChild, i = e.createDocumentFragment();
-  for (; r.firstChild; ) i.appendChild(r.firstChild);
-  t.insertBefore(i, r);
-  const o = window.getSelection();
-  if (o && s && n) {
+  const e = o.ownerDocument, s = o.firstChild, n = o.lastChild, i = e.createDocumentFragment();
+  for (; o.firstChild; ) i.appendChild(o.firstChild);
+  t.insertBefore(i, o);
+  const r = window.getSelection();
+  if (r && s && n) {
     const a = e.createRange();
-    a.setStartBefore(s), a.setEndAfter(n), o.removeAllRanges(), o.addRange(a);
+    a.setStartBefore(s), a.setEndAfter(n), r.removeAllRanges(), r.addRange(a);
   }
-  t.removeChild(r);
+  t.removeChild(o);
 }
-function Be(r, t) {
-  const e = r.parentNode;
+function Me(o, t) {
+  const e = o.parentNode;
   if (!e) return;
-  const s = r.ownerDocument, n = r.contains(t.startContainer), i = r.contains(t.endContainer), o = n ? t.startContainer : r, a = n ? t.startOffset : 0, l = i ? t.endContainer : r, c = i ? t.endOffset : r.childNodes.length, d = !n || o === r && a === 0, h = !i || l === r && c === r.childNodes.length;
-  if (d && h) {
-    me(r);
+  const s = o.ownerDocument, n = o.contains(t.startContainer), i = o.contains(t.endContainer), r = n ? t.startContainer : o, a = n ? t.startOffset : 0, l = i ? t.endContainer : o, c = i ? t.endOffset : o.childNodes.length, d = !n || r === o && a === 0, u = !i || l === o && c === o.childNodes.length;
+  if (d && u) {
+    Ee(o);
     return;
   }
   try {
-    const u = s.createRange();
-    u.setStart(r, 0), u.setEnd(o, a);
-    const p = s.createRange();
-    p.setStart(o, a), p.setEnd(l, c);
+    const h = s.createRange();
+    h.setStart(o, 0), h.setEnd(r, a);
+    const f = s.createRange();
+    f.setStart(r, a), f.setEnd(l, c);
     const g = s.createRange();
-    g.setStart(l, c), g.setEnd(r, r.childNodes.length);
-    const m = u.extractContents(), y = p.extractContents(), v = g.extractContents(), w = m.firstChild ? r.cloneNode(!1) : null, I = v.firstChild ? r.cloneNode(!1) : null;
-    w && (w.appendChild(m), e.insertBefore(w, r)), e.insertBefore(y, r), I && (I.appendChild(v), e.insertBefore(I, r)), e.removeChild(r);
+    g.setStart(l, c), g.setEnd(o, o.childNodes.length);
+    const m = h.extractContents(), y = f.extractContents(), v = g.extractContents(), w = m.firstChild ? o.cloneNode(!1) : null, I = v.firstChild ? o.cloneNode(!1) : null;
+    w && (w.appendChild(m), e.insertBefore(w, o)), e.insertBefore(y, o), I && (I.appendChild(v), e.insertBefore(I, o)), e.removeChild(o);
   } catch {
-    me(r);
+    Ee(o);
   }
 }
-function zs(r, t, e, s) {
+function $s(o, t, e, s) {
   var m, y;
-  const n = t instanceof HTMLElement ? t : t.commonAncestorContainer, o = (((m = n instanceof Element ? n : n.parentElement) == null ? void 0 : m.ownerDocument) ?? document).createElement("div");
-  o.className = "ez-popover ez-inline-popover", o.setAttribute("role", "dialog"), o.setAttribute("aria-label", r.getAttribute("aria-label") ?? "Link"), o.setAttribute("data-ez-ui", "true"), o.appendChild(r);
+  const n = t instanceof HTMLElement ? t : t.commonAncestorContainer, r = (((m = n instanceof Element ? n : n.parentElement) == null ? void 0 : m.ownerDocument) ?? document).createElement("div");
+  r.className = "ez-popover ez-inline-popover", r.setAttribute("role", "dialog"), r.setAttribute("aria-label", o.getAttribute("aria-label") ?? "Link"), r.setAttribute("data-ez-ui", "true"), r.appendChild(o);
   const a = ((y = n instanceof Element ? n : n.parentElement) == null ? void 0 : y.closest(".ez-editor")) ?? document.body;
-  a.appendChild(o);
+  a.appendChild(r);
   const l = () => {
     const v = s != null && s.isConnected && s.getClientRects().length ? s : t;
-    P(o, v.getBoundingClientRect());
+    _(r, v.getBoundingClientRect(), t instanceof HTMLElement ? "below" : "above");
   };
   l();
   let c = !1;
   const d = (v) => {
-    v.key === "Escape" && (v.preventDefault(), v.stopPropagation(), p());
-  }, h = (v) => {
-    o.contains(v.target) || p(!1);
+    v.key === "Escape" && (v.preventDefault(), v.stopPropagation(), f());
   }, u = (v) => {
-    o.contains(v.target) || p(!1);
+    r.contains(v.target) || f(!1);
+  }, h = (v) => {
+    r.contains(v.target) || f(!1);
   };
-  function p(v = !0) {
-    c || (c = !0, document.removeEventListener("keydown", d, !0), document.removeEventListener("mousedown", h, !0), document.removeEventListener("focusin", u), window.removeEventListener("resize", l), document.removeEventListener("scroll", l, !0), a.removeEventListener("ez-close-popovers", g), o.remove(), v && (e == null || e()));
+  function f(v = !0) {
+    c || (c = !0, document.removeEventListener("keydown", d, !0), document.removeEventListener("mousedown", u, !0), document.removeEventListener("focusin", h), window.removeEventListener("resize", l), document.removeEventListener("scroll", l, !0), a.removeEventListener("ez-close-popovers", g), r.remove(), v && (e == null || e()));
   }
-  const g = () => p(!1);
-  return document.addEventListener("keydown", d, !0), document.addEventListener("mousedown", h, !0), document.addEventListener("focusin", u), window.addEventListener("resize", l), document.addEventListener("scroll", l, !0), a.addEventListener("ez-close-popovers", g), { close: p };
+  const g = () => f(!1);
+  return document.addEventListener("keydown", d, !0), document.addEventListener("mousedown", u, !0), document.addEventListener("focusin", h), window.addEventListener("resize", l), document.addEventListener("scroll", l, !0), a.addEventListener("ez-close-popovers", g), { close: f };
 }
 class kt {
   constructor(t) {
@@ -2651,7 +2867,7 @@ class kt {
   }
   render() {
     var s;
-    const t = this.options.t(this.labelKey), e = this.icon ? E("ez-inline-tool-btn", this.icon, t) : S("ez-inline-tool-btn", t, t);
+    const t = this.options.t(this.labelKey), e = this.icon ? E("ez-inline-tool-btn", this.icon, t) : A("ez-inline-tool-btn", t, t);
     return (s = e.querySelector("svg")) == null || s.setAttribute("aria-hidden", "true"), e.addEventListener("click", () => this.toggle()), e.title = t, e.setAttribute("data-ez-inline-tool", this.markType), e.setAttribute("aria-pressed", "false"), this.node = e, e;
   }
   /** Optional Lucide icon; a text label renders when undefined. */
@@ -2674,7 +2890,7 @@ class kt {
     this.node = null;
   }
 }
-class Te extends kt {
+class Re extends kt {
   constructor(t, e, s) {
     super(t), this.markType = e, this.tag = s;
   }
@@ -2682,7 +2898,7 @@ class Te extends kt {
     return `inline.${this.markType}`;
   }
   apply(t, e) {
-    const s = Qt(
+    const s = ee(
       t,
       e.blockElement,
       (n) => {
@@ -2691,18 +2907,18 @@ class Te extends kt {
       }
     );
     if (s)
-      Be(s, t);
+      Me(s, t);
     else if (this.markType === "code" || this.markType === "mark") {
       const n = e.blockElement.ownerDocument.createElement(this.tag);
-      Ct(t, n);
+      zt(t, n);
     } else {
       const n = e.blockElement.ownerDocument.createElement("span");
-      n.setAttribute("data-ez-mark", this.markType), Ct(t, n);
+      n.setAttribute("data-ez-mark", this.markType), zt(t, n);
     }
     e.requestSave();
   }
 }
-class Ei extends kt {
+class ji extends kt {
   constructor() {
     super(...arguments), this.markType = "bold";
   }
@@ -2713,13 +2929,13 @@ class Ei extends kt {
     return b.bold;
   }
   apply(t, e) {
-    ze(e.blockElement, "bold"), e.requestSave();
+    Ne(e.blockElement, "bold"), e.requestSave();
   }
   isActive() {
     return bt(document, "bold");
   }
 }
-class Ai extends kt {
+class Ui extends kt {
   constructor() {
     super(...arguments), this.markType = "italic";
   }
@@ -2730,13 +2946,13 @@ class Ai extends kt {
     return b.italic;
   }
   apply(t, e) {
-    ze(e.blockElement, "italic"), e.requestSave();
+    Ne(e.blockElement, "italic"), e.requestSave();
   }
   isActive() {
     return bt(document, "italic");
   }
 }
-class Si extends kt {
+class qi extends kt {
   constructor() {
     super(...arguments), this.markType = "underline";
   }
@@ -2747,13 +2963,13 @@ class Si extends kt {
     return b.underline;
   }
   apply(t, e) {
-    ze(e.blockElement, "underline"), e.requestSave();
+    Ne(e.blockElement, "underline"), e.requestSave();
   }
   isActive() {
     return bt(document, "underline");
   }
 }
-class xi extends Te {
+class Wi extends Re {
   constructor(t) {
     super(t, "code", "code");
   }
@@ -2761,7 +2977,7 @@ class xi extends Te {
     return b.code;
   }
 }
-class Ii extends Te {
+class Vi extends Re {
   constructor(t) {
     super(t, "mark", "mark");
   }
@@ -2769,7 +2985,7 @@ class Ii extends Te {
     return b.highlighter;
   }
 }
-class Ci extends Te {
+class Ki extends Re {
   constructor(t) {
     super(t, "strike", "s");
   }
@@ -2777,20 +2993,20 @@ class Ci extends Te {
     return b.strikethrough;
   }
   apply(t, e) {
-    const s = Qt(t, e.blockElement, (n) => {
+    const s = ee(t, e.blockElement, (n) => {
       var i;
       return n.tagName === "S" || ((i = n.getAttribute) == null ? void 0 : i.call(n, "data-ez-mark")) === "strike";
     });
     if (s)
-      Be(s, t);
+      Me(s, t);
     else {
       const n = e.blockElement.ownerDocument.createElement("s");
-      Ct(t, n);
+      zt(t, n);
     }
     e.requestSave();
   }
 }
-const zi = [
+const Ji = [
   "var(--ez-text)",
   "#ef4444",
   "#f97316",
@@ -2800,7 +3016,7 @@ const zi = [
   "#7c3aed",
   "transparent"
 ];
-class Bs extends kt {
+class Ps extends kt {
   get labelKey() {
     return `inline.${this.markType}`;
   }
@@ -2808,32 +3024,32 @@ class Bs extends kt {
     t.collapsed || this.promptForColor(t, e);
   }
   promptForColor(t, e) {
-    const s = f("div", "ez-color-form");
+    const s = p("div", "ez-color-form");
     s.setAttribute("aria-label", this.options.t(this.labelKey));
     const n = () => {
       if (!t.startContainer.isConnected || e.blockElement.contentEditable === "false") return;
       e.blockElement.focus();
-      const o = window.getSelection();
-      o == null || o.removeAllRanges(), o == null || o.addRange(t);
+      const r = window.getSelection();
+      r == null || r.removeAllRanges(), r == null || r.addRange(t);
     };
-    for (const o of zi) {
-      const a = f("button", "ez-color-swatch");
-      a.type = "button", a.setAttribute("aria-label", o === "transparent" ? "Remove color" : `Set ${this.markType} color ${o}`), a.style.background = o, a.title = o, a.addEventListener("click", () => {
+    for (const r of Ji) {
+      const a = p("button", "ez-color-swatch");
+      a.type = "button", a.setAttribute("aria-label", r === "transparent" ? "Remove color" : `Set ${this.markType} color ${r}`), a.style.background = r, a.title = r, a.addEventListener("click", () => {
         n();
-        const l = Bi(t, e.blockElement, this.markType);
-        if (l && Be(l, t), o !== "transparent") {
+        const l = Zi(t, e.blockElement, this.markType);
+        if (l && Me(l, t), r !== "transparent") {
           const c = e.blockElement.ownerDocument.createElement("span");
-          c.setAttribute("data-ez-mark", this.markType), c.setAttribute(`data-ez-${this.markType}`, o), c.style.setProperty(this.markType === "color" ? "color" : "background-color", o), Ct(t, c);
+          c.setAttribute("data-ez-mark", this.markType), c.setAttribute(`data-ez-${this.markType}`, r), c.style.setProperty(this.markType === "color" ? "color" : "background-color", r), zt(t, c);
         }
         e.requestSave(), i(), e.closeToolbar();
       }), s.appendChild(a);
     }
-    const { close: i } = zs(s, t.cloneRange(), n, this.node ?? void 0);
+    const { close: i } = $s(s, t.cloneRange(), n, this.node ?? void 0);
   }
 }
-function Bi(r, t, e) {
+function Zi(o, t, e) {
   var n;
-  let s = r.startContainer;
+  let s = o.startContainer;
   for (; s && s !== t; ) {
     if (s.nodeType === Node.ELEMENT_NODE) {
       const i = s;
@@ -2843,7 +3059,7 @@ function Bi(r, t, e) {
   }
   return null;
 }
-class Ti extends Bs {
+class Gi extends Ps {
   constructor() {
     super(...arguments), this.markType = "color";
   }
@@ -2851,7 +3067,7 @@ class Ti extends Bs {
     return b.textColor;
   }
 }
-class Li extends Bs {
+class Yi extends Ps {
   constructor() {
     super(...arguments), this.markType = "background";
   }
@@ -2859,7 +3075,7 @@ class Li extends Bs {
     return b.backgroundColor;
   }
 }
-class Di extends kt {
+class Xi extends kt {
   constructor() {
     super(...arguments), this.markType = "link";
   }
@@ -2870,35 +3086,35 @@ class Di extends kt {
     return b.link;
   }
   apply(t, e) {
-    const s = Qt(t, e.blockElement, (n) => n.tagName === "A");
+    const s = ee(t, e.blockElement, (n) => n.tagName === "A");
     this.promptForUrl(t.cloneRange(), e, s);
   }
   isActive(t) {
     return !1;
   }
   promptForUrl(t, e, s) {
-    const n = f("form", "ez-link-form");
+    const n = p("form", "ez-link-form");
     n.setAttribute("aria-label", this.options.t("inline.link"));
-    const i = f("input", "ez-link-input");
+    const i = p("input", "ez-link-input");
     i.type = "text", i.inputMode = "url", i.placeholder = "https://", i.value = (s == null ? void 0 : s.getAttribute("href")) ?? "", i.setAttribute("aria-label", this.options.t("inline.linkUrl"));
-    const o = S("ez-btn ez-btn-primary", this.options.t("inline.linkApply")), a = S("ez-btn", this.options.t("inline.linkRemove"));
+    const r = A("ez-btn ez-btn-primary", this.options.t("inline.linkApply")), a = A("ez-btn", this.options.t("inline.linkRemove"));
     a.disabled = !s;
-    const l = S("ez-btn", this.options.t("inline.linkCancel")), c = f("div", "ez-field-error");
-    c.id = `ez-link-error-${++Mi}`, c.setAttribute("role", "alert"), i.setAttribute("aria-describedby", c.id);
-    const d = f("div", "ez-link-actions");
-    d.append(o, a, l), n.append(i, c, d);
-    const h = () => {
+    const l = A("ez-btn", this.options.t("inline.linkCancel")), c = p("div", "ez-field-error");
+    c.id = `ez-link-error-${++Qi}`, c.setAttribute("role", "alert"), i.setAttribute("aria-describedby", c.id);
+    const d = p("div", "ez-link-actions");
+    d.append(r, a, l), n.append(i, c, d);
+    const u = () => {
       if (!t.startContainer.isConnected || e.blockElement.contentEditable === "false") return;
       e.blockElement.focus();
       const g = window.getSelection();
       g == null || g.removeAllRanges(), g == null || g.addRange(t);
-    }, { close: u } = zs(n, t, h, this.node ?? void 0), p = () => {
+    }, { close: h } = $s(n, t, u, this.node ?? void 0), f = () => {
       const g = i.value.trim();
-      if (!g || !Ni(g)) {
+      if (!g || !tr(g)) {
         i.setAttribute("aria-invalid", "true"), c.textContent = this.options.t("inline.linkInvalid"), i.focus();
         return;
       }
-      if (h(), s)
+      if (u(), s)
         s.setAttribute("href", g);
       else {
         const m = e.blockElement.ownerDocument.createElement("a");
@@ -2911,63 +3127,63 @@ class Di extends kt {
             w.setStartAfter(m), w.collapse(!0), v.removeAllRanges(), v.addRange(w);
           }
         } else
-          Ct(t, m);
+          zt(t, m);
       }
-      e.requestSave(), u(), e.closeToolbar();
+      e.requestSave(), h(), e.closeToolbar();
     };
-    o.addEventListener("click", p), a.addEventListener("click", () => {
-      s && (h(), me(s), e.requestSave()), u(), e.closeToolbar();
-    }), l.addEventListener("click", () => u()), i.addEventListener("input", () => {
+    r.addEventListener("click", f), a.addEventListener("click", () => {
+      s && (u(), Ee(s), e.requestSave()), h(), e.closeToolbar();
+    }), l.addEventListener("click", () => h()), i.addEventListener("input", () => {
       i.removeAttribute("aria-invalid"), c.textContent = "";
     }), n.addEventListener("submit", (g) => {
-      g.preventDefault(), p();
+      g.preventDefault(), f();
     }), i.focus();
   }
 }
-let Mi = 0;
-function Ni(r) {
+let Qi = 0;
+function tr(o) {
   try {
-    const t = new URL(r, "https://ezynota.invalid");
+    const t = new URL(o, "https://ezynota.invalid");
     return ["http:", "https:", "mailto:", "tel:"].includes(t.protocol);
   } catch {
     return !1;
   }
 }
-const Ts = {
-  bold: Ei,
-  italic: Ai,
-  underline: Si,
-  strike: Ci,
-  code: xi,
-  mark: Ii,
-  color: Ti,
-  background: Li,
-  link: Di
-}, ee = ["left", "center", "right"], Oi = {
+const _s = {
+  bold: ji,
+  italic: Ui,
+  underline: qi,
+  strike: Ki,
+  code: Wi,
+  mark: Vi,
+  color: Gi,
+  background: Yi,
+  link: Xi
+}, ne = ["left", "center", "right"], er = {
   left: b.alignLeft,
   center: b.alignCenter,
   right: b.alignRight
-}, $e = class $e {
+}, Ue = class Ue {
   constructor(t) {
     this.value = "left", this.api = t.api, this.t = t.t, this.onChange = t.onChange;
     const e = t.value;
-    this.value = ee.includes(e) ? e : "left";
+    this.value = ne.includes(e) ? e : "left";
   }
   render() {
     const t = document.createElement("div");
     t.className = "ez-inline-group";
-    for (const e of ee) {
+    for (const e of ne) {
       const s = this.t(`tune.alignment.${e}`), n = E(
         "ez-inline-btn" + (e === this.value ? " ez-active" : ""),
-        Oi[e],
+        er[e],
         s
       );
       n.setAttribute("aria-pressed", String(e === this.value)), n.addEventListener("click", () => {
         var i;
         if (!this.api.readOnly) {
           this.value = e, (i = this.onChange) == null || i.call(this, e);
-          for (const o of Array.from(t.children))
-            o.classList.remove("ez-active"), o.setAttribute("aria-pressed", "false");
+          for (const r of Array.from(t.children))
+            r.classList.remove("ez-active"), r.setAttribute("aria-pressed", "false");
           n.classList.add("ez-active"), n.setAttribute("aria-pressed", "true"), this.applyWrap();
         }
       }), t.appendChild(n);
@@ -2986,7 +3202,7 @@ const Ts = {
   }
   /** Accept an externally committed tune value (e.g. undo/redo) without a rebuild. */
   setValue(t) {
-    this.value = ee.includes(t) ? t : "left";
+    this.value = ne.includes(t) ? t : "left";
   }
   applyWrap() {
     this.applyTo(this.api.element);
@@ -2994,9 +3210,9 @@ const Ts = {
   destroy() {
   }
 };
-$e.title = "Alignment";
-let zt = $e;
-class Je {
+Ue.title = "Alignment";
+let Bt = Ue;
+class ns {
   constructor(t) {
     this.api = t.api;
   }
@@ -3019,7 +3235,7 @@ class Je {
     return JSON.parse(JSON.stringify(this.api.getData()));
   }
 }
-class Ri {
+class sr {
   constructor(t, e) {
     this.rendered = /* @__PURE__ */ new Map(), this.childrenSignatures = /* @__PURE__ */ new Map(), this.blockSignatures = /* @__PURE__ */ new Map(), this.tuneSignatures = /* @__PURE__ */ new Map(), this.suspended = 0, this.observer = null, this.destroyed = !1, this.hostApi = t, this.target = e, this.blocksRoot = t.target.ownerDocument.createElement("div"), this.blocksRoot.className = "ez-blocks", this.blocksRoot.setAttribute("role", "presentation"), e.appendChild(this.blocksRoot);
   }
@@ -3036,12 +3252,12 @@ class Ri {
     }
   }
   destroyToolDom(t) {
-    var s, n, i, o;
+    var s, n, i, r;
     const e = this.rendered.get(t);
     if (e) {
       try {
         (n = (s = e.tool).destroy) == null || n.call(s);
-        for (const a of e.tunes) (o = (i = a.instance).destroy) == null || o.call(i);
+        for (const a of e.tunes) (r = (i = a.instance).destroy) == null || r.call(i);
       } catch {
       }
       e.element.remove(), this.rendered.delete(t);
@@ -3052,13 +3268,13 @@ class Ri {
     this.destroyed || (this.suspend(), this.renderBlockInto(t, e), this.resume(), this.updateEmptyHint(!1), this.refreshPlaceholderScope());
   }
   remove(t) {
-    var n, i, o, a;
+    var n, i, r, a;
     const e = this.rendered.get(t);
     if (!e) return;
     const s = e.tool;
     try {
       (n = s.removed) == null || n.call(s), (i = s.destroy) == null || i.call(s);
-      for (const l of e.tunes) (a = (o = l.instance).destroy) == null || a.call(o);
+      for (const l of e.tunes) (a = (r = l.instance).destroy) == null || a.call(r);
     } catch {
     }
     e.element.remove(), this.rendered.delete(t), this.childrenSignatures.delete(t), this.blockSignatures.delete(t), this.tuneSignatures.delete(t), this.updateEmptyHint(this.rendered.size === 0), this.refreshPlaceholderScope();
@@ -3067,11 +3283,11 @@ class Ri {
     var c;
     const s = this.rendered.get(t);
     if (!s) return;
-    const n = Array.from(this.blocksRoot.children).indexOf(s.element), i = Array.from(this.blocksRoot.children).filter((d) => d !== s.element), o = Math.max(0, Math.min(e, i.length)), a = i[o] ?? null;
+    const n = Array.from(this.blocksRoot.children).indexOf(s.element), i = Array.from(this.blocksRoot.children).filter((d) => d !== s.element), r = Math.max(0, Math.min(e, i.length)), a = i[r] ?? null;
     this.blocksRoot.insertBefore(s.element, a);
     const l = s.tool;
     try {
-      (c = l.moved) == null || c.call(l, { from: n, to: o });
+      (c = l.moved) == null || c.call(l, { from: n, to: r });
     } catch {
     }
   }
@@ -3096,13 +3312,13 @@ class Ri {
     }
   }
   convert(t, e) {
-    var n, i, o, a;
+    var n, i, r, a;
     const s = this.rendered.get(t);
     if (!(s && this.applyTuneUpdate(t, s, e))) {
       if (s) {
         try {
           (i = (n = s.tool).destroy) == null || i.call(n);
-          for (const l of s.tunes) (a = (o = l.instance).destroy) == null || a.call(o);
+          for (const l of s.tunes) (a = (r = l.instance).destroy) == null || a.call(r);
         } catch {
         }
         s.element.remove(), this.rendered.delete(t), this.childrenSignatures.delete(t), this.blockSignatures.delete(t), this.tuneSignatures.delete(t);
@@ -3117,8 +3333,8 @@ class Ri {
    * editor.applyToDom for tune:update (e.g. alignment clicks and undo/redo).
    */
   applyTuneUpdate(t, e, s) {
-    var o;
-    if (this.blockSignatures.get(t) !== Ze(s)) return !1;
+    var r;
+    if (this.blockSignatures.get(t) !== is(s)) return !1;
     const i = [];
     for (const a of e.tunes) {
       const l = a.instance;
@@ -3127,34 +3343,34 @@ class Ri {
       i.push({ tune: a, setValue: l.setValue, applyTo: l.applyTo });
     }
     for (const a of i)
-      a.setValue(((o = s.tunes) == null ? void 0 : o[a.tune.name]) ?? null), a.applyTo(e.host);
+      a.setValue(((r = s.tunes) == null ? void 0 : r[a.tune.name]) ?? null), a.applyTo(e.host);
     return this.tuneSignatures.set(t, JSON.stringify(s.tunes ?? {})), !0;
   }
   stateIndexOf(t) {
     return this.hostApi.getBlockIndex(t);
   }
   renderBlockInto(t, e) {
-    var h, u, p, g, m;
-    const s = this.target.ownerDocument, n = this.hostApi.registry.has(t.type), i = n ? this.hostApi.registry.get(t.type) : void 0, o = s.createElement("div");
-    o.className = "ez-block", o.setAttribute("data-ez-block-id", t.id), o.setAttribute("data-ez-block-type", t.type), o.setAttribute("role", "group"), o.setAttribute("aria-label", n ? ((h = i == null ? void 0 : i.toolbox) == null ? void 0 : h.title) ?? t.type : `Unsupported block (${t.type})`);
-    const a = Fi(s, t.type);
-    o.appendChild(a);
+    var u, h, f, g, m;
+    const s = this.target.ownerDocument, n = this.hostApi.registry.has(t.type), i = n ? this.hostApi.registry.get(t.type) : void 0, r = s.createElement("div");
+    r.className = "ez-block", r.setAttribute("data-ez-block-id", t.id), r.setAttribute("data-ez-block-type", t.type), r.setAttribute("role", "group"), r.setAttribute("aria-label", n ? ((u = i == null ? void 0 : i.toolbox) == null ? void 0 : u.title) ?? t.type : `Unsupported block (${t.type})`);
+    const a = nr(s, t.type);
+    r.appendChild(a);
     let l;
     try {
-      l = n ? this.createToolInstance(t, a) : new Je({ api: this.blockApiForTool(t.id, a) }), a.appendChild(l.render());
+      l = n ? this.createToolInstance(t, a) : new ns({ api: this.blockApiForTool(t.id, a) }), a.appendChild(l.render());
     } catch {
       for (; a.firstChild; ) a.removeChild(a.firstChild);
-      l = new Je({ api: this.blockApiForTool(t.id, a) }), a.appendChild(l.render());
+      l = new ns({ api: this.blockApiForTool(t.id, a) }), a.appendChild(l.render());
     }
     const c = Array.from(a.querySelectorAll("[data-ez-editable]"));
     for (const y of c)
-      y.contentEditable = this.hostApi.readOnly ? "false" : "true", y.setAttribute("aria-label", n ? ((u = i == null ? void 0 : i.toolbox) == null ? void 0 : u.title) ?? t.type : `Unsupported block (${t.type})`), y.setAttribute("role", "textbox"), y.setAttribute("aria-multiline", "true");
-    c.length === 0 && (o.tabIndex = 0, o.addEventListener("focus", () => {
-      const y = o.ownerDocument.createRange();
-      y.selectNodeContents(o), y.collapse(!0), this.hostApi.setSelectionFromRange(y);
+      y.contentEditable = this.hostApi.readOnly ? "false" : "true", y.setAttribute("aria-label", n ? ((h = i == null ? void 0 : i.toolbox) == null ? void 0 : h.title) ?? t.type : `Unsupported block (${t.type})`), y.setAttribute("role", "textbox"), y.setAttribute("aria-multiline", "true");
+    c.length === 0 && (r.tabIndex = 0, r.addEventListener("focus", () => {
+      const y = r.ownerDocument.createRange();
+      y.selectNodeContents(r), y.collapse(!0), this.hostApi.setSelectionFromRange(y);
     }));
     try {
-      (p = l.rendered) == null || p.call(l);
+      (f = l.rendered) == null || f.call(l);
     } catch {
     }
     const d = [];
@@ -3170,14 +3386,14 @@ class Ri {
         (m = v.wrap) == null || m.call(v, a), d.push({ name: y.name, instance: v });
       } catch {
       }
-    if (this.rendered.set(t.id, { element: o, host: a, tool: l, tunes: d }), this.childrenSignatures.set(t.id, JSON.stringify(t.children ?? [])), this.blockSignatures.set(t.id, Ze(t)), this.tuneSignatures.set(t.id, JSON.stringify(t.tunes ?? {})), typeof e == "number") {
+    if (this.rendered.set(t.id, { element: r, host: a, tool: l, tunes: d }), this.childrenSignatures.set(t.id, JSON.stringify(t.children ?? [])), this.blockSignatures.set(t.id, is(t)), this.tuneSignatures.set(t.id, JSON.stringify(t.tunes ?? {})), typeof e == "number") {
       const y = this.blocksRoot.children[e] ?? null;
-      this.blocksRoot.insertBefore(o, y);
+      this.blocksRoot.insertBefore(r, y);
     } else {
       const y = this.stateIndexOf(t.id), v = this.blocksRoot.children[y] ?? null;
-      this.blocksRoot.insertBefore(o, v);
+      this.blocksRoot.insertBefore(r, v);
     }
-    this.refreshEditableFlags(o);
+    this.refreshEditableFlags(r);
   }
   /** Instantiate the block tool. */
   createToolInstance(t, e) {
@@ -3198,8 +3414,9 @@ class Ri {
   }
   /** Instantiate a block tool for a nested child (collapsible sections). */
   createToolInstancePublic(t, e, s, n) {
-    var o, a;
-    const i = (a = (o = this.hostApi).nestedHost) == null ? void 0 : a.call(o, t.id);
+    var r, a;
+    n && (n = Object.assign(Object.create(n), { assetScope: this.hostApi.target }));
+    const i = (a = (r = this.hostApi).nestedHost) == null ? void 0 : a.call(r, t.id);
     return this.hostApi.registry.createBlockTool(t.type, {
       api: n ?? this.blockApiForTool(t.id, e),
       config: {},
@@ -3212,6 +3429,7 @@ class Ri {
   blockApiForTool(t, e) {
     const s = this.hostApi;
     return {
+      assetScope: s.target,
       id: t,
       type: s.getBlockType(t) ?? "",
       get readOnly() {
@@ -3221,8 +3439,8 @@ class Ri {
       getData: () => s.getBlockData(t),
       update: (n) => s.updateBlockData(t, n, "user"),
       patch: (n) => {
-        const o = { ...s.getBlockData(t) ?? {}, ...n };
-        s.updateBlockData(t, o);
+        const r = { ...s.getBlockData(t) ?? {}, ...n };
+        s.updateBlockData(t, r);
       },
       requestSave: () => s.requestSaveBlock(t),
       focus: (n) => this.focus(t, n),
@@ -3281,12 +3499,12 @@ class Ri {
       if (this.suspended > 0) return;
       const s = /* @__PURE__ */ new Set(), n = (i) => {
         var c;
-        const o = i instanceof Element ? i : (i == null ? void 0 : i.parentElement) ?? null, a = (c = o == null ? void 0 : o.closest) == null ? void 0 : c.call(o, "[data-ez-block-id]"), l = a == null ? void 0 : a.getAttribute("data-ez-block-id");
+        const r = i instanceof Element ? i : (i == null ? void 0 : i.parentElement) ?? null, a = (c = r == null ? void 0 : r.closest) == null ? void 0 : c.call(r, "[data-ez-block-id]"), l = a == null ? void 0 : a.getAttribute("data-ez-block-id");
         l && s.add(l);
       };
       for (const i of e)
         if (n(i.target), i.type === "childList")
-          for (const o of Array.from(i.addedNodes)) n(o);
+          for (const r of Array.from(i.addedNodes)) n(r);
       for (const i of s) t(i);
     }), this.observer.observe(this.blocksRoot, { childList: !0, subtree: !0, characterData: !0 }));
   }
@@ -3300,7 +3518,7 @@ class Ri {
     for (const [, i] of this.rendered)
       try {
         (e = (t = i.tool).destroy) == null || e.call(t);
-        for (const o of i.tunes) (n = (s = o.instance).destroy) == null || n.call(s);
+        for (const r of i.tunes) (n = (s = r.instance).destroy) == null || n.call(s);
       } catch {
       }
     this.rendered.clear(), this.childrenSignatures.clear(), this.blockSignatures.clear(), this.tuneSignatures.clear(), this.blocksRoot.remove();
@@ -3345,16 +3563,16 @@ class Ri {
     s && s.setAttribute("data-ez-note-placeholder", this.hostApi.placeholder);
   }
 }
-function Ze(r) {
-  return JSON.stringify({ type: r.type, data: r.data });
+function is(o) {
+  return JSON.stringify({ type: o.type, data: o.data });
 }
-function Fi(r, t) {
-  const e = r.createElement("div");
+function nr(o, t) {
+  const e = o.createElement("div");
   return e.className = "ez-tool-host", e.setAttribute("data-ez-tool", t), e;
 }
-class $i {
+class ir {
   constructor(t, e) {
-    this.bus = new Us(), this.current = null, this.savedRange = null, this.started = !1, this.stopped = !1, this.disposers = [], this.host = t, this.target = e;
+    this.bus = new Qs(), this.current = null, this.savedRange = null, this.started = !1, this.stopped = !1, this.disposers = [], this.host = t, this.target = e;
   }
   start() {
     if (this.started || this.stopped) return;
@@ -3408,16 +3626,16 @@ class $i {
       return this.current = null, this.bus.emit("selection", null), null;
     const s = e.getAttribute("data-ez-block-id") ?? "";
     this.savedRange = t.cloneRange();
-    const n = t.collapsed, i = t.toString(), o = typeof window < "u" ? window.getSelection() : null, a = o && o.anchorNode ? o.anchorNode : t.startContainer, l = o && o.anchorNode ? o.anchorOffset : t.startOffset, c = o && o.focusNode ? o.focusNode : t.endContainer, d = o && o.focusNode ? o.focusOffset : t.endOffset, h = this.blockForBoundary(a, l), u = this.blockForBoundary(c, d), p = (y = t.commonAncestorContainer instanceof Element ? t.commonAncestorContainer : t.commonAncestorContainer.parentElement) == null ? void 0 : y.closest("[data-ez-region]"), g = {
+    const n = t.collapsed, i = t.toString(), r = typeof window < "u" ? window.getSelection() : null, a = r && r.anchorNode ? r.anchorNode : t.startContainer, l = r && r.anchorNode ? r.anchorOffset : t.startOffset, c = r && r.focusNode ? r.focusNode : t.endContainer, d = r && r.focusNode ? r.focusOffset : t.endOffset, u = this.blockForBoundary(a, l), h = this.blockForBoundary(c, d), f = (y = t.commonAncestorContainer instanceof Element ? t.commonAncestorContainer : t.commonAncestorContainer.parentElement) == null ? void 0 : y.closest("[data-ez-region]"), g = {
       blockId: s,
       index: this.host.getBlockIndex(s),
       collapsed: n,
-      anchorOffset: Ge(h ?? e, a, l),
-      focusOffset: Ge(u ?? e, c, d),
+      anchorOffset: rs(u ?? e, a, l),
+      focusOffset: rs(h ?? e, c, d),
       text: i,
-      anchorBlockId: (h == null ? void 0 : h.getAttribute("data-ez-block-id")) ?? s,
-      focusBlockId: (u == null ? void 0 : u.getAttribute("data-ez-block-id")) ?? s,
-      regionId: (p == null ? void 0 : p.getAttribute("data-ez-region")) ?? void 0
+      anchorBlockId: (u == null ? void 0 : u.getAttribute("data-ez-block-id")) ?? s,
+      focusBlockId: (h == null ? void 0 : h.getAttribute("data-ez-block-id")) ?? s,
+      regionId: (f == null ? void 0 : f.getAttribute("data-ez-region")) ?? void 0
     }, m = !this.current || this.current.blockId !== g.blockId || this.current.collapsed !== g.collapsed || this.current.anchorOffset !== g.anchorOffset || this.current.focusOffset !== g.focusOffset;
     return this.current = g, m && this.bus.emit("selection", g), g;
   }
@@ -3444,81 +3662,63 @@ class $i {
     return this.findBlockElement(t);
   }
 }
-function Ge(r, t, e) {
+function rs(o, t, e) {
   try {
-    const n = r.ownerDocument.createRange();
-    return n.selectNodeContents(r.querySelector("[data-ez-editable]") ?? r), n.setEnd(t, e), n.toString().length;
+    const n = o.ownerDocument.createRange();
+    return n.selectNodeContents(o.querySelector("[data-ez-editable]") ?? o), n.setEnd(t, e), n.toString().length;
   } catch {
     return 0;
   }
 }
-function Pi(r, t) {
+function rr(o, t) {
   var d;
-  const e = r.ownerDocument, s = window.getSelection();
+  const e = o.ownerDocument, s = window.getSelection();
   if (!s) return;
-  const n = e.createTreeWalker(r, NodeFilter.SHOW_TEXT);
-  let i = t, o = n.nextNode(), a = null, l = 0;
-  for (; o; ) {
-    const h = o, u = ((d = h.data) == null ? void 0 : d.length) ?? 0;
-    if (i <= u) {
-      a = h, l = i;
+  const n = e.createTreeWalker(o, NodeFilter.SHOW_TEXT);
+  let i = t, r = n.nextNode(), a = null, l = 0;
+  for (; r; ) {
+    const u = r, h = ((d = u.data) == null ? void 0 : d.length) ?? 0;
+    if (i <= h) {
+      a = u, l = i;
       break;
     }
-    i -= u, o = n.nextNode();
+    i -= h, r = n.nextNode();
   }
   const c = e.createRange();
-  a ? (c.setStart(a, l), c.collapse(!0)) : (c.selectNodeContents(r), c.collapse(!1)), s.removeAllRanges(), s.addRange(c);
+  a ? (c.setStart(a, l), c.collapse(!0)) : (c.selectNodeContents(o), c.collapse(!1)), s.removeAllRanges(), s.addRange(c);
 }
-let jt = 0, be = 0;
-function _i() {
-  jt++;
-}
-function Hi() {
-  jt = Math.max(0, jt - 1), be = Date.now();
-}
-function ji() {
-  return jt > 0;
-}
-function Ui(r = 50) {
-  return be !== 0 && Date.now() - be < r;
-}
-function qi(r) {
-  if (ji() || Ui() || r.isComposing) return !0;
-  const t = r.keyCode;
-  return t === void 0 ? !1 : t === 229;
-}
-class Wi {
+class or {
   constructor(t, e) {
     this.disposers = [], this.lastInputAt = /* @__PURE__ */ new Map(), this.composing = !1, this.lastCompositionEndAt = 0, this.lastCompositionBlock = "", this.onInputCallbacks = [], this.host = t, this.target = e;
   }
   start() {
     const t = (i) => {
       var a;
-      let o = i;
-      for (; o && o !== this.target; ) {
-        if (o.nodeType === Node.ELEMENT_NODE) {
-          const l = o;
+      let r = i;
+      for (; r && r !== this.target; ) {
+        if (r.nodeType === Node.ELEMENT_NODE) {
+          const l = r;
           if ((a = l.hasAttribute) != null && a.call(l, "data-ez-editable")) {
             const c = l.closest("[data-ez-block-id]");
             if (c) {
-              const d = l.closest("[data-ez-nested-id]"), h = d && c.contains(d) ? d.getAttribute("data-ez-nested-id") : null;
-              return { id: c.getAttribute("data-ez-block-id") ?? "", nestedId: h, editable: l };
+              const d = l.closest("[data-ez-nested-id]"), u = d && c.contains(d) ? d.getAttribute("data-ez-nested-id") : null;
+              return { id: c.getAttribute("data-ez-block-id") ?? "", nestedId: u, editable: l };
             }
           }
         }
-        o = o.parentNode;
+        r = r.parentNode;
       }
       return null;
     }, e = (i) => {
       if (this.host.readOnly) return;
-      const o = t(i.target);
-      o && (this.lastInputAt.set(o.id, Date.now()), o.nestedId && this.lastInputAt.set(o.nestedId, Date.now()), this.updateEmptyState(o.editable), !this.composing && (this.lastCompositionEndAt !== 0 && Date.now() - this.lastCompositionEndAt < 50 && (o.nestedId ?? o.id) === this.lastCompositionBlock || this.emitInput(o.id, o.nestedId)));
+      const r = t(i.target);
+      r && (this.lastInputAt.set(r.id, Date.now()), r.nestedId && this.lastInputAt.set(r.nestedId, Date.now()), this.updateEmptyState(r.editable), !this.composing && (this.lastCompositionEndAt !== 0 && Date.now() - this.lastCompositionEndAt < 50 && (r.nestedId ?? r.id) === this.lastCompositionBlock || this.emitInput(r.id, r.nestedId)));
     }, s = () => {
-      this.composing = !0, _i();
+      this.composing = !0, en();
     }, n = (i) => {
-      this.composing = !1, Hi(), this.lastCompositionEndAt = Date.now();
-      const o = t(i.target);
-      this.lastCompositionBlock = o ? o.nestedId ?? o.id : "", o && (this.updateEmptyState(o.editable), this.emitInput(o.id, o.nestedId));
+      this.composing = !1, sn(), this.lastCompositionEndAt = Date.now();
+      const r = t(i.target);
+      this.lastCompositionBlock = r ? r.nestedId ?? r.id : "", r && (this.updateEmptyState(r.editable), this.emitInput(r.id, r.nestedId));
     };
     this.target.addEventListener("input", e, !0), this.target.addEventListener("compositionstart", s, !0), this.target.addEventListener("compositionend", n, !0), this.disposers.push(() => {
       this.target.removeEventListener("input", e, !0), this.target.removeEventListener("compositionstart", s, !0), this.target.removeEventListener("compositionend", n, !0);
@@ -3539,31 +3739,31 @@ class Wi {
   }
   updateEmptyState(t) {
     const s = (t.textContent ?? "").replace(/\u200B/g, "").trim() === "";
-    (t.hasAttribute("data-ez-placeholder") || t.hasAttribute("data-ez-note-placeholder")) && t.setAttribute("data-ez-empty", s ? "true" : "false");
+    (t.hasAttribute("data-ez-placeholder") || t.hasAttribute("data-ez-note-placeholder") || t.hasAttribute("data-ez-writing-hint")) && t.setAttribute("data-ez-empty", s ? "true" : "false");
   }
   wasInputRecently(t, e = 250) {
     const s = this.lastInputAt.get(t);
     return s !== void 0 && Date.now() - s < e;
   }
 }
-function Ls(r) {
-  if (!r || typeof r != "object") return "";
-  const t = r;
-  return typeof t.code == "string" ? t.code : Array.isArray(t.items) ? t.items.map((e) => ye((e == null ? void 0 : e.content) ?? [])).join(`
-`) : Array.isArray(t.content) ? ye(t.content) : "";
+function Hs(o) {
+  if (!o || typeof o != "object") return "";
+  const t = o;
+  return typeof t.code == "string" ? t.code : Array.isArray(t.items) ? t.items.map((e) => Ae((e == null ? void 0 : e.content) ?? [])).join(`
+`) : Array.isArray(t.content) ? Ae(t.content) : "";
 }
-function ye(r) {
+function Ae(o) {
   let t = "";
-  for (const e of r)
+  for (const e of o)
     (e == null ? void 0 : e.type) === "text" ? t += e.text ?? "" : (e == null ? void 0 : e.type) === "link" && (t += (e.content ?? []).map((s) => (s == null ? void 0 : s.text) ?? "").join(""));
   return t;
 }
-function yt(r, t) {
-  return !t || typeof t != "object" ? !0 : r === "delimiter" ? !1 : Ls(t).trim() === "";
+function yt(o, t) {
+  return !t || typeof t != "object" ? !0 : o === "delimiter" ? !1 : Hs(t).trim() === "";
 }
-function Vi(r, t) {
-  const e = $t(t);
-  switch (r) {
+function ar(o, t) {
+  const e = Pt(t);
+  switch (o) {
     case "paragraph":
       return { content: e };
     case "heading":
@@ -3573,16 +3773,16 @@ function Vi(r, t) {
     case "list":
       return { style: "unordered", items: e.length > 0 ? e.map((s) => ({ content: [s] })) : [{ content: [] }] };
     case "code":
-      return { code: ye(e) };
+      return { code: Ae(e) };
     case "delimiter":
       return {};
     default:
       return {};
   }
 }
-function $t(r) {
-  if (!r || typeof r != "object") return [];
-  const t = r;
+function Pt(o) {
+  if (!o || typeof o != "object") return [];
+  const t = o;
   if (Array.isArray(t.content)) return t.content;
   if (typeof t.code == "string") return t.code === "" ? [] : [{ type: "text", text: t.code }];
   if (Array.isArray(t.items)) {
@@ -3594,27 +3794,27 @@ function $t(r) {
   }
   return [];
 }
-function Ki(r) {
+function lr(o) {
   var e;
-  const t = r == null ? void 0 : r.items;
+  const t = o == null ? void 0 : o.items;
   return ((e = t == null ? void 0 : t[0]) == null ? void 0 : e.content) ?? [];
 }
-function Ji(r, t, e, s) {
-  switch (r) {
+function cr(o, t, e, s) {
+  switch (o) {
     case "paragraph":
     case "heading":
     case "quote": {
-      const n = $t(t), i = e === "list" ? Ki(s) : $t(s), l = { content: n.length > 0 && i.length > 0 ? [...n, { type: "text", text: `
+      const n = Pt(t), i = e === "list" ? lr(s) : Pt(s), l = { content: n.length > 0 && i.length > 0 ? [...n, { type: "text", text: `
 ` }, ...i] : [...n, ...i] };
-      return r === "heading" && (l.level = t.level ?? 2), l;
+      return o === "heading" && (l.level = t.level ?? 2), l;
     }
     case "list": {
-      const n = $t(s);
+      const n = Pt(s);
       let i;
-      return e === "list" ? i = [...se(t), ...se(s)] : i = [...se(t), ...n.map((o) => ({ content: [o] }))], { style: t.style ?? "unordered", items: i };
+      return e === "list" ? i = [...ie(t), ...ie(s)] : i = [...ie(t), ...n.map((r) => ({ content: [r] }))], { style: t.style ?? "unordered", items: i };
     }
     case "code": {
-      const n = t.code ?? "", i = Ls(s);
+      const n = t.code ?? "", i = Hs(s);
       return { code: `${n}
 ${i}` };
     }
@@ -3622,21 +3822,21 @@ ${i}` };
       return {};
   }
 }
-function se(r) {
-  return ((r == null ? void 0 : r.items) ?? []).map((e) => ({ content: (e == null ? void 0 : e.content) ?? [] }));
+function ie(o) {
+  return ((o == null ? void 0 : o.items) ?? []).map((e) => ({ content: (e == null ? void 0 : e.content) ?? [] }));
 }
-function ke(r, t) {
+function Se(o, t) {
   const e = ["paragraph", "heading", "quote"];
-  return r === "list" ? t === "list" || e.includes(t) : r === "code" ? ["paragraph", "heading", "quote", "code"].includes(t) : e.includes(r) ? [...e, "list", "code"].includes(t) : !1;
+  return o === "list" ? t === "list" || e.includes(t) : o === "code" ? ["paragraph", "heading", "quote", "code"].includes(t) : e.includes(o) ? [...e, "list", "code"].includes(t) : !1;
 }
-class Zi {
+class dr {
   constructor(t, e) {
     this.disposers = [], this.host = t, this.target = e;
   }
   start() {
     const t = (e) => {
       const s = e;
-      this.host.readOnly || this.host.isDestroyed() || qi(s) || s.target.closest("[data-ez-ui]") || this.handle(s) && s.preventDefault();
+      this.host.readOnly || this.host.isDestroyed() || Ts(s) || s.target.closest("[data-ez-ui]") || this.handle(s) && s.preventDefault();
     };
     this.target.addEventListener("keydown", t), this.disposers.push(() => this.target.removeEventListener("keydown", t));
   }
@@ -3706,12 +3906,12 @@ class Zi {
    * instead of being swallowed as a no-op.
    */
   handleLinkShortcut() {
-    var o;
+    var r;
     const t = this.host.getSelectionInfo();
     if (!t) return !1;
     const e = this.host.getEditableElement(t.blockId), s = this.host.getBlockType(t.blockId);
     if (!e || !s || s === "code" || this.host.registry.get(s).toolClass.enableInlineTools === !1) return !1;
-    const n = (o = this.host.getRange()) == null ? void 0 : o.cloneRange();
+    const n = (r = this.host.getRange()) == null ? void 0 : r.cloneRange();
     if (!n || !this.host.registry.listInlineTools().some((a) => a.name === "link")) return !1;
     const i = this.host.registry.createInlineTool("link", {
       config: {},
@@ -3756,8 +3956,8 @@ class Zi {
     s.deleteContents(), s.insertNode(n);
     const i = window.getSelection();
     if (i) {
-      const o = e.ownerDocument.createRange();
-      o.setStartAfter(n), o.collapse(!0), i.removeAllRanges(), i.addRange(o);
+      const r = e.ownerDocument.createRange();
+      r.setStartAfter(n), r.collapse(!0), i.removeAllRanges(), i.addRange(r);
     }
     return this.host.requestSaveBlock(t.blockId, "user"), !0;
   }
@@ -3771,31 +3971,31 @@ class Zi {
     if (!e || !s || !n) return !1;
     const i = n;
     if (typeof i.splitAtRange != "function") return !1;
-    const o = this.host.getBlockData(t);
-    if (yt(s, o))
+    const r = this.host.getBlockData(t);
+    if (yt(s, r))
       return this.host.insertBlock(this.host.defaultBlock, void 0, { after: t, focus: !0 }), !0;
     const a = this.host.getRange();
     if (!a) return !1;
     if (!a.collapsed) {
-      const p = e.ownerDocument.createRange();
-      p.setStart(a.startContainer, a.startOffset), e.contains(a.endContainer) ? p.setEnd(a.endContainer, a.endOffset) : p.setEnd(e, e.childNodes.length), p.deleteContents();
+      const f = e.ownerDocument.createRange();
+      f.setStart(a.startContainer, a.startOffset), e.contains(a.endContainer) ? f.setEnd(a.endContainer, a.endOffset) : f.setEnd(e, e.childNodes.length), f.deleteContents();
     }
     const l = i.splitAtRange(a);
     if (!l) return !1;
-    const [c, d] = l, h = this.host.splitBlock(t, c, d);
-    return h ? (this.host.focusBlock(h, "start"), this.host.announce("Block split"), !0) : !1;
+    const [c, d] = l, u = this.host.splitBlock(t, c, d);
+    return u ? (this.host.focusBlock(u, "start"), this.host.announce("Block split"), !0) : !1;
   }
   handleBackspace() {
     const t = this.host.getSelectionInfo();
     if (!t || !t.collapsed) return !1;
     const e = this.host.getEditableElement(t.blockId);
-    if (!e || !Gi(e, this.host.getRange())) return !1;
+    if (!e || !hr(e, this.host.getRange())) return !1;
     const s = this.host.getBlockIndex(t.blockId);
     if (s <= 0) return !1;
     const n = this.host.blocks.blocks[s - 1];
     if (!n) return !1;
     const i = this.host.getBlockType(t.blockId) ?? "";
-    return yt(i, this.host.getBlockData(t.blockId)) ? (this.host.removeBlock(t.blockId, "user"), this.host.focusBlock(n.id, "end"), !0) : ke(n.type, i) ? (this.host.mergeBlocks(n.id, t.blockId, "user"), !0) : !1;
+    return yt(i, this.host.getBlockData(t.blockId)) ? (this.host.removeBlock(t.blockId, "user"), this.host.focusBlock(n.id, "end"), !0) : Se(n.type, i) ? (this.host.mergeBlocks(n.id, t.blockId, "user"), !0) : !1;
   }
   /**
    * Delete mirrors Backspace at the caret's END: an empty block is removed
@@ -3806,13 +4006,13 @@ class Zi {
     const t = this.host.getSelectionInfo();
     if (!t || !t.collapsed) return !1;
     const e = this.host.getEditableElement(t.blockId);
-    if (!e || !Yi(e, this.host.getRange())) return !1;
+    if (!e || !ur(e, this.host.getRange())) return !1;
     const s = this.host.getBlockIndex(t.blockId);
     if (s < 0) return !1;
     const n = this.host.blocks.blocks[s + 1];
     if (!n) return !1;
     const i = this.host.getBlockType(t.blockId) ?? "";
-    return yt(i, this.host.getBlockData(t.blockId)) ? (this.host.removeBlock(t.blockId, "user"), this.host.focusBlock(n.id, "start"), !0) : ke(i, n.type) ? (this.host.mergeBlocks(t.blockId, n.id, "user"), !0) : !1;
+    return yt(i, this.host.getBlockData(t.blockId)) ? (this.host.removeBlock(t.blockId, "user"), this.host.focusBlock(n.id, "start"), !0) : Se(i, n.type) ? (this.host.mergeBlocks(t.blockId, n.id, "user"), !0) : !1;
   }
   /**
    * Tab inside a code block inserts spaces. Shift+Tab is the keyboard exit:
@@ -3832,10 +4032,10 @@ class Zi {
     return s < 0 || n < 0 || n >= this.host.blocks.length ? !1 : (this.host.moveBlock(e.blockId, n), this.host.focusBlock(e.blockId), this.host.announce(`Block moved to position ${n + 1}`), !0);
   }
 }
-function Gi(r, t) {
+function hr(o, t) {
   if (!t || !t.collapsed) return !1;
-  const e = r.ownerDocument.createRange();
-  e.selectNodeContents(r);
+  const e = o.ownerDocument.createRange();
+  e.selectNodeContents(o);
   try {
     e.setEnd(t.startContainer, t.startOffset);
   } catch {
@@ -3843,10 +4043,10 @@ function Gi(r, t) {
   }
   return e.toString().replace(/\u200B/g, "").length === 0;
 }
-function Yi(r, t) {
+function ur(o, t) {
   if (!t || !t.collapsed) return !1;
-  const e = r.ownerDocument.createRange();
-  e.selectNodeContents(r);
+  const e = o.ownerDocument.createRange();
+  e.selectNodeContents(o);
   try {
     e.setStart(t.endContainer, t.endOffset);
   } catch {
@@ -3854,7 +4054,7 @@ function Yi(r, t) {
   }
   return e.toString().replace(/\u200B/g, "").length === 0;
 }
-const Xi = /* @__PURE__ */ new Set([
+const fr = /* @__PURE__ */ new Set([
   "SCRIPT",
   "STYLE",
   "IFRAME",
@@ -3885,7 +4085,7 @@ const Xi = /* @__PURE__ */ new Set([
   "ASIDE",
   "HEADER",
   "FOOTER"
-]), Qi = /* @__PURE__ */ new Set([
+]), pr = /* @__PURE__ */ new Set([
   "SPAN",
   "SMALL",
   "S",
@@ -3910,81 +4110,81 @@ const Xi = /* @__PURE__ */ new Set([
   "MARK",
   "A",
   "BR"
-]), Ye = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 }, tr = {
+]), os = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 }, gr = {
   A: /* @__PURE__ */ new Set(["href"]),
   IMG: /* @__PURE__ */ new Set(["src", "alt"])
 };
-function er(r, t, e) {
+function mr(o, t, e) {
   var n;
-  return ((n = tr[r]) == null ? void 0 : n.has(t)) ?? !1 ? t === "href" ? G(e) || e.startsWith("note:") : t === "src" ? Z(e) : !0 : !1;
+  return ((n = gr[o]) == null ? void 0 : n.has(t)) ?? !1 ? t === "href" ? G(e) || e.startsWith("note:") : t === "src" ? Z(e) : !0 : !1;
 }
-function sr(r) {
-  for (const e of Array.from(r.querySelectorAll("*"))) {
-    if (Xi.has(e.tagName)) {
+function br(o) {
+  for (const e of Array.from(o.querySelectorAll("*"))) {
+    if (fr.has(e.tagName)) {
       const s = e.parentNode;
       s && s.removeChild(e);
       continue;
     }
     for (const s of Array.from(e.attributes))
-      er(e.tagName, s.name, s.value) || e.removeAttribute(s.name);
+      mr(e.tagName, s.name, s.value) || e.removeAttribute(s.name);
   }
-  const t = r.ownerDocument.createTreeWalker(r, NodeFilter.SHOW_COMMENT);
+  const t = o.ownerDocument.createTreeWalker(o, NodeFilter.SHOW_COMMENT);
   for (; t.nextNode(); ) {
     const e = t.currentNode;
     e.parentNode && e.parentNode.removeChild(e);
   }
 }
-function Ds(r) {
-  const t = new DOMParser().parseFromString(r, "text/html");
-  return sr(t.body), nr(t.body);
+function js(o) {
+  const t = new DOMParser().parseFromString(o, "text/html");
+  return br(t.body), yr(t.body);
 }
-function nr(r) {
+function yr(o) {
   const t = [];
   let e = [];
   const s = () => {
     if (e.length === 0) return;
-    const n = r.ownerDocument.createElement("div");
-    for (const o of e) n.appendChild(o);
-    const i = C(n);
+    const n = o.ownerDocument.createElement("div");
+    for (const r of e) n.appendChild(r);
+    const i = z(n);
     i.length > 0 && t.push({ type: "paragraph", data: { content: i } }), e = [];
   };
-  for (const n of Array.from(r.childNodes)) {
+  for (const n of Array.from(o.childNodes)) {
     if (n.nodeType === Node.TEXT_NODE) {
       (n.textContent ?? "").trim() !== "" && e.push(n);
       continue;
     }
     if (n.nodeType !== Node.ELEMENT_NODE) continue;
-    const i = n, o = i.tagName;
-    if (Qi.has(o)) {
+    const i = n, r = i.tagName;
+    if (pr.has(r)) {
       e.push(n);
       continue;
     }
-    if (s(), o in Ye) {
-      const a = Ye[o], l = C(i);
+    if (s(), r in os) {
+      const a = os[r], l = z(i);
       l.length > 0 && t.push({ type: "heading", data: { level: a, content: l } });
-    } else if (o === "UL" || o === "OL") {
-      const a = Array.from(i.children).filter((l) => l.tagName === "LI").map((l) => ({ content: C(l) }));
-      a.length > 0 && t.push({ type: "list", data: { style: o === "OL" ? "ordered" : "unordered", items: a } });
-    } else if (o === "BLOCKQUOTE") {
-      const a = C(i);
+    } else if (r === "UL" || r === "OL") {
+      const a = Array.from(i.children).filter((l) => l.tagName === "LI").map((l) => ({ content: z(l) }));
+      a.length > 0 && t.push({ type: "list", data: { style: r === "OL" ? "ordered" : "unordered", items: a } });
+    } else if (r === "BLOCKQUOTE") {
+      const a = z(i);
       a.length > 0 && t.push({ type: "quote", data: { content: a } });
-    } else if (o === "PRE") {
+    } else if (r === "PRE") {
       const a = (i.textContent ?? "").replace(/\n$/, "");
       t.push({ type: "code", data: { code: a } });
-    } else if (o === "HR")
+    } else if (r === "HR")
       t.push({ type: "delimiter", data: {} });
-    else if (o === "TABLE")
+    else if (r === "TABLE")
       for (const a of Array.from(i.querySelectorAll("tr")))
         for (const l of Array.from(a.querySelectorAll("th,td"))) {
-          const c = C(l);
+          const c = z(l);
           c.length > 0 && t.push({ type: "paragraph", data: { content: c } });
         }
-    else if (o === "IMG" || o === "PICTURE") {
-      const a = o === "IMG" ? i : i.querySelector("img"), l = (a == null ? void 0 : a.getAttribute("src")) ?? "";
+    else if (r === "IMG" || r === "PICTURE") {
+      const a = r === "IMG" ? i : i.querySelector("img"), l = (a == null ? void 0 : a.getAttribute("src")) ?? "";
       a && Z(l) && t.push({ type: "image", data: { src: l, alt: a.getAttribute("alt") ?? "" } });
       continue;
     } else {
-      const a = C(i);
+      const a = z(i);
       a.length > 0 && t.push({ type: "paragraph", data: { content: a } });
       for (const l of Array.from(i.querySelectorAll("img"))) {
         const c = l.getAttribute("src") ?? "";
@@ -3994,8 +4194,8 @@ function nr(r) {
   }
   return s(), t;
 }
-function Ms(r) {
-  const t = r.split(/\r?\n/), e = [];
+function Us(o) {
+  const t = o.split(/\r?\n/), e = [];
   for (const s of t) {
     if (s.trim() === "") continue;
     const n = [{ type: "text", text: s }];
@@ -4003,44 +4203,44 @@ function Ms(r) {
   }
   return e;
 }
-const ne = "application/x-ezynota+json";
-class ir {
+const re = "application/x-ezynota+json";
+class kr {
   constructor(t, e) {
     this.disposers = [], this.host = t, this.target = e;
   }
   start() {
-    const t = (o) => {
+    const t = (r) => {
       var l;
-      const a = o;
+      const a = r;
       return !!a && this.target.contains(a) && !((l = a.closest) != null && l.call(a, "[data-ez-ui]"));
-    }, e = (o) => {
-      if (!t(o.target)) return;
-      const a = o, l = this.host.getRange();
+    }, e = (r) => {
+      if (!t(r.target)) return;
+      const a = r, l = this.host.getRange();
       if (!l || l.collapsed) return;
       const c = a.clipboardData;
       c && (a.preventDefault(), this.writeClipboard(c, l));
-    }, s = (o) => {
-      if (!t(o.target)) return;
-      const a = o, l = this.host.getRange();
+    }, s = (r) => {
+      if (!t(r.target)) return;
+      const a = r, l = this.host.getRange();
       if (!l || l.collapsed) return;
       const c = a.clipboardData;
       c && this.writeClipboard(c, l);
-    }, n = async (o) => {
-      const a = o, l = this.host.getSelectionInfo();
+    }, n = async (r) => {
+      const a = r, l = this.host.getSelectionInfo();
       if (!l || this.host.readOnly) return;
       a.preventDefault();
       const c = a.clipboardData;
       c && await this.paste(c, l.blockId);
-    }, i = async (o) => {
-      const a = o;
+    }, i = async (r) => {
+      const a = r;
       if (this.host.readOnly) return;
       const l = a.dataTransfer, c = l == null ? void 0 : l.files;
       if (!c || c.length === 0) {
-        const h = (l == null ? void 0 : l.getData("text/plain")) ?? "", u = (l == null ? void 0 : l.getData("text/html")) ?? "";
-        if (h === "" && u === "" || !l) return;
-        const p = this.host.getSelectionInfo();
-        if (!p) return;
-        a.preventDefault(), await this.paste(l, p.blockId);
+        const u = (l == null ? void 0 : l.getData("text/plain")) ?? "", h = (l == null ? void 0 : l.getData("text/html")) ?? "";
+        if (u === "" && h === "" || !l) return;
+        const f = this.host.getSelectionInfo();
+        if (!f) return;
+        a.preventDefault(), await this.paste(l, f.blockId);
         return;
       }
       const d = this.host.getSelectionInfo();
@@ -4063,12 +4263,12 @@ class ir {
     if (!e) return null;
     const n = s ?? e;
     if (!this.selectionCoversBlockStart(e, t) || !this.selectionCoversBlockEnd(n, t)) return null;
-    const i = Array.from(this.target.querySelectorAll("[data-ez-block-id]")), o = [];
+    const i = Array.from(this.target.querySelectorAll("[data-ez-block-id]")), r = [];
     let a = !1;
     for (const c of i)
-      if (c === e && (a = !0), a && o.push(c.getAttribute("data-ez-block-id") ?? ""), c === n) break;
+      if (c === e && (a = !0), a && r.push(c.getAttribute("data-ez-block-id") ?? ""), c === n) break;
     const l = [];
-    for (const c of o) {
+    for (const c of r) {
       const d = this.host.blocks.getById(c);
       d && l.push(d);
     }
@@ -4108,12 +4308,12 @@ class ir {
   writeClipboard(t, e) {
     const s = this.wholeBlocksInSelection(e);
     if (s && s.length > 0) {
-      const i = s.map((o) => or(o)).join(`
+      const i = s.map((r) => wr(r)).join(`
 
 `);
-      t.setData("text/plain", i), t.setData("text/html", s.map((o) => ar(o)).join(""));
+      t.setData("text/plain", i), t.setData("text/html", s.map((r) => Er(r)).join(""));
       try {
-        t.setData(ne, JSON.stringify({ blocks: s }));
+        t.setData(re, JSON.stringify({ blocks: s }));
       } catch {
       }
       return;
@@ -4122,29 +4322,29 @@ class ir {
     t.setData("text/plain", n);
     try {
       const i = e.cloneContents();
-      t.setData("text/html", lr(i));
+      t.setData("text/html", Ar(i));
     } catch {
     }
     try {
-      t.setData(ne, JSON.stringify({ text: n }));
+      t.setData(re, JSON.stringify({ text: n }));
     } catch {
     }
   }
   /** Paste priority: Ezynota JSON → files → sanitized HTML → plain text. */
   async paste(t, e) {
-    const s = t.getData(ne);
+    const s = t.getData(re);
     if (s)
       try {
-        const o = JSON.parse(s);
-        if (Array.isArray(o.blocks) && o.blocks.length > 0) {
-          const a = rr(o.blocks);
+        const r = JSON.parse(s);
+        if (Array.isArray(r.blocks) && r.blocks.length > 0) {
+          const a = vr(r.blocks);
           if (a.length > 0) {
             this.insertClipboardBlocks(a, e);
             return;
           }
         }
-        if (typeof o.text == "string" && o.text !== "") {
-          this.insertTextAtCaret(o.text, e);
+        if (typeof r.text == "string" && r.text !== "") {
+          this.insertTextAtCaret(r.text, e);
           return;
         }
       } catch {
@@ -4153,15 +4353,15 @@ class ir {
       return;
     const n = t.getData("text/html");
     if (n && n.trim() !== "") {
-      const o = Ds(n);
-      if (o.length > 0) {
-        this.insertParsed(o, e);
+      const r = js(n);
+      if (r.length > 0) {
+        this.insertParsed(r, e);
         return;
       }
     }
     const i = t.getData("text/plain") ?? "";
     i.trim() !== "" && (i.includes(`
-`) ? this.insertParsed(Ms(i), e) : this.insertTextAtCaret(i, e));
+`) ? this.insertParsed(Us(i), e) : this.insertTextAtCaret(i, e));
   }
   /** Route files to tools that declare matching file paste rules. */
   async routeFiles(t, e) {
@@ -4169,9 +4369,9 @@ class ir {
     for (const n of this.host.registry.listBlockTools()) {
       const i = (s = n.toolClass.paste) == null ? void 0 : s.files;
       if (!i) continue;
-      const o = i.mimeTypes ?? [], a = t.filter(
-        (d) => o.some(
-          (h) => h.endsWith("/*") ? d.type.startsWith(h.slice(0, -1)) : d.type === h
+      const r = i.mimeTypes ?? [], a = t.filter(
+        (d) => r.some(
+          (u) => u.endsWith("/*") ? d.type.startsWith(u.slice(0, -1)) : d.type === u
         )
       );
       if (a.length === 0) continue;
@@ -4180,7 +4380,8 @@ class ir {
         return l.onPaste({ files: a }), !0;
       const c = n.toolClass.filesToBlockDataAsync;
       if (typeof c == "function") {
-        const d = await c(a);
+        const d = await c(a, this.host.target);
+        if (this.host.isDestroyed()) return !1;
         if (d.length > 0)
           return this.host.pasteBlocks(d, e, "paste"), !0;
       }
@@ -4204,8 +4405,8 @@ class ir {
    * Falls back to a block-level paste when the caret is not in an editable.
    */
   insertTextAtCaret(t, e) {
-    const s = this.host.getEditableElement(e), n = this.host.getRange(), i = n ? this.closestBlock(n.startContainer) : null, o = (i == null ? void 0 : i.getAttribute("data-ez-block-id")) === e;
-    if (!s || !n || !o) {
+    const s = this.host.getEditableElement(e), n = this.host.getRange(), i = n ? this.closestBlock(n.startContainer) : null, r = (i == null ? void 0 : i.getAttribute("data-ez-block-id")) === e;
+    if (!s || !n || !r) {
       this.insertClipboardBlocks([{ type: this.host.defaultBlock, data: { content: [{ type: "text", text: t }] } }], e);
       return;
     }
@@ -4216,59 +4417,64 @@ class ir {
     l && (l.removeAllRanges(), l.addRange(n)), this.host.requestSaveBlock(e, "user"), this.host.announce("Pasted content inserted");
   }
 }
-function rr(r) {
-  return (ae({ blocks: r }).document ?? { blocks: [] }).blocks.map((s) => ({ type: s.type, data: s.data }));
+function vr(o) {
+  return (he({ blocks: o }).document ?? { blocks: [] }).blocks.map((s) => ({ type: s.type, data: s.data }));
 }
-function or(r) {
-  const t = r.data;
-  return typeof t.code == "string" ? t.code : Array.isArray(t.items) ? t.items.map((e) => Xe((e == null ? void 0 : e.content) ?? [])).join(`
-`) : Xe(Array.isArray(t.content) ? t.content : []);
+function wr(o) {
+  const t = o.data;
+  return typeof t.code == "string" ? t.code : Array.isArray(t.items) ? t.items.map((e) => as((e == null ? void 0 : e.content) ?? [])).join(`
+`) : as(Array.isArray(t.content) ? t.content : []);
 }
-function Xe(r) {
+function as(o) {
   let t = "";
-  for (const e of r)
+  for (const e of o)
     (e == null ? void 0 : e.type) === "text" ? t += e.text ?? "" : (e == null ? void 0 : e.type) === "link" && (t += (e.content ?? []).map((s) => (s == null ? void 0 : s.text) ?? "").join(""));
   return t;
 }
-function ar(r) {
+function Er(o) {
   const t = document.implementation.createHTMLDocument("copy"), e = t.createElement("div");
-  e.setAttribute("data-ez-block-type", r.type);
-  const s = r.data;
+  e.setAttribute("data-ez-block-type", o.type);
+  const s = o.data;
   if (typeof s.code == "string") {
     const n = t.createElement("pre");
     n.textContent = s.code, e.appendChild(n);
   } else if (Array.isArray(s.items)) {
     const n = t.createElement(s.style === "ordered" ? "ol" : "ul");
     for (const i of s.items) {
-      const o = t.createElement("li");
-      o.appendChild(Qe((i == null ? void 0 : i.content) ?? [], t)), n.appendChild(o);
+      const r = t.createElement("li");
+      r.appendChild(ls((i == null ? void 0 : i.content) ?? [], t)), n.appendChild(r);
     }
     e.appendChild(n);
   } else if (Array.isArray(s.content)) {
     let n = "p";
-    if (r.type === "heading") {
-      const o = Number(s.level ?? 2);
-      n = Number.isInteger(o) && o >= 1 && o <= 6 ? `h${o}` : "p";
-    } else r.type === "quote" && (n = "blockquote");
+    if (o.type === "heading") {
+      const r = Number(s.level ?? 2);
+      n = Number.isInteger(r) && r >= 1 && r <= 6 ? `h${r}` : "p";
+    } else o.type === "quote" && (n = "blockquote");
     const i = t.createElement(n);
-    i.appendChild(Qe(s.content, t)), e.appendChild(i);
-  } else r.type === "delimiter" && e.appendChild(t.createElement("hr"));
+    i.appendChild(ls(s.content, t)), e.appendChild(i);
+  } else o.type === "delimiter" && e.appendChild(t.createElement("hr"));
   return e.innerHTML;
 }
-function lr(r) {
+function Ar(o) {
   const t = document.implementation.createHTMLDocument("copy"), e = t.createElement("div");
-  return e.appendChild(t.importNode(r, !0)), e.innerHTML;
+  return e.appendChild(t.importNode(o, !0)), e.innerHTML;
 }
-function Qe(r, t) {
-  return F(r, t);
+function ls(o, t) {
+  return F(o, t);
 }
-class ts {
+const cs = /* @__PURE__ */ new Set(["paragraph", "heading", "list", "quote", "code"]);
+function Oe(o, t, e) {
+  var s, n, i, r;
+  return t === e ? !0 : e === "delimiter" || !o.registry.has(t) || !o.registry.has(e) ? !1 : (n = (s = o.registry.get(e).toolClass.conversion) == null ? void 0 : s.from) != null && n[t] ? !0 : cs.has(t) && cs.has(e) && !!((r = (i = o.registry.get(t).toolClass.conversion) == null ? void 0 : i.to) != null && r.includes(e));
+}
+class ds {
   constructor(t, e = !1) {
-    this.host = t, this.documentMode = e, this.tools = [], this.visible = !1, this.savedRange = null, this.settingsKey = "", this.alignmentButtons = [], this.disposers = [], this.root = f("div", e ? "ez-document-toolbar" : "ez-inline-toolbar"), this.root.setAttribute("role", "toolbar"), this.root.setAttribute("data-ez-ui", "true"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.formatting")), this.root.addEventListener("mousedown", (n) => {
+    this.host = t, this.documentMode = e, this.tools = [], this.visible = !1, this.savedRange = null, this.settingsKey = "", this.alignmentButtons = [], this.disposers = [], this.root = p("div", e ? "ez-document-toolbar" : "ez-inline-toolbar"), this.root.setAttribute("role", "toolbar"), this.root.setAttribute("data-ez-ui", "true"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.formatting")), this.root.addEventListener("mousedown", (n) => {
       n.target.closest("button") && n.preventDefault();
     }), this.root.addEventListener("keydown", (n) => {
       var i;
-      n.key === "Escape" && (n.preventDefault(), (i = this.more) != null && i.open && (this.more.open = !1), this.restoreSelection(), this.documentMode || this.hide()), Xt(n, n.target.closest(".ez-more-panel") ?? this.root), n.stopPropagation();
+      n.key === "Escape" && (n.preventDefault(), (i = this.more) != null && i.open && (this.more.open = !1), this.restoreSelection(), this.documentMode || this.hide()), te(n, n.target.closest(".ez-more-panel") ?? this.root), n.stopPropagation();
     }), e && this.buildDocumentControls();
     for (const n of t.registry.listInlineTools()) {
       const i = t.registry.createInlineTool(n.name, {
@@ -4277,16 +4483,16 @@ class ts {
           this.documentMode || this.hide();
         },
         onActivate: () => {
-          this.restoreSelection() && (Ns(t, n.name, i), this.updateSelection(t.getSelectionInfo()));
+          this.restoreSelection() && (qs(t, n.name, i), this.updateSelection(t.getSelectionInfo()));
         },
         t: (l) => t.i18n.t(l)
-      }), o = i.render();
-      this.tools.push({ name: n.name, instance: i, element: o }), (e && !["bold", "italic", "underline", "link"].includes(n.name) ? this.morePanel : this.root).appendChild(o);
+      }), r = i.render();
+      this.tools.push({ name: n.name, instance: i, element: r }), (e && !["bold", "italic", "underline", "link"].includes(n.name) ? this.morePanel : this.root).appendChild(r);
     }
     e ? (this.buildAlignment(), this.root.appendChild(this.more), this.refresh()) : this.root.style.display = "none";
     const s = () => {
       var n, i;
-      !this.documentMode && this.visible && ((n = this.savedRange) != null && n.startContainer.isConnected) && P(this.root, this.savedRange.getBoundingClientRect()), (i = this.more) != null && i.open && this.morePanel && P(this.morePanel, this.more.getBoundingClientRect());
+      !this.documentMode && this.visible && ((n = this.savedRange) != null && n.startContainer.isConnected) && _(this.root, this.savedRange.getBoundingClientRect(), "above"), (i = this.more) != null && i.open && this.morePanel && _(this.morePanel, this.more.getBoundingClientRect());
     };
     window.addEventListener("resize", s), document.addEventListener("scroll", s, !0), this.disposers.push(() => window.removeEventListener("resize", s), () => document.removeEventListener("scroll", s, !0));
   }
@@ -4295,26 +4501,26 @@ class ts {
   }
   buildDocumentControls() {
     const t = (n) => this.host.i18n.t(n);
-    this.undoButton = S("ez-btn", t("toolbar.undo")), this.redoButton = S("ez-btn", t("toolbar.redo")), this.undoButton.addEventListener("click", () => {
+    this.undoButton = A("ez-btn", t("toolbar.undo")), this.redoButton = A("ez-btn", t("toolbar.redo")), this.undoButton.addEventListener("click", () => {
       this.host.undo(), this.refresh();
     }), this.redoButton.addEventListener("click", () => {
       this.host.redo(), this.refresh();
-    }), this.blockType = f("select", "ez-block-select"), this.blockType.setAttribute("aria-label", t("toolbar.blockType"));
+    }), this.blockType = p("select", "ez-block-select"), this.blockType.setAttribute("aria-label", t("toolbar.blockType"));
     for (const n of this.host.registry.listBlockTools()) {
       if (!n.toolbox) continue;
-      const i = f("option", void 0, n.toolbox.title);
+      const i = p("option", void 0, n.toolbox.title);
       i.value = n.name, i.disabled = n.name === "delimiter", this.blockType.appendChild(i);
     }
     this.blockType.addEventListener("change", () => {
-      var o;
+      var r;
       const n = this.blockType.value;
       if (!this.restoreSelection()) return;
-      const i = (o = this.host.getSelectionInfo()) == null ? void 0 : o.blockId;
+      const i = (r = this.host.getSelectionInfo()) == null ? void 0 : r.blockId;
       i && (this.host.convertBlock(i, n), this.host.focusBlock(i, "end"), this.refresh());
-    }), this.settings = f("div", "ez-inline-group ez-type-settings"), this.more = f("details", "ez-more-formatting");
-    const e = f("summary", "ez-btn", t("toolbar.more"));
-    this.morePanel = f("div", "ez-popover ez-more-panel"), this.morePanel.setAttribute("role", "group"), this.morePanel.setAttribute("aria-label", t("toolbar.more")), this.more.append(e, this.morePanel), this.more.addEventListener("toggle", () => {
-      this.more.open && P(this.morePanel, e.getBoundingClientRect());
+    }), this.settings = p("div", "ez-inline-group ez-type-settings"), this.more = p("details", "ez-more-formatting");
+    const e = p("summary", "ez-btn", t("toolbar.more"));
+    this.morePanel = p("div", "ez-popover ez-more-panel"), this.morePanel.setAttribute("role", "group"), this.morePanel.setAttribute("aria-label", t("toolbar.more")), this.more.append(e, this.morePanel), this.more.addEventListener("toggle", () => {
+      this.more.open ? _(this.morePanel, e.getBoundingClientRect()) : we(this.morePanel);
     });
     const s = (n) => {
       this.more.contains(n.target) || (this.more.open = !1);
@@ -4323,18 +4529,18 @@ class ts {
   }
   buildAlignment() {
     if (!this.host.registry.listTunes().some((s) => s.name === "alignment")) return;
-    const t = { left: b.alignLeft, center: b.alignCenter, right: b.alignRight }, e = f("div", "ez-inline-group");
+    const t = { left: b.alignLeft, center: b.alignCenter, right: b.alignRight }, e = p("div", "ez-inline-group");
     e.setAttribute("role", "group"), e.setAttribute("aria-label", this.host.i18n.t("tune.alignment"));
     for (const s of ["left", "center", "right"]) {
       const n = E("ez-inline-btn", t[s] ?? "", this.host.i18n.t(`tune.alignment.${s}`));
       n.dataset.alignment = s, n.addEventListener("click", () => {
-        var o;
+        var r;
         if (!this.restoreSelection()) return;
-        const i = (o = this.host.getSelectionInfo()) == null ? void 0 : o.blockId;
+        const i = (r = this.host.getSelectionInfo()) == null ? void 0 : r.blockId;
         i && (this.host.blocks.setTune(i, "alignment", s), this.host.focusBlock(i, "end"), this.refresh());
       }), this.alignmentButtons.push(n), e.appendChild(n);
     }
-    this.morePanel.append(f("div", "ez-menu-category", this.host.i18n.t("tune.alignment")), e);
+    this.morePanel.append(p("div", "ez-menu-category", this.host.i18n.t("tune.alignment")), e);
   }
   updateSelection(t) {
     const e = this.host.getRange();
@@ -4343,35 +4549,38 @@ class ts {
         this.hide();
         return;
       }
-      this.visible = !0, this.root.style.display = "flex", P(this.root, e.getBoundingClientRect());
+      this.visible = !0, this.root.style.display = "flex", _(this.root, e.getBoundingClientRect(), "above");
     }
     this.refresh();
   }
   refresh() {
-    var l, c, d, h;
-    const t = this.host.getSelectionInfo(), e = t ? this.host.getEditableElement(t.blockId) : null, s = !!t && !this.host.readOnly && this.inlineEnabled(t), n = e ? wi(e) : /* @__PURE__ */ new Set();
-    for (const { name: u, instance: p, element: g } of this.tools) {
-      let m = n.has(u);
+    var l, c, d, u;
+    const t = this.host.getSelectionInfo(), e = t ? this.host.getEditableElement(t.blockId) : null, s = !!t && !this.host.readOnly && this.inlineEnabled(t), n = e ? Hi(e) : /* @__PURE__ */ new Set();
+    for (const { name: h, instance: f, element: g } of this.tools) {
+      let m = n.has(h);
       if (t && !m)
         try {
-          m = p.isActive(t);
+          m = f.isActive(t);
         } catch {
         }
-      (l = p.setActive) == null || l.call(p, m);
-      const y = ["mark", "code"].includes(u) || u === "link" && !n.has("link"), v = !s || y && !!(t != null && t.collapsed), w = g.matches("button") ? [g] : Array.from(g.querySelectorAll("button"));
+      (l = f.setActive) == null || l.call(f, m);
+      const y = ["mark", "code"].includes(h) || h === "link" && !n.has("link"), v = !s || y && !!(t != null && t.collapsed), w = g.matches("button") ? [g] : Array.from(g.querySelectorAll("button"));
       for (const I of w) I.disabled = v;
     }
     if (!this.documentMode) return;
     this.undoButton.disabled = this.host.readOnly || !this.host.canUndo(), this.redoButton.disabled = this.host.readOnly || !this.host.canRedo(), this.blockType.disabled = !t || this.host.readOnly;
     const i = t ? this.host.blocks.getById(t.blockId) : void 0;
-    i && (this.blockType.value = i.type);
-    const o = i == null ? void 0 : i.data, a = `${i == null ? void 0 : i.id}:${i == null ? void 0 : i.type}:${o == null ? void 0 : o.level}:${o == null ? void 0 : o.style}:${this.host.readOnly}`;
-    if (a !== this.settingsKey && (this.settingsKey = a, D(this.settings), i && !this.host.readOnly)) {
-      const u = (d = (c = this.host.getTool(i.id)) == null ? void 0 : c.renderSettings) == null ? void 0 : d.call(c);
-      u && this.settings.appendChild(u);
+    if (i) {
+      this.blockType.value = i.type;
+      for (const h of Array.from(this.blockType.options)) h.disabled = !Oe(this.host, i.type, h.value);
     }
-    for (const u of this.alignmentButtons)
-      u.disabled = !i || this.host.readOnly, u.setAttribute("aria-pressed", String((((h = i == null ? void 0 : i.tunes) == null ? void 0 : h.alignment) ?? "left") === u.dataset.alignment));
+    const r = i == null ? void 0 : i.data, a = `${i == null ? void 0 : i.id}:${i == null ? void 0 : i.type}:${r == null ? void 0 : r.level}:${r == null ? void 0 : r.style}:${this.host.readOnly}`;
+    if (a !== this.settingsKey && (this.settingsKey = a, N(this.settings), i && !this.host.readOnly)) {
+      const h = (d = (c = this.host.getTool(i.id)) == null ? void 0 : c.renderSettings) == null ? void 0 : d.call(c);
+      h && this.settings.appendChild(h);
+    }
+    for (const h of this.alignmentButtons)
+      h.disabled = !i || this.host.readOnly, h.setAttribute("aria-pressed", String((((u = i == null ? void 0 : i.tunes) == null ? void 0 : u.alignment) ?? "left") === h.dataset.alignment));
     this.host.readOnly && this.more && (this.more.open = !1);
   }
   inlineEnabled(t) {
@@ -4385,7 +4594,7 @@ class ts {
     return (i = (n = e instanceof Element ? e : e.parentElement) == null ? void 0 : n.closest("[data-ez-editable]")) == null || i.focus(), this.host.setSelectionFromRange(t), !0;
   }
   hide() {
-    this.more && (this.more.open = !1), !this.documentMode && (this.visible = !1, this.root.style.display = "none");
+    this.more && (this.more.open = !1), !this.documentMode && (this.visible = !1, we(this.root), this.root.style.display = "none");
   }
   isVisible() {
     return this.documentMode || this.visible;
@@ -4400,29 +4609,29 @@ class ts {
     this.root.remove();
   }
 }
-function Ns(r, t, e) {
+function qs(o, t, e) {
   var l;
-  const s = r.getSelectionInfo();
-  if (!s || r.readOnly) return;
-  const n = r.getEditableElement(s.blockId), i = (l = r.getRange()) == null ? void 0 : l.cloneRange(), o = r.getBlockType(s.blockId);
-  if (!n || !i || !o || o === "code" || !r.registry.has(o) || r.registry.get(o).toolClass.enableInlineTools === !1 || !r.registry.listInlineTools().some((c) => c.name === t) || i.collapsed && ["mark", "code"].includes(t) || i.collapsed && t === "link" && !Qt(i, n, (c) => c.tagName === "A")) return;
-  n.focus(), r.setSelectionFromRange(i), (e ?? r.registry.createInlineTool(t, {
+  const s = o.getSelectionInfo();
+  if (!s || o.readOnly) return;
+  const n = o.getEditableElement(s.blockId), i = (l = o.getRange()) == null ? void 0 : l.cloneRange(), r = o.getBlockType(s.blockId);
+  if (!n || !i || !r || r === "code" || !o.registry.has(r) || o.registry.get(r).toolClass.enableInlineTools === !1 || !o.registry.listInlineTools().some((c) => c.name === t) || i.collapsed && ["mark", "code"].includes(t) || i.collapsed && t === "link" && !ee(i, n, (c) => c.tagName === "A")) return;
+  n.focus(), o.setSelectionFromRange(i), (e ?? o.registry.createInlineTool(t, {
     config: {},
     closeToolbar: () => {
     },
-    t: (c) => r.i18n.t(c)
+    t: (c) => o.i18n.t(c)
   })).apply(i, {
     blockId: s.blockId,
     blockElement: n,
     range: i,
-    requestSave: () => r.requestSaveBlock(s.blockId, "user"),
+    requestSave: () => o.requestSaveBlock(s.blockId, "user"),
     closeToolbar: () => {
     }
   });
 }
-class cr {
+class Sr {
   constructor(t) {
-    this.settingsPopover = null, this.activeBlockId = null, this.open = !1, this.disposers = [], this.menuTunes = [], this.activeBlockElement = null, this.hoveredBlockId = null, this.host = t, this.root = f("div", "ez-block-toolbar"), this.root.setAttribute("role", "toolbar"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.blockActions")), this.root.setAttribute("data-ez-ui", "true"), this.root.hidden = !0, this.root.addEventListener("mousedown", (l) => {
+    this.settingsPopover = null, this.activeBlockId = null, this.open = !1, this.disposers = [], this.menuTunes = [], this.activeBlockElement = null, this.hoveredBlockId = null, this.host = t, this.root = p("div", "ez-block-toolbar"), this.root.setAttribute("role", "toolbar"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.blockActions")), this.root.setAttribute("data-ez-ui", "true"), this.root.hidden = !0, this.root.addEventListener("mousedown", (l) => {
       l.target.closest("button:not([draggable=true])") && l.preventDefault();
     });
     const e = E("ez-tool-btn ez-block-add", b.plus, t.i18n.t("toolbar.add"));
@@ -4438,21 +4647,21 @@ class cr {
     }), this.settingsButton = s, s.setAttribute("aria-haspopup", "dialog"), s.setAttribute("aria-expanded", "false"), this.root.append(e, s), this.root.querySelectorAll("svg").forEach((l) => l.setAttribute("aria-hidden", "true")), this.root.addEventListener("keydown", (l) => {
       var c;
       if (!this.open && ["ArrowLeft", "ArrowRight"].includes(l.key)) {
-        const d = Array.from(this.root.children).filter((p) => p.matches("button") && getComputedStyle(p).display !== "none"), h = (l.key === "ArrowRight" ? 1 : -1) * (this.host.target.getAttribute("dir") === "rtl" ? -1 : 1), u = d.indexOf(document.activeElement);
-        (c = d[(u + h + d.length) % d.length]) == null || c.focus(), l.preventDefault();
+        const d = Array.from(this.root.children).filter((f) => f.matches("button") && getComputedStyle(f).display !== "none"), u = (l.key === "ArrowRight" ? 1 : -1) * (this.host.target.getAttribute("dir") === "rtl" ? -1 : 1), h = d.indexOf(document.activeElement);
+        (c = d[(h + u + d.length) % d.length]) == null || c.focus(), l.preventDefault();
       }
       if (l.key === "Escape") {
         l.preventDefault();
         const d = this.open;
         this.closeSettings(), d ? this.settingsButton.focus() : this.activeBlockId && this.host.focusBlock(this.activeBlockId, "end");
       }
-      Xt(l, this.settingsPopover ?? this.root), l.stopPropagation();
+      te(l, this.settingsPopover ?? this.root), l.stopPropagation();
     });
     const n = (l) => {
       this.root.contains(l.target) || this.closeSettings();
     }, i = () => {
-      !this.root.hidden && this.activeBlockId && this.showFor(this.activeBlockId), this.settingsPopover && P(this.settingsPopover, this.settingsButton.getBoundingClientRect());
-    }, o = () => {
+      !this.root.hidden && this.activeBlockId && this.showFor(this.activeBlockId), this.settingsPopover && _(this.settingsPopover, this.settingsButton.getBoundingClientRect());
+    }, r = () => {
       this.hoveredBlockId = null, this.root.classList.remove("ez-hovered");
       const l = this.host.getSelectionInfo();
       !this.open && !this.root.contains(document.activeElement) && (l != null && l.collapsed) && this.showFor(l.blockId);
@@ -4466,35 +4675,35 @@ class cr {
       if (this.root.contains(c)) return;
       const d = this.host.getSelectionInfo();
       if (d && !d.collapsed) {
-        o();
+        r();
         return;
       }
       if (this.root.contains(document.activeElement)) return;
-      const h = c.closest("[data-ez-block-id]");
-      if (h && this.host.target.contains(h)) {
-        this.hoveredBlockId = h.getAttribute("data-ez-block-id"), this.hoveredBlockId && this.showFor(this.hoveredBlockId);
+      const u = c.closest("[data-ez-block-id]");
+      if (u && this.host.target.contains(u)) {
+        this.hoveredBlockId = u.getAttribute("data-ez-block-id"), this.hoveredBlockId && this.showFor(this.hoveredBlockId);
         return;
       }
       if (this.hoveredBlockId && this.activeBlockElement) {
-        const u = this.activeBlockElement.getBoundingClientRect(), p = this.root.getBoundingClientRect();
-        if (l.clientY >= p.top && l.clientY <= p.bottom && l.clientX >= Math.min(u.left, p.left) && l.clientX <= Math.max(u.right, p.right)) return;
+        const h = this.activeBlockElement.getBoundingClientRect(), f = this.root.getBoundingClientRect();
+        if (l.clientY >= f.top && l.clientY <= f.bottom && l.clientX >= Math.min(h.left, f.left) && l.clientX <= Math.max(h.right, f.right)) return;
       }
-      o();
+      r();
     };
-    this.host.target.addEventListener("pointermove", a), this.host.target.addEventListener("pointerleave", o), document.addEventListener("pointerdown", n), document.addEventListener("focusin", n), window.addEventListener("resize", i), document.addEventListener("scroll", i, !0), this.disposers.push(
+    this.host.target.addEventListener("pointermove", a), this.host.target.addEventListener("pointerleave", r), document.addEventListener("pointerdown", n), document.addEventListener("focusin", n), window.addEventListener("resize", i), document.addEventListener("scroll", i, !0), this.disposers.push(
       () => document.removeEventListener("pointerdown", n),
       () => document.removeEventListener("focusin", n),
       () => window.removeEventListener("resize", i),
       () => document.removeEventListener("scroll", i, !0),
       () => this.host.target.removeEventListener("pointermove", a),
-      () => this.host.target.removeEventListener("pointerleave", o)
+      () => this.host.target.removeEventListener("pointerleave", r)
     );
   }
   getElement() {
     return this.root;
   }
   showFor(t) {
-    var h;
+    var u;
     if (this.host.readOnly) {
       this.hide();
       return;
@@ -4506,15 +4715,15 @@ class cr {
       return;
     }
     const s = this.host.target.getBoundingClientRect(), n = e.getBoundingClientRect();
-    this.activeBlockElement !== e && ((h = this.activeBlockElement) == null || h.classList.remove("ez-active")), this.activeBlockElement = e, e.classList.add("ez-active"), this.root.hidden = !1;
-    const i = this.root.getBoundingClientRect(), o = this.host.getEditableElement(t), a = (o == null ? void 0 : o.querySelector("li")) ?? o, l = (a == null ? void 0 : a.getBoundingClientRect()) ?? n, c = a ? Number.parseFloat(getComputedStyle(a).lineHeight) || 26 : n.height;
+    this.activeBlockElement !== e && ((u = this.activeBlockElement) == null || u.classList.remove("ez-active")), this.activeBlockElement = e, e.classList.add("ez-active"), this.root.hidden = !1;
+    const i = this.root.getBoundingClientRect(), r = this.host.getEditableElement(t), a = (r == null ? void 0 : r.querySelector("li")) ?? r, l = (a == null ? void 0 : a.getBoundingClientRect()) ?? n, c = a ? Number.parseFloat(getComputedStyle(a).lineHeight) || 26 : n.height;
     this.root.style.top = `${Math.round(l.top - s.top + this.host.target.scrollTop + (Math.min(c, l.height) - i.height) / 2)}px`;
     const d = this.host.target.getAttribute("dir") === "rtl";
     this.root.style.left = "", this.root.style.right = "", this.root.style[d ? "right" : "left"] = d ? `${Math.max(0, Math.round(s.right - n.right - i.width - 10))}px` : `${Math.max(0, Math.round(n.left - s.left - i.width - 10))}px`, this.root.classList.add("ez-visible"), this.root.classList.toggle("ez-hovered", this.hoveredBlockId === t || e.matches(":hover"));
   }
   hide() {
     var t;
-    this.closeSettings(), this.root.hidden = !0, this.root.classList.remove("ez-visible", "ez-hovered"), this.hoveredBlockId = null, (t = this.activeBlockElement) == null || t.classList.remove("ez-active"), this.activeBlockElement = null;
+    this.closeSettings(), this.root.contains(document.activeElement) && this.activeBlockId && !this.host.readOnly && !this.host.isDestroyed() && this.host.focusBlock(this.activeBlockId, "end"), this.root.hidden = !0, this.root.classList.remove("ez-visible", "ez-hovered"), this.hoveredBlockId = null, (t = this.activeBlockElement) == null || t.classList.remove("ez-active"), this.activeBlockElement = null;
   }
   toggleSettings() {
     if (this.open) {
@@ -4525,64 +4734,54 @@ class cr {
   }
   openSettings() {
     var e;
-    !this.activeBlockId || this.host.readOnly || (this.host.focusBlock(this.activeBlockId, "end"), this.settingsPopover = f("div", "ez-popover"), this.settingsPopover.setAttribute("role", "dialog"), this.settingsPopover.setAttribute("aria-label", this.host.i18n.t("toolbar.settings")), this.settingsPopover.addEventListener("focusout", (s) => {
+    !this.activeBlockId || this.host.readOnly || (this.host.focusBlock(this.activeBlockId, "end"), this.settingsPopover = p("div", "ez-popover"), this.settingsPopover.setAttribute("role", "dialog"), this.settingsPopover.setAttribute("aria-label", this.host.i18n.t("toolbar.settings")), this.settingsPopover.addEventListener("focusout", (s) => {
       const n = s.relatedTarget;
       n && this.root.contains(n) || (this.closeSettings(), n || this.settingsButton.focus());
-    }), this.renderSettingsMenu(this.activeBlockId), !this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(this.activeBlockId)}"]`)) || (this.root.appendChild(this.settingsPopover), P(this.settingsPopover, this.settingsButton.getBoundingClientRect()), this.open = !0, this.settingsButton.setAttribute("aria-expanded", "true"), (e = this.settingsPopover.querySelector("button")) == null || e.focus());
+    }), this.renderSettingsMenu(this.activeBlockId), !this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(this.activeBlockId)}"]`)) || (this.root.appendChild(this.settingsPopover), _(this.settingsPopover, this.settingsButton.getBoundingClientRect()), this.open = !0, this.settingsButton.setAttribute("aria-expanded", "true"), (e = this.settingsPopover.querySelector("button")) == null || e.focus({ preventScroll: !0 }));
   }
   closeSettings() {
     var s;
     const t = this.settingsPopover, e = this.menuTunes;
-    this.settingsPopover = null, this.menuTunes = [], this.open = !1, this.settingsButton.setAttribute("aria-expanded", "false"), t == null || t.remove();
+    this.settingsPopover = null, this.menuTunes = [], this.open = !1, this.settingsButton.setAttribute("aria-expanded", "false"), t != null && t.contains(document.activeElement) && !this.root.hidden && this.settingsButton.focus({ preventScroll: !0 }), t == null || t.remove();
     for (const n of e) (s = n.destroy) == null || s.call(n);
   }
   renderSettingsMenu(t) {
-    var h, u;
-    const e = f("div", "ez-menu"), s = this.host.getBlockType(t) ?? "";
+    var u, h;
+    const e = p("div", "ez-menu"), s = this.host.getBlockType(t) ?? "";
     e.appendChild(this.menuButton(b.plus, this.host.i18n.t("toolbar.addBelow"), () => {
       this.hide(), this.host.openBlockPicker(t, !0);
     }));
-    const n = (u = (h = this.host.getTool(t)) == null ? void 0 : h.renderSettings) == null ? void 0 : u.call(h);
-    n && e.appendChild(n);
-    const i = this.host.registry.listBlockTools().filter((p) => p.name !== s && p.name !== "delimiter");
-    if (i.length > 0) {
-      e.appendChild(f("div", "ez-menu-category", this.host.i18n.t("settings.convert")));
-      for (const p of i) {
-        if (!p.toolbox) continue;
-        const g = this.menuButton(p.toolbox.icon ?? "•", p.toolbox.title, () => {
-          this.closeSettings(), this.hide(), this.host.convertBlock(t, p.name), this.host.focusBlock(t, "end");
-        });
-        e.appendChild(g);
-      }
-    }
-    e.appendChild(f("div", "ez-menu-category", this.host.i18n.t("toolbar.settings")));
-    const o = this.menuButton(b.copy, this.host.i18n.t("settings.duplicate"), () => {
+    const n = (h = (u = this.host.getTool(t)) == null ? void 0 : u.renderSettings) == null ? void 0 : h.call(u);
+    n && e.appendChild(n), this.host.registry.listBlockTools().filter((f) => f.toolbox && f.name !== s && Oe(this.host, s, f.name)).length > 0 && e.appendChild(this.menuButton(b.chevronRight, this.host.i18n.t("settings.convertPicker"), () => {
+      this.hide(), this.host.openBlockPicker(t);
+    })), e.appendChild(p("div", "ez-menu-category", this.host.i18n.t("toolbar.settings")));
+    const r = this.menuButton(b.copy, this.host.i18n.t("settings.duplicate"), () => {
       this.closeSettings(), this.hide();
-      const p = this.host.duplicateBlock(t);
-      this.host.focusBlock(p, "end");
+      const f = this.host.duplicateBlock(t);
+      this.host.focusBlock(f, "end");
     }), a = this.menuButton(b.up, this.host.i18n.t("settings.moveUp"), () => {
       this.closeSettings(), this.hide();
-      const p = this.host.getBlockIndex(t);
-      p > 0 && this.host.moveBlock(t, p - 1), this.host.focusBlock(t, "end");
+      const f = this.host.getBlockIndex(t);
+      f > 0 && this.host.moveBlock(t, f - 1), this.host.focusBlock(t, "end");
     }), l = this.menuButton(b.down, this.host.i18n.t("settings.moveDown"), () => {
       this.closeSettings(), this.hide();
-      const p = this.host.getBlockIndex(t);
-      p >= 0 && p < this.host.blocks.length - 1 && this.host.moveBlock(t, p + 1), this.host.focusBlock(t, "end");
+      const f = this.host.getBlockIndex(t);
+      f >= 0 && f < this.host.blocks.length - 1 && this.host.moveBlock(t, f + 1), this.host.focusBlock(t, "end");
     }), c = this.menuButton(b.trash, this.host.i18n.t("settings.delete"), () => {
       var m;
       this.closeSettings(), this.hide();
-      const p = this.host.getBlockIndex(t);
+      const f = this.host.getBlockIndex(t);
       this.host.removeBlock(t);
-      const g = this.host.blocks.blocks[Math.min(p, this.host.blocks.length - 1)];
+      const g = this.host.blocks.blocks[Math.min(f, this.host.blocks.length - 1)];
       g ? this.host.focusBlock(g.id, "end") : (m = this.host.target.querySelector(".ez-empty-input")) == null || m.focus(), this.host.announce(this.host.i18n.t("settings.deleted"));
     });
-    c.classList.add("ez-danger"), a.disabled = this.host.getBlockIndex(t) === 0, l.disabled = this.host.getBlockIndex(t) === this.host.blocks.length - 1, e.append(o, a, l, c);
-    for (const p of this.host.registry.listTunes()) {
-      const g = this.renderTuneMenu(t, p.name);
-      g && (e.appendChild(f("div", "ez-menu-category", this.host.i18n.t(`tune.${p.name}`))), e.appendChild(g));
+    c.classList.add("ez-danger"), a.disabled = this.host.getBlockIndex(t) === 0, l.disabled = this.host.getBlockIndex(t) === this.host.blocks.length - 1, e.append(r, a, l, c);
+    for (const f of this.host.registry.listTunes()) {
+      const g = this.renderTuneMenu(t, f.name);
+      g && (e.appendChild(p("div", "ez-menu-category", this.host.i18n.t(`tune.${f.name}`))), e.appendChild(g));
     }
     const d = this.settingsPopover;
-    d && (D(d), d.appendChild(e));
+    d && (N(d), d.appendChild(e));
   }
   renderTuneMenu(t, e) {
     var s, n;
@@ -4595,8 +4794,8 @@ class cr {
           this.host.blocks.setTune(t, e, a), this.closeSettings(), this.host.focusBlock(t, "end");
         },
         t: (a) => this.host.i18n.t(a)
-      }), o = i.render();
-      return this.menuTunes.push(i), o.setAttribute("role", "group"), o;
+      }), r = i.render();
+      return this.menuTunes.push(i), r.setAttribute("role", "group"), r;
     } catch {
       return null;
     }
@@ -4623,14 +4822,14 @@ class cr {
     };
   }
   menuButton(t, e, s) {
-    const n = f("button", "ez-menu-item");
-    if (n.type = "button", Cs(t))
-      n.appendChild(L(t));
+    const n = p("button", "ez-menu-item");
+    if (n.type = "button", Fs(t))
+      n.appendChild(D(t));
     else {
-      const o = f("span", "ez-menu-icon", t);
-      n.appendChild(o);
+      const r = p("span", "ez-menu-icon", t);
+      n.appendChild(r);
     }
-    const i = f("span", "ez-menu-label", e);
+    const i = p("span", "ez-menu-label", e);
     return n.appendChild(i), n.addEventListener("click", s), n;
   }
   destroy() {
@@ -4639,17 +4838,17 @@ class cr {
     this.root.remove();
   }
 }
-function es(r, t) {
-  if (r === "") return 0;
-  const e = r.toLowerCase(), s = t.toLowerCase();
-  let n = 0, i = 0, o = 0;
+function hs(o, t) {
+  if (o === "") return 0;
+  const e = o.toLowerCase(), s = t.toLowerCase();
+  let n = 0, i = 0, r = 0;
   for (let a = 0; a < s.length && n < e.length; a++)
-    s[a] === e[n] ? (o++, i += 1 + o, n++) : o = 0;
+    s[a] === e[n] ? (r++, i += 1 + r, n++) : r = 0;
   return n === e.length ? i : -1;
 }
-class dr {
+class xr {
   constructor(t) {
-    this.entries = [], this.filtered = [], this.focusedIndex = 0, this.isOpen = !1, this.blockId = null, this.unsubOutside = null, this.insertMode = !1, this.prefix = `ez-slash-${++hr}`, this.host = t, this.root = f("div", "ez-popover ez-slash-menu"), this.root.setAttribute("role", "dialog"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.add")), this.root.setAttribute("data-ez-ui", "true"), this.root.style.display = "none", this.root.addEventListener("mousedown", (e) => {
+    this.entries = [], this.filtered = [], this.focusedIndex = 0, this.isOpen = !1, this.blockId = null, this.unsubOutside = null, this.insertMode = !1, this.typedSlash = !1, this.prefix = `ez-slash-${++Ir}`, this.host = t, this.root = p("div", "ez-popover ez-slash-menu"), this.root.setAttribute("role", "dialog"), this.root.setAttribute("aria-label", t.i18n.t("toolbar.add")), this.root.setAttribute("data-ez-ui", "true"), this.root.style.display = "none", this.root.addEventListener("mousedown", (e) => {
       e.target.closest("button") && e.preventDefault();
     }), this.root.addEventListener("keydown", (e) => {
       !e.isComposing && this.handleKey(e) && e.preventDefault(), e.stopPropagation();
@@ -4658,8 +4857,11 @@ class dr {
   getElement() {
     return this.root;
   }
-  open(t, e = !1) {
-    this.host.readOnly || (this.close(), this.blockId = t, this.insertMode = e, this.entries = this.host.registry.listBlockTools().filter((s) => !!s.toolbox).map((s) => ({ name: s.name, title: s.toolbox.title, icon: s.toolbox.icon ?? "•", category: s.toolbox.category })), this.isOpen = !0, this.buildDom(), this.root.style.display = "block", this.filter(""), this.focusedIndex = 0, this.renderList(), this.position(), this.input.focus());
+  open(t, e = !1, s = !1) {
+    if (this.host.readOnly) return;
+    this.close(), this.blockId = t, this.insertMode = e, this.typedSlash = s, this.root.setAttribute("aria-label", this.host.i18n.t(e || s ? "toolbar.add" : "settings.convertPicker"));
+    const n = this.host.getBlockType(t) ?? "";
+    this.entries = this.host.registry.listBlockTools().filter((i) => !!i.toolbox).filter((i) => e || s || Oe(this.host, n, i.name)).map((i) => ({ name: i.name, title: i.toolbox.title, icon: i.toolbox.icon ?? "•", category: i.toolbox.category })), this.isOpen = !0, this.buildDom(), this.root.style.display = "block", this.filter(""), this.focusedIndex = 0, this.renderList(), this.position(), this.input.focus({ preventScroll: !0 });
   }
   isOpenMenu() {
     return this.isOpen;
@@ -4693,10 +4895,10 @@ class dr {
     var s;
     if (!this.isOpen) return;
     const e = this.blockId;
-    this.isOpen = !1, this.blockId = null, this.root.style.display = "none", (s = this.unsubOutside) == null || s.call(this), this.input.setAttribute("aria-expanded", "false"), this.unsubOutside = null, t && e && !this.host.readOnly && this.host.focusBlock(e, "end");
+    this.isOpen = !1, this.blockId = null, we(this.root), this.root.style.display = "none", (s = this.unsubOutside) == null || s.call(this), this.input.setAttribute("aria-expanded", "false"), this.unsubOutside = null, t && e && !this.host.readOnly && this.host.focusBlock(e, "end");
   }
   buildDom() {
-    D(this.root), this.input = f("input", "ez-menu-search"), this.input.type = "text", this.input.placeholder = this.host.i18n.t("slash.placeholder"), this.input.setAttribute("aria-label", this.host.i18n.t("slash.placeholder")), this.input.setAttribute("role", "combobox"), this.input.setAttribute("aria-expanded", "true"), this.input.setAttribute("aria-autocomplete", "list"), this.input.setAttribute("aria-controls", `${this.prefix}-list`), this.input.addEventListener("input", () => this.setQuery(this.input.value)), this.list = f("div", "ez-menu"), this.list.setAttribute("role", "listbox"), this.list.id = `${this.prefix}-list`, this.list.setAttribute("aria-label", this.host.i18n.t("toolbar.blockType")), this.root.append(this.input, this.list);
+    N(this.root), this.input = p("input", "ez-menu-search"), this.input.type = "text", this.input.placeholder = this.host.i18n.t("slash.placeholder"), this.input.setAttribute("aria-label", this.host.i18n.t("slash.placeholder")), this.input.setAttribute("role", "combobox"), this.input.setAttribute("aria-expanded", "true"), this.input.setAttribute("aria-autocomplete", "list"), this.input.setAttribute("aria-controls", `${this.prefix}-list`), this.input.addEventListener("input", () => this.setQuery(this.input.value)), this.list = p("div", "ez-menu"), this.list.setAttribute("role", "listbox"), this.list.id = `${this.prefix}-list`, this.list.setAttribute("aria-label", this.host.i18n.t("toolbar.blockType")), this.root.append(this.input, this.list);
     const t = (s) => {
       this.root.contains(s.target) || this.close();
     };
@@ -4711,31 +4913,31 @@ class dr {
       this.filtered = this.entries.slice();
       return;
     }
-    this.filtered = this.entries.map((e) => ({ entry: e, score: Math.max(es(t, e.title), es(t, e.name)) })).filter((e) => e.score >= 0).sort((e, s) => s.score - e.score).map((e) => e.entry);
+    this.filtered = this.entries.map((e) => ({ entry: e, score: Math.max(hs(t, e.title), hs(t, e.name)) })).filter((e) => e.score >= 0).sort((e, s) => s.score - e.score).map((e) => e.entry);
   }
   renderList() {
-    if (D(this.list), this.filtered.length === 0) {
-      const s = f("div", "ez-menu-empty", this.host.i18n.t("slash.empty"));
+    if (N(this.list), this.filtered.length === 0) {
+      const s = p("div", "ez-menu-empty", this.host.i18n.t("slash.empty"));
       s.setAttribute("role", "status"), this.input.removeAttribute("aria-activedescendant"), this.list.appendChild(s);
       return;
     }
     let t;
     this.filtered.forEach((s, n) => {
-      s.category && s.category !== t && (this.list.appendChild(f("div", "ez-menu-category", s.category)), t = s.category);
-      const i = f("button", "ez-menu-item" + (n === this.focusedIndex ? " ez-focused" : ""));
-      i.type = "button", i.setAttribute("role", "option"), i.setAttribute("aria-selected", n === this.focusedIndex ? "true" : "false"), i.id = `${this.prefix}-option-${n}`, i.tabIndex = -1, Cs(s.icon) ? i.appendChild(L(s.icon)) : i.appendChild(f("span", "ez-menu-icon", s.icon));
-      const o = f("span", "ez-menu-label", s.title);
-      i.appendChild(o), i.addEventListener("click", () => this.select(s)), this.list.appendChild(i);
+      s.category && s.category !== t && (this.list.appendChild(p("div", "ez-menu-category", s.category)), t = s.category);
+      const i = p("button", "ez-menu-item" + (n === this.focusedIndex ? " ez-focused" : ""));
+      i.type = "button", i.setAttribute("role", "option"), i.setAttribute("aria-selected", n === this.focusedIndex ? "true" : "false"), i.id = `${this.prefix}-option-${n}`, i.tabIndex = -1, Fs(s.icon) ? i.appendChild(D(s.icon)) : i.appendChild(p("span", "ez-menu-icon", s.icon));
+      const r = p("span", "ez-menu-label", s.title);
+      i.appendChild(r), i.addEventListener("click", () => this.select(s)), this.list.appendChild(i);
     }), this.input.setAttribute("aria-activedescendant", `${this.prefix}-option-${this.focusedIndex}`);
     const e = this.list.querySelector(".ez-focused");
     e == null || e.scrollIntoView({ block: "nearest" });
   }
   select(t) {
-    var o;
-    const e = this.blockId, s = this.insertMode;
+    var a;
+    const e = this.blockId, s = this.insertMode, n = this.typedSlash;
     if (this.close(), !e || this.host.readOnly) return;
-    const n = this.host.getBlockData(e), i = ((o = this.host.getEditableElement(e)) == null ? void 0 : o.textContent) ?? "";
-    if (i.trim().startsWith("/") && Array.isArray(n == null ? void 0 : n.content) && this.host.updateBlockData(e, { ...n, content: [] }), s && !(this.host.getBlockType(e) === "paragraph" && i.trim() === "")) {
+    const i = this.host.getBlockData(e), r = ((a = this.host.getEditableElement(e)) == null ? void 0 : a.textContent) ?? "";
+    if (n && r.trim().startsWith("/") && Array.isArray(i == null ? void 0 : i.content) && this.host.updateBlockData(e, { ...i, content: [] }), s && !(this.host.getBlockType(e) === "paragraph" && r.trim() === "")) {
       this.host.insertBlock(t.name, void 0, { after: e, focus: !0 }), this.host.announce(`${t.title} added`);
       return;
     }
@@ -4744,15 +4946,15 @@ class dr {
   position() {
     if (!this.isOpen || !this.blockId) return;
     const t = this.host.target.querySelector(`[data-ez-block-id="${CSS.escape(this.blockId)}"]`);
-    P(this.root, (t ?? this.host.target).getBoundingClientRect());
+    _(this.root, (t ?? this.host.target).getBoundingClientRect());
   }
   destroy() {
     this.close(), this.root.remove();
   }
 }
-let hr = 0;
-const ss = "[data-ez-block-id], [data-ez-nested-id]";
-class ns {
+let Ir = 0;
+const us = "[data-ez-block-id], [data-ez-nested-id]";
+class fs {
   constructor(t, e) {
     this.started = !1, this.disposers = [], this.draggingId = null, this.pointerDrag = null, this.host = t, this.target = e;
   }
@@ -4778,26 +4980,26 @@ class ns {
     };
     this.target.addEventListener("dragover", t), this.target.addEventListener("dragleave", e), this.target.addEventListener("drop", s), this.target.addEventListener("dragend", n);
     const i = (a) => {
-      var h, u;
+      var u, h;
       if (this.host.readOnly) {
         a.preventDefault();
         return;
       }
-      const l = (h = a.dataTransfer) == null ? void 0 : h.getData("text/x-ezynota-drag"), c = a.target.closest(".ez-nested-drag"), d = l ? this.findBlock(l) : c ? this.blockFromEvent(a) : null;
-      d && (this.draggingId = this.blockId(d), (u = a.dataTransfer) == null || u.setData("text/x-ezynota-drag", this.draggingId), a.dataTransfer && (a.dataTransfer.effectAllowed = "move"), d.classList.add("ez-dragging"));
+      const l = (u = a.dataTransfer) == null ? void 0 : u.getData("text/x-ezynota-drag"), c = a.target.closest(".ez-nested-drag"), d = l ? this.findBlock(l) : c ? this.blockFromEvent(a) : null;
+      d && (this.draggingId = this.blockId(d), (h = a.dataTransfer) == null || h.setData("text/x-ezynota-drag", this.draggingId), a.dataTransfer && (a.dataTransfer.effectAllowed = "move"), d.classList.add("ez-dragging"));
     };
     this.target.addEventListener("dragstart", i);
-    const o = (a) => {
-      var h, u;
+    const r = (a) => {
+      var u, h;
       if (this.host.readOnly || a.pointerType === "mouse" || a.button !== 0 || this.pointerDrag) return;
-      const l = (u = (h = a.target).closest) == null ? void 0 : u.call(h, ".ez-block-actions, .ez-nested-drag");
+      const l = (h = (u = a.target).closest) == null ? void 0 : h.call(u, ".ez-block-actions, .ez-nested-drag");
       if (!l) return;
       const c = l.closest("[data-ez-nested-id]") ?? this.target.querySelector(".ez-block.ez-active"), d = c ? this.blockId(c) : null;
       d && (this.pointerDrag = this.beginPointerDrag(d));
     };
-    this.target.addEventListener("pointerdown", o), this.disposers.push(() => {
+    this.target.addEventListener("pointerdown", r), this.disposers.push(() => {
       var a;
-      this.target.removeEventListener("dragover", t), this.target.removeEventListener("dragleave", e), this.target.removeEventListener("drop", s), this.target.removeEventListener("dragend", n), this.target.removeEventListener("dragstart", i), this.target.removeEventListener("pointerdown", o), (a = this.pointerDrag) == null || a.cleanup(), this.pointerDrag = null, n();
+      this.target.removeEventListener("dragover", t), this.target.removeEventListener("dragleave", e), this.target.removeEventListener("drop", s), this.target.removeEventListener("dragend", n), this.target.removeEventListener("dragstart", i), this.target.removeEventListener("pointerdown", r), (a = this.pointerDrag) == null || a.cleanup(), this.pointerDrag = null, n();
     });
   }
   stop() {
@@ -4821,12 +5023,12 @@ class ns {
     const s = this.blockId(t), n = this.findBlock(this.draggingId);
     if (!s || n != null && n.contains(t)) return null;
     const i = t.getBoundingClientRect();
-    let o = e > i.top + i.height / 2 ? "after" : "before";
+    let r = e > i.top + i.height / 2 ? "after" : "before";
     if (((a = this.host.blocks.getByIdRecursive(s)) == null ? void 0 : a.type) === "toggle") {
       const l = Math.min(8, i.height / 4);
-      e >= i.top + l && e <= i.bottom - l && (o = "inside");
+      e >= i.top + l && e <= i.bottom - l && (r = "inside");
     }
-    return { element: t, id: s, placement: o };
+    return { element: t, id: s, placement: r };
   }
   highlight(t) {
     for (const e of this.target.querySelectorAll(".ez-drop-target"))
@@ -4841,20 +5043,20 @@ class ns {
     s.textContent = ((n == null ? void 0 : n.textContent) ?? "").trim().slice(0, 80) || t, e.body.appendChild(s);
     const i = (c) => {
       this.host.readOnly || (s.style.left = `${c.clientX + 12}px`, s.style.top = `${c.clientY + 12}px`, this.highlight(this.dropTarget(this.blockFromPoint(c.clientX, c.clientY), c.clientY)));
-    }, o = () => {
+    }, r = () => {
       e.removeEventListener("pointermove", i), e.removeEventListener("pointerup", a), e.removeEventListener("pointercancel", l), s.remove(), this.highlight(null), this.draggingId = null, this.pointerDrag = null;
     }, a = (c) => {
       const d = this.dropTarget(this.blockFromPoint(c.clientX, c.clientY), c.clientY);
-      d && this.moveTo(d), o();
+      d && this.moveTo(d), r();
     }, l = () => {
-      o();
+      r();
     };
-    return this.draggingId = t, e.addEventListener("pointermove", i), e.addEventListener("pointerup", a), e.addEventListener("pointercancel", l), { cleanup: o };
+    return this.draggingId = t, e.addEventListener("pointermove", i), e.addEventListener("pointerup", a), e.addEventListener("pointercancel", l), { cleanup: r };
   }
   blockFromEvent(t) {
     let e = t.target;
     for (; e && e !== this.target; ) {
-      if (e.nodeType === Node.ELEMENT_NODE && e.matches(ss))
+      if (e.nodeType === Node.ELEMENT_NODE && e.matches(us))
         return e;
       e = e.parentNode;
     }
@@ -4863,34 +5065,34 @@ class ns {
   blockFromPoint(t, e) {
     const n = this.target.ownerDocument.elementFromPoint(t, e);
     if (!n) return null;
-    const i = n.closest(ss);
+    const i = n.closest(us);
     return i && this.target.contains(i) ? i : null;
   }
 }
-const xt = class xt {
+const It = class It {
   constructor(t) {
     this.api = t.api;
   }
   render() {
     var i;
     const t = ((i = this.wrapper) == null ? void 0 : i.ownerDocument) ?? this.api.element.ownerDocument ?? document, e = this.api.getData(), s = (e == null ? void 0 : e.header) !== !1, n = Array.isArray(e == null ? void 0 : e.rows) && e.rows.length > 0 ? e.rows : [[{ content: [] }, { content: [] }], [{ content: [] }, { content: [] }]];
-    this.wrapper = f("div", "ez-table-wrap"), this.tableEl = t.createElement("table"), this.tableEl.className = "ez-table";
-    for (let o = 0; o < n.length; o++) {
-      const a = n[o], l = t.createElement("tr");
+    this.wrapper = p("div", "ez-table-wrap"), this.tableEl = t.createElement("table"), this.tableEl.className = "ez-table";
+    for (let r = 0; r < n.length; r++) {
+      const a = n[r], l = t.createElement("tr");
       for (let c = 0; c < a.length; c++) {
-        const d = a[c] ?? { content: [] }, h = s && o === 0 ? "th" : "td", u = t.createElement(h);
-        u.contentEditable = this.api.readOnly ? "false" : "true", u.setAttribute("data-ez-editable", "true"), u.setAttribute("data-ez-region", `r${o}c${c}`), u.setAttribute("role", "textbox"), u.setAttribute("aria-multiline", "true"), d != null && d.content && !Dt(d.content) && u.appendChild(F(d.content, t)), l.appendChild(u);
+        const d = a[c] ?? { content: [] }, u = s && r === 0 ? "th" : "td", h = t.createElement(u);
+        h.contentEditable = this.api.readOnly ? "false" : "true", h.setAttribute("data-ez-editable", "true"), h.setAttribute("data-ez-region", `r${r}c${c}`), h.setAttribute("role", "textbox"), h.setAttribute("aria-multiline", "true"), d != null && d.content && !Nt(d.content) && h.appendChild(F(d.content, t)), l.appendChild(h);
       }
       this.tableEl.appendChild(l);
     }
-    return this.wrapper.appendChild(this.tableEl), this.wrapper.addEventListener("keydown", (o) => this.handleKeydown(o)), this.wrapper;
+    return this.wrapper.appendChild(this.tableEl), this.wrapper.addEventListener("keydown", (r) => this.handleKeydown(r)), this.wrapper;
   }
   save(t) {
     const e = [], s = this.tableEl.querySelector("th") !== null;
     for (const n of Array.from(this.tableEl.rows)) {
       const i = [];
-      for (const o of Array.from(n.cells))
-        i.push({ content: C(o) });
+      for (const r of Array.from(n.cells))
+        i.push({ content: z(r) });
       e.push(i);
     }
     return { header: s, rows: e.length > 0 ? e : [[{ content: [] }, { content: [] }]] };
@@ -4901,7 +5103,7 @@ const xt = class xt {
   /** Table settings: row/column operations and the header toggle. */
   renderSettings() {
     var s;
-    const t = f("div", "ez-inline-group");
+    const t = p("div", "ez-inline-group");
     t.setAttribute("role", "group"), t.setAttribute("aria-label", "Table options");
     const e = [
       { label: "Add row", icon: b.tableRowAdd, run: () => this.addRowAt(-1) },
@@ -4913,13 +5115,13 @@ const xt = class xt {
     for (const n of e) {
       const i = E("ez-inline-btn", n.icon, n.label);
       (s = i.querySelector("svg")) == null || s.setAttribute("aria-hidden", "true");
-      const o = () => {
+      const r = () => {
         if (!n.toggle) return;
         const a = this.tableEl.querySelector("th") !== null;
         i.classList.toggle("ez-active", a), i.setAttribute("aria-pressed", String(a));
       };
-      o(), i.addEventListener("click", () => {
-        this.api.readOnly || (n.run(), o());
+      r(), i.addEventListener("click", () => {
+        this.api.readOnly || (n.run(), r());
       }), t.appendChild(i);
     }
     return t;
@@ -4948,9 +5150,9 @@ const xt = class xt {
     var e;
     if (!this.api.readOnly && t.key === "Tab") {
       t.preventDefault();
-      const s = this.tableEl.ownerDocument, n = Array.from(this.tableEl.querySelectorAll("[data-ez-editable]")), i = n.indexOf(s.activeElement), o = t.shiftKey ? i - 1 : i + 1;
-      if (o >= 0 && o < n.length)
-        n[o].focus();
+      const s = this.tableEl.ownerDocument, n = Array.from(this.tableEl.querySelectorAll("[data-ez-editable]")), i = n.indexOf(s.activeElement), r = t.shiftKey ? i - 1 : i + 1;
+      if (r >= 0 && r < n.length)
+        n[r].focus();
       else if (!t.shiftKey) {
         this.addRowAt(-1);
         const a = Array.from(this.tableEl.querySelectorAll("[data-ez-editable]"));
@@ -4960,8 +5162,8 @@ const xt = class xt {
   }
   /* ---------- structural operations ---------- */
   addRowAt(t) {
-    var o;
-    const e = this.save(this.wrapper), s = ((o = e.rows[0]) == null ? void 0 : o.length) ?? 2, n = Array.from({ length: s }, () => ({ content: [] })), i = t < 0 ? e.rows.length : Math.max(1, t);
+    var r;
+    const e = this.save(this.wrapper), s = ((r = e.rows[0]) == null ? void 0 : r.length) ?? 2, n = Array.from({ length: s }, () => ({ content: [] })), i = t < 0 ? e.rows.length : Math.max(1, t);
     e.rows.splice(i, 0, n), this.commit(e);
   }
   addColumnAt(t) {
@@ -5007,7 +5209,7 @@ const xt = class xt {
     this.api.update(t);
     const s = this.swapWrapper();
     if (e) {
-      const n = s.querySelectorAll("tr"), i = n[Math.min(e.row, n.length - 1)], o = i ? Array.from(i.querySelectorAll("[data-ez-editable]")) : [], a = o[Math.min(e.column, o.length - 1)];
+      const n = s.querySelectorAll("tr"), i = n[Math.min(e.row, n.length - 1)], r = i ? Array.from(i.querySelectorAll("[data-ez-editable]")) : [], a = r[Math.min(e.column, r.length - 1)];
       if (a) {
         a.focus();
         return;
@@ -5016,84 +5218,91 @@ const xt = class xt {
     this.api.focus("start");
   }
 };
-xt.toolbox = { icon: H.table, title: "Table", category: "Rich blocks" }, xt.conversion = { to: ["paragraph"] }, xt.enableInlineTools = !0;
-let ve = xt;
-const Bt = /* @__PURE__ */ new Map(), Ut = /* @__PURE__ */ new WeakMap();
-let Os = 1;
-function Le(r) {
-  let t = null;
-  for (const e of Bt.values())
-    r(e) && (t = e);
-  return t;
+It.toolbox = { icon: j.table, title: "Table", category: "Rich blocks" }, It.conversion = { to: ["paragraph"] }, It.enableInlineTools = !0;
+let xe = It;
+const Tt = /* @__PURE__ */ new Map(), qt = /* @__PURE__ */ new WeakMap();
+let Ws = 1;
+function Wt(o, t) {
+  let e = null;
+  for (const s of Tt.values())
+    s.scope === t && o(s) && (e = s);
+  return e;
 }
-function ur(r) {
-  const t = Os++;
-  return Bt.set(t, { storer: r }), () => {
-    Bt.delete(t);
+function Cr(o, t) {
+  const e = Ws++;
+  return Tt.set(e, { storer: o, scope: t }), () => {
+    Tt.delete(e);
   };
 }
-function pr(r) {
-  const t = Os++;
-  return Bt.set(t, { loader: r }), () => {
-    fr(r), Bt.delete(t);
+function zr(o, t) {
+  const e = Ws++;
+  return Tt.set(e, { loader: o, scope: t }), () => {
+    Br(o), Tt.delete(e);
   };
 }
-function is() {
-  return Le((r) => r.storer !== void 0) !== null;
+function ps(o) {
+  return Wt((t) => t.storer !== void 0, o) !== null;
 }
-async function rs(r) {
-  var e;
-  const t = (e = Le((s) => s.storer !== void 0)) == null ? void 0 : e.storer;
-  return t ? t(r) : null;
+async function gs(o, t) {
+  var s;
+  const e = (s = Wt((n) => n.storer !== void 0, t)) == null ? void 0 : s.storer;
+  return e ? e(o) : null;
 }
-function fr(r) {
-  const t = Ut.get(r);
+function Br(o) {
+  const t = qt.get(o);
   if (t) {
     for (const e of t.values())
       try {
         URL.revokeObjectURL(e);
       } catch {
       }
-    Ut.delete(r);
+    qt.delete(o);
   }
 }
-async function gr(r) {
-  var o;
-  if (!r.startsWith("asset:")) return null;
-  const t = (o = Le((a) => a.loader !== void 0)) == null ? void 0 : o.loader;
-  if (!t) return null;
-  const e = r.slice(6);
-  let s = Ut.get(t);
-  s || (s = /* @__PURE__ */ new Map(), Ut.set(t, s));
-  const n = s.get(e);
-  if (n) return n;
-  const i = await t(e);
-  if (!i) return null;
+async function Tr(o, t) {
+  var a;
+  if (!o.startsWith("asset:")) return null;
+  const e = (a = Wt((l) => l.loader !== void 0, t)) == null ? void 0 : a.loader;
+  if (!e) return null;
+  const s = o.slice(6);
+  let n = qt.get(e);
+  n || (n = /* @__PURE__ */ new Map(), qt.set(e, n));
+  const i = n.get(s);
+  if (i) return i;
+  let r;
   try {
-    const a = URL.createObjectURL(new Blob([i.bytes], { type: i.mime }));
-    return s.set(e, a), a;
+    r = await e(s);
+  } catch {
+    return null;
+  }
+  if (Wt((l) => l.loader === e, t) === null || !r) return null;
+  try {
+    const l = n.get(s);
+    if (l) return l;
+    const c = URL.createObjectURL(new Blob([r.bytes], { type: r.mime }));
+    return n.set(s, c), c;
   } catch {
     return null;
   }
 }
 const gt = class gt {
   constructor(t) {
-    this.resizeInput = null, this.resizeValue = null, this.editPanel = null, this.panelTrigger = null, this.uploadButton = null, this.feedback = null, this.api = t.api;
+    this.srcGeneration = 0, this.destroyed = !1, this.resizeInput = null, this.resizeValue = null, this.editPanel = null, this.panelTrigger = null, this.uploadButton = null, this.feedback = null, this.api = t.api;
   }
   render() {
     const t = document, e = this.api.getData();
     this.figure = t.createElement("figure"), this.figure.className = "ez-image";
     const s = t.createElement("div");
     s.className = "ez-image-frame", s.style.width = `${this.currentWidth()}%`, this.img = t.createElement("img"), this.img.alt = typeof (e == null ? void 0 : e.alt) == "string" ? e.alt : "", this.applySrcToImg((e == null ? void 0 : e.src) ?? ""), this.api.readOnly || (this.img.addEventListener("dblclick", () => this.pickFile()), this.figure.addEventListener("dragover", (i) => {
-      var o;
-      (o = i.dataTransfer) != null && o.types.includes("Files") && i.preventDefault();
+      var r;
+      (r = i.dataTransfer) != null && r.types.includes("Files") && i.preventDefault();
     }), this.figure.addEventListener("drop", (i) => {
       var a;
-      const o = (a = i.dataTransfer) == null ? void 0 : a.files;
-      o && o.length > 0 && (i.preventDefault(), i.stopPropagation(), this.storeFile(o[0]));
+      const r = (a = i.dataTransfer) == null ? void 0 : a.files;
+      r && r.length > 0 && (i.preventDefault(), i.stopPropagation(), this.storeFile(r[0]));
     })), s.appendChild(this.img), this.figure.appendChild(s);
     const n = t.createElement("figcaption");
-    return n.className = "ez-text-input ez-image-caption", n.contentEditable = this.api.readOnly ? "false" : "true", n.setAttribute("data-ez-editable", "true"), n.setAttribute("data-ez-placeholder", "Add a caption..."), n.setAttribute("data-ez-region", "caption"), n.setAttribute("aria-label", "Image caption"), n.textContent = typeof (e == null ? void 0 : e.caption) == "string" ? e.caption : "", this.figure.appendChild(n), this.api.readOnly || (this.figure.appendChild(this.buildToolbar()), this.editPanel = f("div", "ez-image-edit-panel"), this.editPanel.setAttribute("data-ez-ui", "true"), this.editPanel.hidden = !0, this.feedback = f("p", "ez-image-feedback"), this.feedback.setAttribute("role", "status"), this.feedback.hidden = !0, this.figure.append(this.editPanel, this.feedback)), this.figure;
+    return n.className = "ez-text-input ez-image-caption", n.contentEditable = this.api.readOnly ? "false" : "true", n.setAttribute("data-ez-editable", "true"), n.setAttribute("data-ez-placeholder", "Add a caption..."), n.setAttribute("data-ez-region", "caption"), n.setAttribute("aria-label", "Image caption"), n.textContent = typeof (e == null ? void 0 : e.caption) == "string" ? e.caption : "", this.figure.appendChild(n), this.api.readOnly || (this.figure.appendChild(this.buildToolbar()), this.editPanel = p("div", "ez-image-edit-panel"), this.editPanel.setAttribute("data-ez-ui", "true"), this.editPanel.hidden = !0, this.feedback = p("p", "ez-image-feedback"), this.feedback.setAttribute("role", "status"), this.feedback.hidden = !0, this.figure.append(this.editPanel, this.feedback)), this.figure;
   }
   save(t) {
     var n, i;
@@ -5134,14 +5343,16 @@ const gt = class gt {
     return ((t = this.figure) == null ? void 0 : t.querySelector(".ez-image-caption")) ?? void 0;
   }
   destroy() {
+    this.destroyed = !0, this.srcGeneration++;
   }
   /* ---------- implementation ---------- */
   applySrcToImg(t) {
+    const e = ++this.srcGeneration;
     if (this.img && (this.clearBrokenImageState(), !(typeof t != "string" || t === ""))) {
       if (t.startsWith("asset:")) {
-        gr(t).then((e) => {
-          var s;
-          (s = this.img) != null && s.isConnected && (e ? this.img.src = e : this.showBrokenImage("This image could not be loaded."));
+        Tr(t, this.api.assetScope).then((s) => {
+          var n;
+          this.destroyed || e !== this.srcGeneration || !((n = this.img) != null && n.isConnected) || (s ? this.img.src = s : this.showBrokenImage("This image could not be loaded."));
         });
         return;
       }
@@ -5159,26 +5370,26 @@ const gt = class gt {
     this.img && (this.img.classList.remove("ez-image-broken"), this.img.hasAttribute("aria-label") && this.img.removeAttribute("aria-label")), this.showFeedback("");
   }
   buildToolbar() {
-    const t = f("div", "ez-image-toolbar");
+    const t = p("div", "ez-image-toolbar");
     t.setAttribute("data-ez-ui", "true"), t.setAttribute("role", "group"), t.setAttribute("aria-label", "Image controls");
-    const e = f("div", "ez-image-actions"), s = (c, d, h) => {
-      const u = S("ez-image-action", c, h);
-      return u.prepend(L(d)), u.title = h, u;
+    const e = p("div", "ez-image-actions"), s = (c, d, u) => {
+      const h = A("ez-image-action", c, u);
+      return h.prepend(D(d)), h.title = u, h;
     }, n = s("Upload", b.upload, "Upload image");
     this.uploadButton = n, n.addEventListener("click", () => this.pickFile());
     const i = s("Image URL", b.link, "Insert image from URL");
     i.setAttribute("aria-expanded", "false"), i.addEventListener("click", () => this.openEditPanel("url", i));
-    const o = s("Alt text", b.info, "Edit image description for screen readers");
-    o.setAttribute("aria-expanded", "false"), o.addEventListener("click", () => this.openEditPanel("alt", o));
-    const a = f("label", "ez-image-size");
-    a.appendChild(f("span", "ez-image-size-label", "Width"));
-    const l = f("input", "ez-image-resize");
-    return this.resizeInput = l, l.type = "range", l.min = "10", l.max = "100", l.value = String(this.currentWidth()), l.setAttribute("aria-label", "Image width"), this.resizeValue = f("output", "ez-image-size-value"), this.updateWidthLabel(this.currentWidth()), l.addEventListener("input", () => {
+    const r = s("Alt text", b.info, "Edit image description for screen readers");
+    r.setAttribute("aria-expanded", "false"), r.addEventListener("click", () => this.openEditPanel("alt", r));
+    const a = p("label", "ez-image-size");
+    a.appendChild(p("span", "ez-image-size-label", "Width"));
+    const l = p("input", "ez-image-resize");
+    return this.resizeInput = l, l.type = "range", l.min = "10", l.max = "100", l.value = String(this.currentWidth()), l.setAttribute("aria-label", "Image width"), this.resizeValue = p("output", "ez-image-size-value"), this.updateWidthLabel(this.currentWidth()), l.addEventListener("input", () => {
       const c = this.figure.querySelector(".ez-image-frame");
       c && (c.style.width = `${l.value}%`), this.updateWidthLabel(Number(l.value));
     }), l.addEventListener("change", () => {
       this.api.update({ ...this.save(this.figure), width: Number(l.value) });
-    }), e.append(n, i, o), a.append(l, this.resizeValue), t.append(e, a), t;
+    }), e.append(n, i, r), a.append(l, this.resizeValue), t.append(e, a), t;
   }
   updateWidthLabel(t) {
     var e;
@@ -5205,8 +5416,9 @@ const gt = class gt {
     if (!((e = this.uploadButton) != null && e.disabled)) {
       this.uploadButton && (this.uploadButton.disabled = !0), this.figure.setAttribute("aria-busy", "true"), this.showFeedback("Adding image…");
       try {
-        if (is()) {
-          const n = await rs(t);
+        if (ps(this.api.assetScope)) {
+          const n = await gs(t, this.api.assetScope);
+          if (this.destroyed) return;
           if (n) {
             this.applyImage(n, t.name.replace(/\.[^.]+$/, "")), this.showFeedback("");
             return;
@@ -5214,7 +5426,7 @@ const gt = class gt {
           this.showFeedback("Could not save this image to storage. Free up space and try again.");
           return;
         }
-        const s = await os(t);
+        const s = await ms(t);
         this.applyImage(s, t.name.replace(/\.[^.]+$/, "")), this.showFeedback("");
       } catch {
         this.showFeedback("Could not add this image. Try another file.");
@@ -5242,81 +5454,81 @@ const gt = class gt {
     const n = this.panelTrigger === e && !s.hidden;
     if (this.closeEditPanel(), n) return;
     s.replaceChildren(), this.panelTrigger = e, e.setAttribute("aria-expanded", "true");
-    const i = f("label", "ez-image-field");
-    i.appendChild(f("span", "ez-image-field-title", t === "url" ? "Image URL" : "Image description"));
-    const o = f("input", "ez-image-field-input");
-    o.type = "text", o.placeholder = t === "url" ? "https://example.com/image.jpg" : "Describe what’s in the image…";
+    const i = p("label", "ez-image-field");
+    i.appendChild(p("span", "ez-image-field-title", t === "url" ? "Image URL" : "Image description"));
+    const r = p("input", "ez-image-field-input");
+    r.type = "text", r.placeholder = t === "url" ? "https://example.com/image.jpg" : "Describe what’s in the image…";
     const a = this.api.getData();
-    o.value = t === "alt" ? a.alt ?? "" : /^https?:\/\//i.test(a.src) ? a.src : "", t === "url" && (o.inputMode = "url"), i.appendChild(o);
-    const l = f("p", "ez-image-field-hint", t === "url" ? "Paste a direct link to an image." : "Help people using screen readers understand this image. Leave blank for a decorative image."), c = f("p", "ez-image-field-error");
+    r.value = t === "alt" ? a.alt ?? "" : /^https?:\/\//i.test(a.src) ? a.src : "", t === "url" && (r.inputMode = "url"), i.appendChild(r);
+    const l = p("p", "ez-image-field-hint", t === "url" ? "Paste a direct link to an image." : "Help people using screen readers understand this image. Leave blank for a decorative image."), c = p("p", "ez-image-field-error");
     c.setAttribute("role", "alert"), c.hidden = !0;
-    const d = f("div", "ez-image-panel-actions"), h = S("ez-image-action", "Cancel");
-    h.addEventListener("click", () => this.closeEditPanel());
-    const u = S("ez-image-action ez-image-action-primary", t === "url" ? "Use image" : "Save description"), p = () => {
+    const d = p("div", "ez-image-panel-actions"), u = A("ez-image-action", "Cancel");
+    u.addEventListener("click", () => this.closeEditPanel());
+    const h = A("ez-image-action ez-image-action-primary", t === "url" ? "Use image" : "Save description"), f = () => {
       if (t === "url") {
-        const g = o.value.trim();
+        const g = r.value.trim();
         if (!g || !Z(g)) {
-          c.textContent = "Enter a valid image URL.", c.hidden = !1, o.setAttribute("aria-invalid", "true"), o.focus();
+          c.textContent = "Enter a valid image URL.", c.hidden = !1, r.setAttribute("aria-invalid", "true"), r.focus();
           return;
         }
         this.applyImage(g, this.save(this.figure).alt);
       } else
-        this.api.update({ ...this.save(this.figure), alt: o.value }), this.img.alt = o.value;
+        this.api.update({ ...this.save(this.figure), alt: r.value }), this.img.alt = r.value;
       this.closeEditPanel();
     };
-    u.addEventListener("click", p), o.addEventListener("input", () => {
-      c.hidden = !0, o.removeAttribute("aria-invalid");
+    h.addEventListener("click", f), r.addEventListener("input", () => {
+      c.hidden = !0, r.removeAttribute("aria-invalid");
     }), s.onkeydown = (g) => {
-      g.stopPropagation(), g.key === "Escape" ? (g.preventDefault(), this.closeEditPanel()) : g.key === "Enter" && g.target === o && !g.isComposing && (g.preventDefault(), p());
-    }, d.append(h, u), s.append(i, l, c, d), s.hidden = !1, o.focus();
+      g.stopPropagation(), g.key === "Escape" ? (g.preventDefault(), this.closeEditPanel()) : g.key === "Enter" && g.target === r && !g.isComposing && (g.preventDefault(), f());
+    }, d.append(u, h), s.append(i, l, c, d), s.hidden = !1, r.focus();
   }
 };
-gt.toolbox = { icon: H.image, title: "Image", category: "Rich blocks" }, gt.conversion = { to: ["paragraph"] }, gt.paste = { files: { mimeTypes: ["image/*"] } }, gt.filesToBlockDataAsync = async (t) => {
-  const e = [];
-  for (const s of t) {
-    if (!s.type.startsWith("image/")) continue;
-    const n = is() ? await rs(s) : await os(s);
-    n && e.push({ type: "image", data: { src: n, alt: s.name.replace(/\.[^.]+$/, "") } });
+gt.toolbox = { icon: j.image, title: "Image", category: "Rich blocks" }, gt.conversion = { to: ["paragraph"] }, gt.paste = { files: { mimeTypes: ["image/*"] } }, gt.filesToBlockDataAsync = async (t, e) => {
+  const s = [];
+  for (const n of t) {
+    if (!n.type.startsWith("image/")) continue;
+    const i = ps(e) ? await gs(n, e) : await ms(n);
+    i && s.push({ type: "image", data: { src: i, alt: n.name.replace(/\.[^.]+$/, "") } });
   }
-  return e;
+  return s;
 };
-let we = gt;
-function os(r) {
+let Ie = gt;
+function ms(o) {
   return new Promise((t, e) => {
     const s = new FileReader();
-    s.onload = () => t(String(s.result)), s.onerror = () => e(s.error ?? new Error("FileReader failed")), s.readAsDataURL(r);
+    s.onload = () => t(String(s.result)), s.onerror = () => e(s.error ?? new Error("FileReader failed")), s.readAsDataURL(o);
   });
 }
-const Nt = ["info", "warning", "success", "danger"], as = {
+const Rt = ["info", "warning", "success", "danger"], bs = {
   info: "ℹ",
   warning: "⚠",
   success: "✓",
   danger: "✕"
-}, It = class It extends Mt {
+}, Ct = class Ct extends Mt {
   constructor(t) {
     super(t, "Write something...", !1), this.variant = "info", this.containerEl = null;
     const e = this.api.getData();
-    typeof e == "string" && Nt.includes(e) ? this.variant = e : e && typeof e == "object" && typeof e.variant == "string" && Nt.includes(e.variant) && (this.variant = e.variant);
+    typeof e == "string" && Rt.includes(e) ? this.variant = e : e && typeof e == "object" && typeof e.variant == "string" && Rt.includes(e.variant) && (this.variant = e.variant);
   }
   tag() {
     return "div";
   }
   render() {
-    var o;
-    const t = ((o = this.editable) == null ? void 0 : o.ownerDocument) ?? document, e = t.createElement("div");
+    var r;
+    const t = ((r = this.editable) == null ? void 0 : r.ownerDocument) ?? document, e = t.createElement("div");
     e.className = `ez-callout ez-callout-${this.variant}`, e.setAttribute("data-ez-callout", this.variant);
     const s = t.createElement("span");
-    s.className = "ez-callout-badge", s.textContent = as[this.variant], s.setAttribute("aria-hidden", "true");
+    s.className = "ez-callout-badge", s.textContent = bs[this.variant], s.setAttribute("aria-hidden", "true");
     const n = t.createElement("div");
     n.classList.add("ez-text-input"), n.contentEditable = "true", n.setAttribute("data-ez-editable", "true"), n.setAttribute("data-ez-region", "callout-content"), this.placeholder && n.setAttribute("data-ez-placeholder", this.placeholder);
     const i = this.api.getData();
-    return i != null && i.content && !Dt(i.content) && n.appendChild(F(i.content, t)), this.editable = n, this.containerEl = e, e.append(s, n), e;
+    return i != null && i.content && !Nt(i.content) && n.appendChild(F(i.content, t)), this.editable = n, this.containerEl = e, e.append(s, n), e;
   }
   save(t) {
-    return { variant: this.variant, content: C(this.editable) };
+    return { variant: this.variant, content: z(this.editable) };
   }
   updated() {
-    const t = this.api.getData(), e = Nt.includes(t == null ? void 0 : t.variant) ? t.variant : this.variant;
+    const t = this.api.getData(), e = Rt.includes(t == null ? void 0 : t.variant) ? t.variant : this.variant;
     if (e !== this.variant) {
       this.variant = e, this.refreshElement();
       return;
@@ -5326,9 +5538,9 @@ const Nt = ["info", "warning", "success", "danger"], as = {
   renderSettings() {
     const t = document.createElement("div");
     t.className = "ez-inline-group";
-    for (const e of Nt) {
+    for (const e of Rt) {
       const s = document.createElement("button");
-      s.type = "button", s.className = "ez-inline-btn" + (e === this.variant ? " ez-active" : ""), s.textContent = `${as[e]} ${e}`, s.setAttribute("aria-pressed", String(e === this.variant)), s.addEventListener("click", () => {
+      s.type = "button", s.className = "ez-inline-btn" + (e === this.variant ? " ez-active" : ""), s.textContent = `${bs[e]} ${e}`, s.setAttribute("aria-pressed", String(e === this.variant)), s.addEventListener("click", () => {
         this.api.readOnly || (this.variant = e, this.api.update(this.save(this.editable)), this.refreshElement(), this.api.focus("end"));
       }), t.appendChild(s);
     }
@@ -5341,9 +5553,9 @@ const Nt = ["info", "warning", "success", "danger"], as = {
     t.replaceWith(e), this.containerEl = e, this.editable = e.querySelector("[data-ez-editable]");
   }
 };
-It.toolbox = { icon: H.callout, title: "Callout", category: "Rich blocks" }, It.enableInlineTools = !0, It.conversion = { to: ["paragraph", "quote"] };
-let Ee = It;
-const Zt = class Zt {
+Ct.toolbox = { icon: j.callout, title: "Callout", category: "Rich blocks" }, Ct.enableInlineTools = !0, Ct.conversion = { to: ["paragraph", "quote"] };
+let Ce = Ct;
+const Yt = class Yt {
   constructor(t) {
     this.open = !0, this.childTools = /* @__PURE__ */ new Map(), this.childSignatures = /* @__PURE__ */ new Map(), this.api = t.api, this.nested = t.nested;
     const e = t.api.getData();
@@ -5352,22 +5564,22 @@ const Zt = class Zt {
   render() {
     var l;
     const t = document, e = this.api.getData();
-    this.open = (e == null ? void 0 : e.open) !== !1, this.container = f("div", "ez-toggle"), this.container.setAttribute("data-ez-toggle-open", String(this.open));
-    const s = f("div", "ez-toggle-header"), n = E("ez-icon-btn ez-toggle-caret", this.open ? b.caretDown : b.caretRight, this.open ? "Collapse section" : "Expand section");
+    this.open = (e == null ? void 0 : e.open) !== !1, this.container = p("div", "ez-toggle"), this.container.setAttribute("data-ez-toggle-open", String(this.open));
+    const s = p("div", "ez-toggle-header"), n = E("ez-icon-btn ez-toggle-caret", this.open ? b.caretDown : b.caretRight, this.open ? "Collapse section" : "Expand section");
     n.setAttribute("aria-expanded", String(this.open)), n.addEventListener("click", () => {
       this.api.readOnly || (this.open = !this.open, this.api.update({ ...this.save(this.container), open: this.open }), this.container.setAttribute("data-ez-toggle-open", String(this.open)), n.innerHTML = this.open ? b.caretDown : b.caretRight, n.setAttribute("aria-expanded", String(this.open)), n.setAttribute("aria-label", this.open ? "Collapse section" : "Expand section"), n.title = this.open ? "Collapse section" : "Expand section");
     });
     const i = t.createElement("div");
-    i.classList.add("ez-text-input", "ez-toggle-heading"), i.contentEditable = this.api.readOnly ? "false" : "true", i.setAttribute("data-ez-editable", "true"), i.setAttribute("data-ez-region", "toggle-heading"), i.setAttribute("data-ez-placeholder", "Section title"), e != null && e.heading && !Dt(e.heading) && i.appendChild(F(e.heading, t)), this.headingEl = i, s.append(n, i), this.childrenHost = f("div", "ez-toggle-children"), this.renderChildren();
-    const o = f("div", "ez-toggle-add-row"), a = E("ez-icon-btn ez-toggle-add", b.plus, "Add block inside");
+    i.classList.add("ez-text-input", "ez-toggle-heading"), i.contentEditable = this.api.readOnly ? "false" : "true", i.setAttribute("data-ez-editable", "true"), i.setAttribute("data-ez-region", "toggle-heading"), i.setAttribute("data-ez-placeholder", "Section title"), e != null && e.heading && !Nt(e.heading) && i.appendChild(F(e.heading, t)), this.headingEl = i, s.append(n, i), this.childrenHost = p("div", "ez-toggle-children"), this.renderChildren();
+    const r = p("div", "ez-toggle-add-row"), a = E("ez-icon-btn ez-toggle-add", b.plus, "Add block inside");
     return a.setAttribute("data-ez-ui", "true"), (l = a.querySelector("svg")) == null || l.setAttribute("aria-hidden", "true"), a.hidden = this.api.readOnly, a.addEventListener("click", () => {
       if (!this.nested || this.nested.readOnly) return;
       const c = this.nested.insert("paragraph", void 0);
       this.nested.focusBlock(c, "start");
-    }), o.appendChild(a), this.container.append(s, this.childrenHost, o), this.container;
+    }), r.appendChild(a), this.container.append(s, this.childrenHost, r), this.container;
   }
   save(t) {
-    return { open: this.open, heading: C(this.headingEl) };
+    return { open: this.open, heading: z(this.headingEl) };
   }
   validate(t) {
     return !!t;
@@ -5379,7 +5591,7 @@ const Zt = class Zt {
     e !== this.open && (this.open = e, this.container.setAttribute("data-ez-toggle-open", String(e)));
     const s = this.findCaret();
     if (s && (s.innerHTML = e ? b.caretDown : b.caretRight, s.setAttribute("aria-expanded", String(e)), s.setAttribute("aria-label", e ? "Collapse section" : "Expand section"), s.title = e ? "Collapse section" : "Expand section"), this.headingEl && document.activeElement !== this.headingEl) {
-      const n = C(this.headingEl);
+      const n = z(this.headingEl);
       if (JSON.stringify(n) !== JSON.stringify(t.heading ?? [])) {
         for (; this.headingEl.firstChild; ) this.headingEl.removeChild(this.headingEl.firstChild);
         this.headingEl.appendChild(F(t.heading ?? [], this.headingEl.ownerDocument));
@@ -5423,65 +5635,65 @@ const Zt = class Zt {
     var s, n, i;
     if (!this.nested || !this.childrenHost) return;
     const t = this.nested.getBlocks(), e = Array.from(this.childrenHost.children).filter(
-      (o) => o.hasAttribute("data-ez-nested-id")
+      (r) => r.hasAttribute("data-ez-nested-id")
     );
     if (e.length === t.length) {
-      let o = !0;
+      let r = !0;
       for (let a = 0; a < t.length; a++)
         if (((s = e[a]) == null ? void 0 : s.getAttribute("data-ez-nested-id")) !== t[a].id || ((n = e[a]) == null ? void 0 : n.getAttribute("data-ez-block-type")) !== t[a].type) {
-          o = !1;
+          r = !1;
           break;
         }
-      if (o) {
+      if (r) {
         this.syncChildData();
         return;
       }
     }
-    for (const o of Array.from(this.childrenHost.childNodes))
-      this.childrenHost.removeChild(o);
-    for (const o of this.childTools.values())
+    for (const r of Array.from(this.childrenHost.childNodes))
+      this.childrenHost.removeChild(r);
+    for (const r of this.childTools.values())
       try {
-        (i = o.destroy) == null || i.call(o);
+        (i = r.destroy) == null || i.call(r);
       } catch {
       }
-    this.childTools.clear(), this.childSignatures.clear(), t.forEach((o, a) => {
+    this.childTools.clear(), this.childSignatures.clear(), t.forEach((r, a) => {
       var d;
-      const l = f("div", "ez-nested-block");
-      if (l.setAttribute("data-ez-nested-id", o.id), l.setAttribute("data-ez-block-type", o.type), l.setAttribute("data-ez-region", `child-${a}`), !this.api.readOnly) {
-        const h = E("ez-icon-btn ez-nested-drag", b.grip, "Drag block (Alt+ArrowUp/Down to reorder)");
-        h.draggable = !0, h.setAttribute("data-ez-ui", "true"), h.addEventListener("keydown", (u) => {
+      const l = p("div", "ez-nested-block");
+      if (l.setAttribute("data-ez-nested-id", r.id), l.setAttribute("data-ez-block-type", r.type), l.setAttribute("data-ez-region", `child-${a}`), !this.api.readOnly) {
+        const u = E("ez-icon-btn ez-nested-drag", b.grip, "Drag block (Alt+ArrowUp/Down to reorder)");
+        u.draggable = !0, u.setAttribute("data-ez-ui", "true"), u.addEventListener("keydown", (h) => {
           var g;
-          if (!u.altKey || !["ArrowUp", "ArrowDown"].includes(u.key) || this.api.readOnly) return;
-          u.preventDefault(), u.stopPropagation();
-          const p = this.nested.getBlocks().findIndex((m) => m.id === o.id);
-          this.nested.move(o.id, Math.max(0, p + (u.key === "ArrowUp" ? -1 : 1))), (g = this.childrenHost.querySelector(`[data-ez-nested-id="${CSS.escape(o.id)}"] > .ez-nested-drag`)) == null || g.focus();
-        }), l.appendChild(h);
+          if (!h.altKey || !["ArrowUp", "ArrowDown"].includes(h.key) || this.api.readOnly) return;
+          h.preventDefault(), h.stopPropagation();
+          const f = this.nested.getBlocks().findIndex((m) => m.id === r.id);
+          this.nested.move(r.id, Math.max(0, f + (h.key === "ArrowUp" ? -1 : 1))), (g = this.childrenHost.querySelector(`[data-ez-nested-id="${CSS.escape(r.id)}"] > .ez-nested-drag`)) == null || g.focus();
+        }), l.appendChild(u);
       }
-      const c = this.nested.createToolInstance(o, l, this.childApi(o, l));
+      const c = this.nested.createToolInstance(r, l, this.childApi(r, l));
       l.appendChild(c.render());
-      for (const h of l.querySelectorAll("[data-ez-editable]"))
-        h.contentEditable = this.api.readOnly ? "false" : "true";
+      for (const u of l.querySelectorAll("[data-ez-editable]"))
+        u.contentEditable = this.api.readOnly ? "false" : "true";
       try {
         (d = c.rendered) == null || d.call(c);
       } catch {
       }
-      this.childTools.set(o.id, c), this.childSignatures.set(o.id, JSON.stringify(o)), this.childrenHost.appendChild(l);
+      this.childTools.set(r.id, c), this.childSignatures.set(r.id, JSON.stringify(r)), this.childrenHost.appendChild(l);
     });
   }
   syncChildData() {
     var e, s, n;
     const t = ((e = this.nested) == null ? void 0 : e.getBlocks()) ?? [];
     for (const i of t) {
-      const o = this.childTools.get(i.id);
-      if (!o) continue;
+      const r = this.childTools.get(i.id);
+      if (!r) continue;
       const a = JSON.stringify(i);
       if (this.childSignatures.get(i.id) === a) continue;
       this.childSignatures.set(i.id, a);
       const l = Array.from(this.childrenHost.children).find(
         (c) => c.getAttribute("data-ez-nested-id") === i.id
       ) ?? null;
-      if (l && !(i.type !== "toggle" && JSON.stringify(o.save(l)) === JSON.stringify(i.data))) {
-        o.updated ? o.updated() : ((s = l.lastElementChild) == null || s.replaceWith(o.render()), (n = o.rendered) == null || n.call(o));
+      if (l && !(i.type !== "toggle" && JSON.stringify(r.save(l)) === JSON.stringify(i.data))) {
+        r.updated ? r.updated() : ((s = l.lastElementChild) == null || s.replaceWith(r.render()), (n = r.rendered) == null || n.call(r));
         for (const c of l.querySelectorAll("[data-ez-editable]"))
           c.contentEditable = this.api.readOnly ? "false" : "true";
       }
@@ -5534,8 +5746,8 @@ const Zt = class Zt {
       },
       update: (n) => s.update(t.id, n),
       patch: (n) => {
-        var o;
-        const i = ((o = s.getBlocks().find((a) => a.id === t.id)) == null ? void 0 : o.data) ?? {};
+        var r;
+        const i = ((r = s.getBlocks().find((a) => a.id === t.id)) == null ? void 0 : r.data) ?? {};
         s.update(t.id, { ...i, ...n });
       },
       requestSave: () => this.saveChild(t),
@@ -5548,45 +5760,48 @@ const Zt = class Zt {
       duplicate: () => {
         const n = s.getBlocks(), i = n.findIndex((l) => l.id === t.id);
         if (i < 0) return "";
-        const o = JSON.parse(JSON.stringify(n[i]));
-        return s.insert(o.type, o.data, i + 1);
+        const r = JSON.parse(JSON.stringify(n[i]));
+        return s.insert(r.type, r.data, i + 1);
       },
       convert: (n) => {
-        const i = s.getBlocks().find((o) => o.id === t.id);
+        const i = s.getBlocks().find((r) => r.id === t.id);
         i && s.update(t.id, { ...i.data });
       }
     };
   }
 };
-Zt.toolbox = { icon: H.toggle, title: "Toggle section", category: "Rich blocks" }, Zt.conversion = { to: ["paragraph", "heading"] };
-let Ae = Zt;
-const De = "1.0.0", mr = "ezynota", br = 1, dt = "workspaces", ht = "assets";
-function ls(r) {
+Yt.toolbox = { icon: j.toggle, title: "Toggle section", category: "Rich blocks" }, Yt.conversion = { to: ["paragraph", "heading"] };
+let ze = Yt;
+const Fe = "1.0.0", Lr = "ezynota", Dr = 1, dt = "workspaces", ht = "assets";
+function ys(o) {
   return new Promise((t, e) => {
-    r.onsuccess = () => t(r.result), r.onerror = () => e(r.error ?? new Error("IndexedDB request failed"));
+    o.onsuccess = () => t(o.result), o.onerror = () => e(o.error ?? new Error("IndexedDB request failed"));
   });
 }
-function cs() {
+function ks() {
   try {
     return typeof indexedDB < "u" && indexedDB !== null;
   } catch {
     return !1;
   }
 }
-class yr {
+class Nr {
   constructor() {
-    this.db = null, this.initPromise = null, this.listeners = /* @__PURE__ */ new Map(), this.channel = null, this.idb = cs(), this.fallback = null;
+    this.db = null, this.initPromise = null, this.listeners = /* @__PURE__ */ new Map(), this.channel = null, this.idb = ks(), this.fallback = null;
+  }
+  get persistent() {
+    return this.db !== null && this.fallback === null;
   }
   init() {
     if (this.initPromise) return this.initPromise;
     const t = (async () => {
       if (this.idb)
         try {
-          this.db = await kr();
+          this.db = await Mr();
         } catch {
-          this.db = null, this.fallback || (this.fallback = new hs(!1));
+          this.db = null, this.fallback || (this.fallback = new ws(!1));
         }
-      else this.fallback || (this.fallback = new hs(!1));
+      else this.fallback || (this.fallback = new ws(!1));
       !this.channel && typeof BroadcastChannel < "u" && (this.channel = new BroadcastChannel("ezynota:workspace"), this.channel.onmessage = (e) => {
         var n;
         const s = (n = e.data) == null ? void 0 : n.workspaceId;
@@ -5606,42 +5821,42 @@ class yr {
     if (await this.init(), this.fallback) return this.fallback.loadWorkspace(t);
     if (!this.db) return null;
     const e = await this.getRecord(t);
-    return e ? { ...Wt(e.envelope), storageRevision: e.revision } : null;
+    return e ? { ...Kt(e.envelope), storageRevision: e.revision } : null;
   }
   getRecord(t) {
     const e = this.ensureDb().transaction(dt, "readonly").objectStore(dt);
-    return ls(e.get(t));
+    return ys(e.get(t));
   }
   async commit(t, e, s) {
     if (await this.init(), this.fallback) return this.fallback.commit(t, e, s);
     if (!this.db) return { ok: !1, reason: "error" };
     try {
-      const i = this.ensureDb().transaction(dt, "readwrite"), o = i.objectStore(dt), a = await new Promise((l, c) => {
+      const i = this.ensureDb().transaction(dt, "readwrite"), r = i.objectStore(dt), a = await new Promise((l, c) => {
         let d = 0;
-        const h = o.get(t);
-        h.onsuccess = () => {
+        const u = r.get(t);
+        u.onsuccess = () => {
           var g;
-          const u = ((g = h.result) == null ? void 0 : g.revision) ?? 0;
-          if (u !== s) {
+          const h = ((g = u.result) == null ? void 0 : g.revision) ?? 0;
+          if (h !== s) {
             l({ ok: !1, reason: "stale" });
             return;
           }
-          d = u + 1;
-          const p = o.put({
+          d = h + 1;
+          const f = r.put({
             id: t,
-            envelope: Wt(e),
+            envelope: Kt(e),
             revision: d
           });
-          p.onsuccess = () => l({ ok: !0, revision: d }), p.onerror = () => {
+          f.onsuccess = () => l({ ok: !0, revision: d }), f.onerror = () => {
             var y;
-            (((y = p.error) == null ? void 0 : y.name) ?? "") === "QuotaExceededError" ? l({ ok: !1, reason: "quota" }) : c(p.error);
+            (((y = f.error) == null ? void 0 : y.name) ?? "") === "QuotaExceededError" ? l({ ok: !1, reason: "quota" }) : c(f.error);
           };
-        }, h.onerror = () => c(h.error ?? new Error("IndexedDB request failed")), i.onabort = () => {
-          var p;
-          (((p = i.error) == null ? void 0 : p.name) ?? "") === "QuotaExceededError" && l({ ok: !1, reason: "quota" });
+        }, u.onerror = () => c(u.error ?? new Error("IndexedDB request failed")), i.onabort = () => {
+          var f;
+          (((f = i.error) == null ? void 0 : f.name) ?? "") === "QuotaExceededError" && l({ ok: !1, reason: "quota" });
         };
       });
-      return await ds(i), a.ok && this.broadcast(t), a;
+      return await vs(i), a.ok && this.broadcast(t), a;
     } catch (n) {
       return { ok: !1, reason: (n == null ? void 0 : n.name) === "QuotaExceededError" ? "quota" : "error" };
     }
@@ -5649,20 +5864,20 @@ class yr {
   async loadAsset(t, e) {
     if (await this.init(), this.fallback) return this.fallback.loadAsset(t, e);
     if (!this.db) return null;
-    const s = qt(t, e), n = await ls(
+    const s = Vt(t, e), n = await ys(
       this.ensureDb().transaction(ht, "readonly").objectStore(ht).get(s)
     );
-    return n ? vr(n) : null;
+    return n ? Rr(n) : null;
   }
   async saveAsset(t, e) {
     if (await this.init(), this.fallback) return this.fallback.saveAsset(t, e);
     if (!this.db) return !1;
     try {
-      const s = this.ensureDb().transaction(ht, "readwrite"), n = s.objectStore(ht), i = { ...e, key: qt(t, e.id) }, o = await new Promise((a) => {
+      const s = this.ensureDb().transaction(ht, "readwrite"), n = s.objectStore(ht), i = { ...e, key: Vt(t, e.id) }, r = await new Promise((a) => {
         const l = n.put(i);
         l.onsuccess = () => a(!0), l.onerror = () => a(!1);
       });
-      return await ds(s), o;
+      return await vs(s), r;
     } catch {
       return !1;
     }
@@ -5689,35 +5904,35 @@ class yr {
       (t = this.channel) == null || t.close();
     } catch {
     }
-    this.channel = null, this.db && (this.db.close(), this.db = null), this.fallback && (await this.fallback.close(), this.fallback = null, this.idb = cs()), this.initPromise = null;
+    this.channel = null, this.db && (this.db.close(), this.db = null), this.fallback && (await this.fallback.close(), this.fallback = null, this.idb = ks()), this.initPromise = null;
   }
 }
-function ds(r) {
+function vs(o) {
   return new Promise((t, e) => {
-    r.oncomplete = () => t(), r.onerror = () => e(r.error ?? new Error("transaction failed")), r.onabort = () => e(r.error ?? new Error("transaction aborted"));
+    o.oncomplete = () => t(), o.onerror = () => e(o.error ?? new Error("transaction failed")), o.onabort = () => e(o.error ?? new Error("transaction aborted"));
   });
 }
-function kr() {
-  return new Promise((r, t) => {
-    const e = indexedDB.open(mr, br);
+function Mr() {
+  return new Promise((o, t) => {
+    const e = indexedDB.open(Lr, Dr);
     e.onupgradeneeded = () => {
       const s = e.result;
       s.objectStoreNames.contains(dt) || s.createObjectStore(dt, { keyPath: "id" }), s.objectStoreNames.contains(ht) || s.createObjectStore(ht, { keyPath: "key" });
-    }, e.onsuccess = () => r(e.result), e.onerror = () => t(e.error ?? new Error("IndexedDB open failed")), e.onblocked = () => t(new Error("IndexedDB open blocked (another connection holds this database)"));
+    }, e.onsuccess = () => o(e.result), e.onerror = () => t(e.error ?? new Error("IndexedDB open failed")), e.onblocked = () => t(new Error("IndexedDB open blocked (another connection holds this database)"));
   });
 }
-function qt(r, t) {
-  return `${r}::${t}`;
+function Vt(o, t) {
+  return `${o}::${t}`;
 }
-function Wt(r) {
-  return JSON.parse(JSON.stringify(r));
+function Kt(o) {
+  return JSON.parse(JSON.stringify(o));
 }
-function vr(r) {
-  return { ...r, bytes: new Uint8Array(r.bytes) };
+function Rr(o) {
+  return { ...o, bytes: new Uint8Array(o.bytes) };
 }
-class hs {
+class ws {
   constructor(t = !0) {
-    this.workspaces = /* @__PURE__ */ new Map(), this.assets = /* @__PURE__ */ new Map(), this.listeners = /* @__PURE__ */ new Map(), this.channel = null, t && typeof BroadcastChannel < "u" && (this.channel = new BroadcastChannel("ezynota:workspace"), this.channel.onmessage = (e) => {
+    this.persistent = !1, this.workspaces = /* @__PURE__ */ new Map(), this.assets = /* @__PURE__ */ new Map(), this.listeners = /* @__PURE__ */ new Map(), this.channel = null, t && typeof BroadcastChannel < "u" && (this.channel = new BroadcastChannel("ezynota:workspace"), this.channel.onmessage = (e) => {
       var n;
       const s = (n = e.data) == null ? void 0 : n.workspaceId;
       if (s)
@@ -5729,29 +5944,29 @@ class hs {
   }
   async loadWorkspace(t) {
     const e = this.workspaces.get(t);
-    return e ? { ...Wt(e.envelope), storageRevision: e.revision } : null;
+    return e ? { ...Kt(e.envelope), storageRevision: e.revision } : null;
   }
   async commit(t, e, s) {
     var a;
     const n = this.workspaces.get(t), i = (n == null ? void 0 : n.revision) ?? 0;
     if (i !== s) return { ok: !1, reason: "stale" };
-    const o = {
+    const r = {
       id: t,
-      envelope: Wt(e),
+      envelope: Kt(e),
       revision: i + 1
     };
-    this.workspaces.set(t, o);
+    this.workspaces.set(t, r);
     try {
       (a = this.channel) == null || a.postMessage({ workspaceId: t });
     } catch {
     }
-    return { ok: !0, revision: o.revision };
+    return { ok: !0, revision: r.revision };
   }
   async loadAsset(t, e) {
-    return this.assets.get(qt(t, e)) ?? null;
+    return this.assets.get(Vt(t, e)) ?? null;
   }
   async saveAsset(t, e) {
-    return this.assets.set(qt(t, e.id), { ...e, bytes: new Uint8Array(e.bytes) }), !0;
+    return this.assets.set(Vt(t, e.id), { ...e, bytes: new Uint8Array(e.bytes) }), !0;
   }
   subscribe(t, e) {
     let s = this.listeners.get(t);
@@ -5768,41 +5983,44 @@ class hs {
     this.channel = null;
   }
 }
-function Rs(r) {
+function Vs(o) {
   return {
-    workspaceSchemaVersion: De,
-    id: r,
+    workspaceSchemaVersion: Fe,
+    id: o,
     name: "Untitled workspace",
     notes: [],
     folders: [],
     savedAt: 0,
-    generator: { name: "ezynota", version: Gt }
+    generator: { name: "ezynota", version: Xt }
   };
 }
-function wr(r) {
+function Or(o) {
   let t = "/default";
   try {
     typeof location < "u" && location.pathname && (t = location.pathname);
   } catch {
   }
-  return `${t}#${r ?? "default"}`;
+  return `${t}#${o ?? "default"}`;
 }
-class Er {
+class Fr {
   constructor(t) {
-    this.envelope = Rs("pending"), this.revision = 0, this.loaded = !1, this.loadError = null, this.listeners = /* @__PURE__ */ new Set(), this.saveQueue = Promise.resolve(), this.saveTimer = null, this.dirty = !1, this.mutationVersion = 0, this.unsavedSnapshot = null, this.unsubscribeCrossTab = null, this.lastStatus = "idle", this.destroyed = !1, this.objectUrls = /* @__PURE__ */ new Map(), this.unloadDisposers = [], this.conflictRemoteRevision = null, this.conflictRetryRevision = null, this.activeNoteId = null, this.activeFolderId = null, this.workspaceId = t.workspaceId, this.storage = t.storage, this.generateId = t.generateId, this.autosaveMs = t.autosaveMs ?? 500, this.activeWorkspaceId = t.workspaceId, this.registerUnloadListeners();
+    this.envelope = Vs("pending"), this.revision = 0, this.loaded = !1, this.loadError = null, this.listeners = /* @__PURE__ */ new Set(), this.saveQueue = Promise.resolve(), this.saveTimer = null, this.dirty = !1, this.mutationVersion = 0, this.unsavedSnapshot = null, this.unsubscribeCrossTab = null, this.lastStatus = "idle", this.destroyed = !1, this.objectUrls = /* @__PURE__ */ new Map(), this.unloadDisposers = [], this.conflictRemoteRevision = null, this.conflictRetryRevision = null, this.activeNoteId = null, this.activeFolderId = null, this.workspaceId = t.workspaceId, this.storage = t.storage, this.generateId = t.generateId, this.autosaveMs = t.autosaveMs ?? 500, this.activeWorkspaceId = t.workspaceId, this.registerUnloadListeners();
   }
   /* ---------- lifecycle ---------- */
   async load() {
     try {
       await this.storage.init(), this.subscribeCrossTab();
       const t = await this.storage.loadWorkspace(this.activeWorkspaceId);
-      this.envelope = us(t, this.activeWorkspaceId), this.revision = (t == null ? void 0 : t.storageRevision) ?? 0, this.loaded = !0, this.loadError = null, this.emit({ type: "loaded" });
+      this.envelope = Es(t, this.activeWorkspaceId), this.revision = (t == null ? void 0 : t.storageRevision) ?? 0, this.loaded = !0, this.loadError = null, this.emit({ type: "loaded" });
     } catch (t) {
       throw this.loaded = !1, this.loadError = t, this.emit({ type: "loadFailed", error: t }), t instanceof k ? t : new k("EZ_UNKNOWN_ERROR", "Workspace failed to load", { workspaceId: this.workspaceId }, t);
     }
   }
   isLoaded() {
     return this.loaded;
+  }
+  isPersistent() {
+    return this.storage.persistent !== !1;
   }
   getLoadError() {
     return this.loadError;
@@ -5875,7 +6093,7 @@ class Er {
     try {
       const t = await this.storage.loadWorkspace(this.activeWorkspaceId);
       if (this.destroyed || this.dirty) return;
-      this.envelope = us(t, this.activeWorkspaceId), this.revision = (t == null ? void 0 : t.storageRevision) ?? 0, this.emit({ type: "remoteChange" }), this.emit({ type: "notes:changed" });
+      this.envelope = Es(t, this.activeWorkspaceId), this.revision = (t == null ? void 0 : t.storageRevision) ?? 0, this.emit({ type: "remoteChange" }), this.emit({ type: "notes:changed" });
     } catch {
     }
   }
@@ -5936,7 +6154,7 @@ class Er {
     const e = this.getNote(t);
     if (!e) return [];
     const s = /* @__PURE__ */ new Set();
-    return Pt(e.document.blocks, (n) => {
+    return _t(e.document.blocks, (n) => {
       lt(n.data, s);
     }), Array.from(s);
   }
@@ -5973,7 +6191,7 @@ class Er {
     if (!e) return null;
     const s = Date.now(), n = `${e.title} (copy)`, i = J(e.document);
     i.meta = { ...i.meta ?? {}, title: n };
-    const o = {
+    const r = {
       ...e,
       id: this.generateId(),
       title: n,
@@ -5983,7 +6201,7 @@ class Er {
       revision: 0,
       trashed: !1
     };
-    return delete o.trashedAt, this.envelope.notes.push(o), this.markDirty(), this.emit({ type: "notes:changed" }), o;
+    return delete r.trashedAt, this.envelope.notes.push(r), this.markDirty(), this.emit({ type: "notes:changed" }), r;
   }
   /** Replace a note's document (autosave target). Bumps revision only on commit. */
   updateNoteDocument(t, e, s) {
@@ -5992,7 +6210,7 @@ class Er {
   }
   /* ---------- folders CRUD ---------- */
   createFolder(t, e = null) {
-    if (e && !zr(this.envelope.folders, e) && !this.getFolder(e))
+    if (e && !Ur(this.envelope.folders, e) && !this.getFolder(e))
       throw new k("EZ_UNKNOWN_ERROR", `Folder "${e}" not found`);
     const s = Date.now(), n = { id: this.generateId(), name: t, parentId: e, createdAt: s, updatedAt: s };
     return this.envelope.folders.push(n), this.markDirty(), this.emit({ type: "folders:changed" }), n;
@@ -6064,17 +6282,17 @@ class Er {
     if (!s) return [];
     const n = [];
     for (const i of this.listNotes((e == null ? void 0 : e.includeTrash) === !0)) {
-      const o = i.title.toLowerCase().indexOf(s);
-      if (o >= 0 && n.push({ noteId: i.id, title: i.title, excerpt: i.title, offset: o, inTitle: !0 }), Pt(i.document.blocks, (a) => {
+      const r = i.title.toLowerCase().indexOf(s);
+      if (r >= 0 && n.push({ noteId: i.id, title: i.title, excerpt: i.title, offset: r, inTitle: !0 }), _t(i.document.blocks, (a) => {
         const l = at(a.data);
         if (!l) return;
         const c = l.toLowerCase().indexOf(s);
         if (c < 0) return;
-        const d = Math.max(0, c - 30), h = Math.min(l.length, c + s.length + 30);
+        const d = Math.max(0, c - 30), u = Math.min(l.length, c + s.length + 30);
         n.push({
           noteId: i.id,
           title: i.title,
-          excerpt: `${d > 0 ? "…" : ""}${l.slice(d, h)}${h < l.length ? "…" : ""}`,
+          excerpt: `${d > 0 ? "…" : ""}${l.slice(d, u)}${u < l.length ? "…" : ""}`,
           offset: c - d,
           blockId: a.id
         });
@@ -6123,7 +6341,7 @@ class Er {
     try {
       const n = await this.storage.commit(this.activeWorkspaceId, t, s);
       if (n.ok) {
-        this.revision = n.revision, e === this.mutationVersion && (this.dirty = !1, this.unsavedSnapshot = null, this.emitStatus("saved"));
+        this.revision = n.revision, e === this.mutationVersion && (this.dirty = !1, this.unsavedSnapshot = null, this.emitStatus(this.isPersistent() ? "saved" : "temporary"));
         return;
       }
       const i = n.reason === "stale" ? "Workspace changed in another tab. Export a backup of your edits before reloading." : `Workspace save failed (${n.reason})`;
@@ -6183,7 +6401,7 @@ class Er {
   async collectAssets() {
     const t = /* @__PURE__ */ new Set();
     for (const s of this.envelope.notes)
-      Pt(s.document.blocks, (n) => Se(n.data, t));
+      _t(s.document.blocks, (n) => Be(n.data, t));
     const e = [];
     for (const s of t) {
       const n = await this.loadAsset(s);
@@ -6200,27 +6418,28 @@ class Er {
    * commit; a malformed or newer envelope is retained for recovery.
    */
   async restoreBackup(t, e) {
-    const s = Br(t);
+    const s = qr(t);
     if (!s.ok)
       throw new k("EZ_IMPORT_FAILED", s.reason, { recovered: !0 });
     const n = s.envelope;
-    if (n.workspaceSchemaVersion !== De)
+    if (n.workspaceSchemaVersion !== Fe)
       throw new k("EZ_IMPORT_FAILED", `Workspace envelope "${n.workspaceSchemaVersion}" is not supported`, {
         original: t
       });
-    const i = (e == null ? void 0 : e.newWorkspaceId) === !1 ? n.id : this.generateId(), o = { ...n, id: i, savedAt: Date.now() };
-    delete o.storageRevision, this.cancelSaveTimer(), await this.flush();
+    const i = (e == null ? void 0 : e.newWorkspaceId) === !1 ? n.id : this.generateId(), r = { ...n, id: i, savedAt: Date.now() };
+    delete r.storageRevision, this.cancelSaveTimer(), await this.flush();
     const a = this.enqueue(async () => {
-      if (Ar(t))
+      if ($r(t)) {
         for (const d of t.assets)
-          await this.storage.saveAsset(i, { ...d, bytes: Ir(d.bytes) });
-      const l = i === this.activeWorkspaceId ? this.revision : 0, c = await this.storage.commit(i, o, l);
+          if (!await this.storage.saveAsset(i, { ...d, bytes: Hr(d.bytes) })) throw new k("EZ_IMPORT_FAILED", "Could not restore an image asset. The current workspace was retained.", { assetId: d.id });
+      }
+      const l = i === this.activeWorkspaceId ? this.revision : 0, c = await this.storage.commit(i, r, l);
       if (!c.ok)
         throw new k("EZ_IMPORT_FAILED", `Restoring the backup failed (${c.reason})`, {
           reason: c.reason,
           workspaceId: i
         });
-      this.revision = c.revision, this.activeWorkspaceId = i, this.envelope = o, this.loaded = !0, this.dirty = !1, this.unsavedSnapshot = null, this.subscribeCrossTab();
+      this.revision = c.revision, this.activeWorkspaceId = i, this.envelope = r, this.loaded = !0, this.dirty = !1, this.unsavedSnapshot = null, this.subscribeCrossTab();
     });
     try {
       await a;
@@ -6232,73 +6451,73 @@ class Er {
     return this.emit({ type: "notes:changed" }), this.emit({ type: "folders:changed" }), { workspaceId: i };
   }
 }
-function at(r) {
-  if (Array.isArray(r))
-    return r.map((e) => at(e)).join("");
-  if (typeof r != "object" || r === null) return "";
-  const t = r;
+function at(o) {
+  if (Array.isArray(o))
+    return o.map((e) => at(e)).join("");
+  if (typeof o != "object" || o === null) return "";
+  const t = o;
   return typeof t.code == "string" ? t.code : t.type === "text" ? typeof t.text == "string" ? t.text : "" : Array.isArray(t.content) ? at(t.content) : Array.isArray(t.items) ? t.items.map((e) => at(e)).join(" ") : t.rows ? at(t.rows) : t.heading ? at(t.heading) : "";
 }
-function us(r, t) {
-  const e = Rs(t);
-  return !r || typeof r != "object" ? e : {
-    workspaceSchemaVersion: De,
+function Es(o, t) {
+  const e = Vs(t);
+  return !o || typeof o != "object" ? e : {
+    workspaceSchemaVersion: Fe,
     id: t,
-    name: typeof r.name == "string" && r.name.trim() ? r.name : e.name,
-    notes: Array.isArray(r.notes) ? r.notes : [],
-    folders: Array.isArray(r.folders) ? r.folders : [],
-    savedAt: typeof r.savedAt == "number" ? r.savedAt : 0,
-    generator: r.generator ?? e.generator
+    name: typeof o.name == "string" && o.name.trim() ? o.name : e.name,
+    notes: Array.isArray(o.notes) ? o.notes : [],
+    folders: Array.isArray(o.folders) ? o.folders : [],
+    savedAt: typeof o.savedAt == "number" ? o.savedAt : 0,
+    generator: o.generator ?? e.generator
   };
 }
-function Y(r) {
-  return JSON.parse(JSON.stringify(r));
+function Y(o) {
+  return JSON.parse(JSON.stringify(o));
 }
-function Ar(r) {
-  return typeof r == "object" && r !== null && Array.isArray(r.assets);
+function $r(o) {
+  return typeof o == "object" && o !== null && Array.isArray(o.assets);
 }
-function Sr(r) {
+function Pr(o) {
   let t = "";
-  for (let s = 0; s < r.length; s += 32768)
-    t += String.fromCharCode(...r.subarray(s, s + 32768));
+  for (let s = 0; s < o.length; s += 32768)
+    t += String.fromCharCode(...o.subarray(s, s + 32768));
   return btoa(t);
 }
-function xr(r) {
-  const t = atob(r), e = new Uint8Array(t.length);
+function _r(o) {
+  const t = atob(o), e = new Uint8Array(t.length);
   for (let s = 0; s < t.length; s++) e[s] = t.charCodeAt(s);
   return e;
 }
-function Ir(r) {
-  if (r instanceof Uint8Array) return r;
-  if (typeof r == "string") return xr(r);
-  if (Array.isArray(r)) return new Uint8Array(r);
+function Hr(o) {
+  if (o instanceof Uint8Array) return o;
+  if (typeof o == "string") return _r(o);
+  if (Array.isArray(o)) return new Uint8Array(o);
   throw new k("EZ_IMPORT_FAILED", "Backup asset bytes are malformed");
 }
-function Cr(r) {
-  const { assets: t, ...e } = r;
+function jr(o) {
+  const { assets: t, ...e } = o;
   return {
     ...e,
     assets: t.map((s) => ({
       id: s.id,
       mime: s.mime,
       name: s.name,
-      bytes: Sr(s.bytes),
+      bytes: Pr(s.bytes),
       createdAt: s.createdAt
     }))
   };
 }
-function Pt(r, t) {
-  for (const e of r)
-    t(e), Array.isArray(e.children) && Pt(e.children, t);
+function _t(o, t) {
+  for (const e of o)
+    t(e), Array.isArray(e.children) && _t(e.children, t);
 }
-function lt(r, t) {
+function lt(o, t) {
   var s;
-  if (Array.isArray(r)) {
-    for (const n of r) lt(n, t);
+  if (Array.isArray(o)) {
+    for (const n of o) lt(n, t);
     return;
   }
-  if (typeof r != "object" || r === null) return;
-  const e = r;
+  if (typeof o != "object" || o === null) return;
+  const e = o;
   if (Array.isArray(e.marks))
     for (const n of e.marks) {
       const i = (n == null ? void 0 : n.type) === "link" ? (s = n.attrs) == null ? void 0 : s.href : void 0;
@@ -6308,30 +6527,30 @@ function lt(r, t) {
     for (const n of e.content) lt(n, t);
   e.rows && lt(e.rows, t), e.items && lt(e.items, t), e.heading && lt(e.heading, t);
 }
-function Se(r, t) {
-  if (Array.isArray(r)) {
-    for (const s of r) Se(s, t);
+function Be(o, t) {
+  if (Array.isArray(o)) {
+    for (const s of o) Be(s, t);
     return;
   }
-  if (typeof r != "object" || r === null) return;
-  const e = r;
+  if (typeof o != "object" || o === null) return;
+  const e = o;
   typeof e.assetId == "string" && t.add(e.assetId), typeof e.src == "string" && e.src.startsWith("asset:") && t.add(e.src.slice(6));
-  for (const s of Object.values(e)) Se(s, t);
+  for (const s of Object.values(e)) Be(s, t);
 }
-function it(r, t, e) {
-  let s = r.find((i) => i.id === t), n = 0;
+function it(o, t, e) {
+  let s = o.find((i) => i.id === t), n = 0;
   for (; s && n++ < 64; ) {
     if (s.parentId === e) return !0;
-    s = s.parentId ? r.find((i) => i.id === s.parentId) : void 0;
+    s = s.parentId ? o.find((i) => i.id === s.parentId) : void 0;
   }
   return !1;
 }
-function zr(r, t, e) {
+function Ur(o, t, e) {
   return !!t;
 }
-function Br(r) {
-  if (typeof r != "object" || r === null) return { ok: !1, reason: "Backup must be an object" };
-  const t = r;
+function qr(o) {
+  if (typeof o != "object" || o === null) return { ok: !1, reason: "Backup must be an object" };
+  const t = o;
   if (typeof t.workspaceSchemaVersion != "string") return { ok: !1, reason: "Backup is missing workspaceSchemaVersion" };
   if (!Array.isArray(t.notes) || !Array.isArray(t.folders))
     return { ok: !1, reason: "Backup must contain notes and folders arrays" };
@@ -6353,73 +6572,73 @@ function Br(r) {
   }
   return { ok: !0, envelope: t };
 }
-const Tr = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
-function Lr(r, t) {
+const Wr = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+function Vr(o, t) {
   const e = t.ownerDocument.defaultView, s = t.getBoundingClientRect();
-  r.style.maxHeight = `${Math.max(80, e.innerHeight - 16)}px`, r.style.maxWidth = `${Math.max(0, e.innerWidth - 16)}px`;
-  const n = r.getBoundingClientRect();
-  r.style.left = `${Math.max(8, Math.min(s.right - n.width, e.innerWidth - n.width - 8))}px`, r.style.top = `${Math.max(8, Math.min(s.bottom + 4, e.innerHeight - n.height - 8))}px`;
+  o.style.maxHeight = `${Math.max(80, e.innerHeight - 16)}px`, o.style.maxWidth = `${Math.max(0, e.innerWidth - 16)}px`;
+  const n = o.getBoundingClientRect();
+  o.style.left = `${Math.max(8, Math.min(s.right - n.width, e.innerWidth - n.width - 8))}px`, o.style.top = `${Math.max(8, Math.min(s.bottom + 4, e.innerHeight - n.height - 8))}px`;
 }
-function ps(r) {
-  return Array.from(r.querySelectorAll('button:not(:disabled), summary, [role="menuitem"]')).filter((t) => t.getClientRects().length > 0);
+function As(o) {
+  return Array.from(o.querySelectorAll('button:not(:disabled), summary, [role="menuitem"]')).filter((t) => t.getClientRects().length > 0);
 }
-function xe(r) {
-  for (const t of r.querySelectorAll("details[open]")) {
+function Te(o) {
+  for (const t of o.querySelectorAll("details[open]")) {
     t.open = !1;
     for (const e of t.querySelectorAll(":popover-open")) e.hidePopover();
   }
 }
-function Ie(r, t) {
-  const e = r.ownerDocument, s = e.defaultView, n = r.querySelector("summary");
+function Le(o, t) {
+  const e = o.ownerDocument, s = e.defaultView, n = o.querySelector("summary");
   t.classList.add("ezy-suite-popup"), t.setAttribute("popover", "manual"), n.setAttribute("aria-expanded", "false");
   const i = () => {
-    r.open && Lr(t, n);
-  }, o = (u = !1) => {
-    r.open && (u && n.focus(), xe(t), r.open = !1, t.matches(":popover-open") && t.hidePopover(), n.setAttribute("aria-expanded", "false"));
+    o.open && Vr(t, n);
+  }, r = (h = !1) => {
+    o.open && (h && n.focus(), Te(t), o.open = !1, t.matches(":popover-open") && t.hidePopover(), n.setAttribute("aria-expanded", "false"));
   }, a = () => {
-    var u;
-    n.setAttribute("aria-expanded", String(r.open)), r.open ? (t.showPopover && !t.matches(":popover-open") && t.showPopover(), i(), (u = ps(t)[0]) == null || u.focus()) : (xe(t), t.matches(":popover-open") && t.hidePopover());
-  }, l = (u) => {
-    r.contains(u.target) || o();
-  }, c = (u) => {
-    var p;
-    if (!r.open) {
-      u.target === n && ["ArrowDown", "ArrowUp"].includes(u.key) && (u.preventDefault(), r.open = !0);
+    var h;
+    n.setAttribute("aria-expanded", String(o.open)), o.open ? (t.showPopover && !t.matches(":popover-open") && t.showPopover(), i(), (h = As(t)[0]) == null || h.focus()) : (Te(t), t.matches(":popover-open") && t.hidePopover());
+  }, l = (h) => {
+    o.contains(h.target) || r();
+  }, c = (h) => {
+    var f;
+    if (!o.open) {
+      h.target === n && ["ArrowDown", "ArrowUp"].includes(h.key) && (h.preventDefault(), o.open = !0);
       return;
     }
-    if (u.key === "Escape")
-      u.preventDefault(), u.stopPropagation(), o(!0);
-    else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(u.key)) {
-      const g = ps(t), m = g.indexOf(e.activeElement), y = u.key === "Home" ? 0 : u.key === "End" ? g.length - 1 : (m + (u.key === "ArrowUp" ? -1 : 1) + g.length) % g.length;
-      (p = g[y]) == null || p.focus(), u.preventDefault(), u.stopPropagation();
+    if (h.key === "Escape")
+      h.preventDefault(), h.stopPropagation(), r(!0);
+    else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(h.key)) {
+      const g = As(t), m = g.indexOf(e.activeElement), y = h.key === "Home" ? 0 : h.key === "End" ? g.length - 1 : (m + (h.key === "ArrowUp" ? -1 : 1) + g.length) % g.length;
+      (f = g[y]) == null || f.focus(), h.preventDefault(), h.stopPropagation();
     }
-  }, d = (u) => {
-    const p = u.target.closest("button");
-    p && p.closest("details") === r && !p.disabled && o(t.contains(e.activeElement));
-  }, h = (u) => {
-    r.contains(u.relatedTarget) || o();
+  }, d = (h) => {
+    const f = h.target.closest("button");
+    f && f.closest("details") === o && !f.disabled && r(t.contains(e.activeElement));
+  }, u = (h) => {
+    o.contains(h.relatedTarget) || r();
   };
-  return r.addEventListener("toggle", a), r.addEventListener("keydown", c), r.addEventListener("focusout", h), t.addEventListener("click", d), e.addEventListener("pointerdown", l, !0), e.addEventListener("scroll", i, !0), s.addEventListener("resize", i), () => {
-    o(), r.removeEventListener("toggle", a), r.removeEventListener("keydown", c), r.removeEventListener("focusout", h), t.removeEventListener("click", d), e.removeEventListener("pointerdown", l, !0), e.removeEventListener("scroll", i, !0), s.removeEventListener("resize", i);
+  return o.addEventListener("toggle", a), o.addEventListener("keydown", c), o.addEventListener("focusout", u), t.addEventListener("click", d), e.addEventListener("pointerdown", l, !0), e.addEventListener("scroll", i, !0), s.addEventListener("resize", i), () => {
+    r(), o.removeEventListener("toggle", a), o.removeEventListener("keydown", c), o.removeEventListener("focusout", u), t.removeEventListener("click", d), e.removeEventListener("pointerdown", l, !0), e.removeEventListener("scroll", i, !0), s.removeEventListener("resize", i);
   };
 }
-function Dr(r, t, e) {
+function Kr(o, t, e) {
   var m, y;
   const s = t.ownerDocument;
-  r.classList.add("ezy-suite-host"), t.classList.add("ezy-suite-topbar"), e.brand.classList.add("ezy-suite-brand"), e.title.classList.add("ezy-suite-title"), e.exportControl.classList.add("ezy-suite-export");
+  o.classList.add("ezy-suite-host"), t.classList.add("ezy-suite-topbar"), e.brand.classList.add("ezy-suite-brand"), e.title.classList.add("ezy-suite-title"), e.exportControl.classList.add("ezy-suite-export");
   const n = e.more ?? s.createElement("details");
   if (n.classList.add("ezy-suite-more"), !e.more) {
     const v = s.createElement("summary");
-    v.innerHTML = Tr;
+    v.innerHTML = Wr;
     const w = s.createElement("div");
     n.append(v, w);
   }
   const i = n.querySelector("summary");
   i.setAttribute("aria-label", "More actions"), i.title = "More actions";
-  const o = n.children[1];
-  o.classList.add("ezy-suite-overflow"), o.setAttribute("aria-label", "More actions");
+  const r = n.children[1];
+  r.classList.add("ezy-suite-overflow"), r.setAttribute("aria-label", "More actions");
   const a = s.createElement("div");
-  a.className = "ezy-suite-extras", a.append(...Array.from(o.childNodes)), o.append(a);
+  a.className = "ezy-suite-extras", a.append(...Array.from(r.childNodes)), r.append(a);
   const l = [e.history, e.specialist, e.view, e.files].filter((v) => !!v);
   for (const v of l) {
     v.className = "ezy-suite-group", v.setAttribute("role", "group");
@@ -6433,34 +6652,56 @@ function Dr(r, t, e) {
     return v.before(w), { group: v, slot: w };
   });
   t.replaceChildren(e.brand, e.title, c);
-  const h = Ie(n, o);
-  let u = "";
-  const p = () => {
-    const v = r.getBoundingClientRect().width, w = v < 480 ? "small" : v < 800 ? "compact" : v < 1100 ? "medium" : "full";
-    if (w === u) return;
-    u = w;
+  const u = Le(n, r);
+  let h = "";
+  const f = () => {
+    const v = o.getBoundingClientRect().width, w = v < 480 ? "small" : v < 800 ? "compact" : v < 1100 ? "medium" : "full";
+    if (w === h) return;
+    h = w;
     const I = s.activeElement;
-    xe(t), n.open = !1, t.dataset.density = w;
-    for (const { group: z, slot: A } of d)
-      (z === e.specialist ? v < 1100 : z === e.history ? v < 480 : v < 800) ? o.insertBefore(z, a) : A.after(z);
-    n.hidden = o.children.length === 1 && !a.children.length, I && o.contains(I) ? i.focus() : n.hidden && I === i && e.title.focus();
-  }, g = new ResizeObserver(p);
-  return g.observe(r), p(), () => {
-    g.disconnect(), h();
+    Te(t), n.open = !1, t.dataset.density = w;
+    for (const { group: T, slot: $ } of d)
+      (T === e.specialist ? v < 1100 : T === e.history ? v < 480 : v < 800) ? r.insertBefore(T, a) : $.after(T);
+    n.hidden = r.children.length === 1 && !a.children.length, I && r.contains(I) ? i.focus() : n.hidden && I === i && e.title.focus();
+  }, g = new ResizeObserver(f);
+  return g.observe(o), f(), () => {
+    g.disconnect(), u();
   };
 }
-const Mr = '<svg viewBox="0 0 455 455" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><radialGradient cx="4324350" cy="0" r="6108823" gradientUnits="userSpaceOnUse" spreadMethod="pad" id="ezn-logo-fill" gradientTransform="matrix(0.000104987 0 0 0.000104987 1776 2268)"><stop offset="0" stop-color="#EC4899"/><stop offset="0.2" stop-color="#EC4899"/><stop offset="1" stop-color="#7C3AED"/></radialGradient></defs><g transform="translate(-1776 -2267)"><rect x="1776" y="2268" width="454" height="453" fill="url(#ezn-logo-fill)"/><path d="M2154 2646 2063.4 2555.1 2063.4 2433.9 1942.6 2433.9 1852 2343 2154 2343 2154 2646Z" fill="#FFFFFF" fill-rule="evenodd"/><path d="M2064 2646 1852 2434 1942.86 2434 2064 2555.14 2064 2646Z" fill="#FFFFFF" fill-rule="evenodd"/></g></svg>', Nr = { light: "Light", dark: "Dark", system: "System" };
-function Or(r) {
-  const t = r;
+const Jr = '<svg viewBox="0 0 455 455" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs><radialGradient cx="4324350" cy="0" r="6108823" gradientUnits="userSpaceOnUse" spreadMethod="pad" id="ezn-logo-fill" gradientTransform="matrix(0.000104987 0 0 0.000104987 1776 2268)"><stop offset="0" stop-color="#EC4899"/><stop offset="0.2" stop-color="#EC4899"/><stop offset="1" stop-color="#7C3AED"/></radialGradient></defs><g transform="translate(-1776 -2267)"><rect x="1776" y="2268" width="454" height="453" fill="url(#ezn-logo-fill)"/><path d="M2154 2646 2063.4 2555.1 2063.4 2433.9 1942.6 2433.9 1852 2343 2154 2343 2154 2646Z" fill="#FFFFFF" fill-rule="evenodd"/><path d="M2064 2646 1852 2434 1942.86 2434 2064 2555.14 2064 2646Z" fill="#FFFFFF" fill-rule="evenodd"/></g></svg>';
+function Zr(o, t) {
+  var s;
+  if (!t) return [];
+  const e = [];
+  for (const n of o.querySelectorAll("[data-ez-editable]")) {
+    if (!((s = n.closest("[data-ez-block-id]")) != null && s.classList.contains("ez-block"))) continue;
+    const i = n.ownerDocument.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+    let r;
+    for (; r = i.nextNode(); ) {
+      const a = r.textContent ?? "";
+      let l = a.indexOf(t);
+      for (; l !== -1; ) {
+        const c = n.ownerDocument.createRange();
+        c.setStart(r, l), c.setEnd(r, l + t.length), e.push({ range: c, editable: n }), l = a.indexOf(t, l + t.length);
+      }
+    }
+  }
+  return e;
+}
+const Gr = { light: "Light", dark: "Dark", system: "System" };
+function Yr(o) {
+  const t = o;
   return t.type === "importError" ? t.message ?? "Import failed" : null;
 }
-function Rr(r, t) {
+function Xr(o, t) {
   var e;
-  switch (r) {
+  switch (o) {
     case "saving":
       return "Saving…";
     case "saved":
       return "Saved";
+    case "temporary":
+      return "Stored in this tab only";
     case "error": {
       const s = t instanceof k ? (e = t.context) == null ? void 0 : e.reason : void 0;
       return s === "stale" ? "Save conflict — export a backup before reloading" : s === "quota" ? "Browser storage full — click to retry" : "Browser save failed — click to retry";
@@ -6469,17 +6710,17 @@ function Rr(r, t) {
       return "Ready";
   }
 }
-class Fr {
+class Qr {
   constructor(t, e, s, n = !0) {
-    this.sidebar = null, this.sidebarToggle = null, this.notesTree = null, this.noteCount = null, this.searchInput = null, this.searchResults = null, this.titleInput = null, this.workspaceTitle = null, this.breadcrumbs = null, this.saveStatusEl = null, this.saveStatusDot = null, this.wordCountEl = null, this.outlinePanel = null, this.fullscreenBtn = null, this.undoButton = null, this.redoButton = null, this.themeMenu = null, this.docMenu = null, this.exportMenu = null, this.importInput = null, this.errorPanel = null, this.legacyPanel = null, this.noticeEl = null, this.noticeTimer = null, this.findDialog = null, this.findReturnFocus = null, this.findInput = null, this.replaceInput = null, this.disposers = [], this.expandedFolders = /* @__PURE__ */ new Set(), this.refreshTimer = null, this.treeDrag = null, this.treeDropHighlight = null, this.root = t, this.state = e, this.deps = s, this.showSidebar = n;
+    this.compactSidebar = !1, this.desktopSidebarCollapsed = !1, this.sidebar = null, this.sidebarToggle = null, this.notesTree = null, this.noteCount = null, this.searchInput = null, this.searchResults = null, this.titleInput = null, this.workspaceTitle = null, this.breadcrumbs = null, this.saveStatusEl = null, this.saveStatusDot = null, this.wordCountEl = null, this.outlinePanel = null, this.fullscreenBtn = null, this.undoButton = null, this.redoButton = null, this.themeMenu = null, this.docMenu = null, this.exportMenu = null, this.importInput = null, this.errorPanel = null, this.legacyPanel = null, this.noticeEl = null, this.storageNoticeEl = null, this.noticeTimer = null, this.findDialog = null, this.findReturnFocus = null, this.findInput = null, this.replaceInput = null, this.findReturnRange = null, this.findMatches = [], this.findIndex = 0, this.findCounter = null, this.findNavigation = [], this.replaceButtons = [], this.findHighlightName = `ezynota-find-${++eo}`, this.disposers = [], this.expandedFolders = /* @__PURE__ */ new Set(), this.refreshTimer = null, this.treeDrag = null, this.treeDropHighlight = null, this.root = t, this.state = e, this.deps = s, this.showSidebar = n;
   }
   mount() {
-    this.buildShell(), this.refreshHistory();
+    this.buildShell(), this.observeContainer(), this.refreshHistory();
     const t = this.state.on((e) => this.handleEvent(e));
-    this.disposers.push(t), this.renderSidebar(), this.updateHeader(), this.maybeShowLegacyDraft();
+    this.disposers.push(t), this.renderSidebar(), this.updateHeader(), this.maybeShowLegacyDraft(), this.updateStorageNotice();
   }
   destroy() {
-    this.root.dispatchEvent(new Event("ez-close-popovers"));
+    this.clearFindHighlights(), this.findMatches = [], this.setDrawerOpen(!1), this.root.classList.remove("ez-workspace-compact", "ez-workspace-narrow"), this.root.dispatchEvent(new Event("ez-close-popovers"));
     for (const t of this.disposers) t();
     this.disposers.length = 0, this.refreshTimer && clearTimeout(this.refreshTimer), this.noticeTimer && clearTimeout(this.noticeTimer);
   }
@@ -6496,7 +6737,7 @@ class Fr {
     this.expandedFolders.add(t), this.renderSidebar();
   }
   handleEvent(t) {
-    const e = Or(t);
+    const e = Yr(t);
     if (e !== null) {
       this.showNotice(e);
       return;
@@ -6534,161 +6775,185 @@ class Fr {
   /* ---------- shell ---------- */
   buildShell() {
     this.root.classList.add("ez-workspace-root"), this.showSidebar || this.root.classList.add("ez-mode-document");
-    const t = this.buildTopbar(), e = f("div", "ez-workspace");
-    e.setAttribute("data-ez-workspace", "true"), this.sidebar = f("aside", "ez-sidebar"), this.sidebar.setAttribute("aria-label", "Notes"), this.buildSidebarContent();
-    const s = f("div", "ez-main");
+    const t = this.buildTopbar(), e = p("div", "ez-workspace");
+    e.setAttribute("data-ez-workspace", "true"), this.sidebar = p("aside", "ez-sidebar"), this.sidebar.setAttribute("aria-label", "Notes"), this.buildSidebarContent();
+    const s = p("div", "ez-main");
     s.appendChild(this.buildSidebarToggle());
     const n = this.buildHeader();
-    this.errorPanel = this.buildErrorPanel(), this.legacyPanel = this.buildLegacyPanel(), this.noticeEl = f("p", "ez-workspace-notice"), this.noticeEl.setAttribute("role", "status"), this.noticeEl.setAttribute("aria-live", "polite"), this.noticeEl.hidden = !0;
-    const i = f("div", "ez-doc-wrap"), o = this.root.querySelector(".ez-editor"), a = S("ez-sidebar-backdrop", "", "Close notes sidebar");
+    this.errorPanel = this.buildErrorPanel(), this.legacyPanel = this.buildLegacyPanel(), this.noticeEl = p("p", "ez-workspace-notice"), this.noticeEl.setAttribute("role", "status"), this.noticeEl.setAttribute("aria-live", "polite"), this.noticeEl.hidden = !0;
+    const i = p("div", "ez-doc-wrap"), r = this.root.querySelector(".ez-editor"), a = A("ez-sidebar-backdrop", "", "Close notes sidebar");
     a.tabIndex = -1, a.addEventListener("click", () => this.closeMobileSidebar());
-    const l = (h) => {
-      var u;
-      if (h.key === "Escape" && this.root.classList.contains("ez-sidebar-open") && (h.preventDefault(), h.stopPropagation(), this.closeMobileSidebar()), h.key === "Tab" && this.root.classList.contains("ez-sidebar-open")) {
-        const p = Array.from(((u = this.sidebar) == null ? void 0 : u.querySelectorAll("button, input, summary")) ?? []).filter((y) => y.getClientRects().length > 0 && !y.hasAttribute("disabled")), g = p[0], m = p[p.length - 1];
-        h.shiftKey && document.activeElement === g ? (h.preventDefault(), m == null || m.focus()) : !h.shiftKey && document.activeElement === m && (h.preventDefault(), g == null || g.focus());
+    const l = (u) => {
+      var h;
+      if (u.key === "Escape" && this.root.classList.contains("ez-sidebar-open") && (u.preventDefault(), u.stopPropagation(), this.closeMobileSidebar()), u.key === "Tab" && this.root.classList.contains("ez-sidebar-open")) {
+        const f = Array.from(((h = this.sidebar) == null ? void 0 : h.querySelectorAll("button, input, summary")) ?? []).filter((y) => y.getClientRects().length > 0 && !y.hasAttribute("disabled")), g = f[0], m = f[f.length - 1];
+        u.shiftKey && document.activeElement === g ? (u.preventDefault(), m == null || m.focus()) : !u.shiftKey && document.activeElement === m && (u.preventDefault(), g == null || g.focus());
       }
     };
     this.root.addEventListener("keydown", l), this.disposers.push(() => this.root.removeEventListener("keydown", l));
-    const c = f("div", "ez-header-row");
+    const c = p("div", "ez-header-row");
     c.append(n);
-    const d = f("div", "ez-document-column");
-    d.append(c, this.noticeEl, this.errorPanel, this.legacyPanel, i), s.appendChild(d), o ? i.appendChild(o) : i.appendChild(f("div", "ez-editor")), e.append(a, this.sidebar, s), this.root.append(t, e, this.buildStatusbar()), this.applyTheme(this.state ? this.root.getAttribute("data-ez-theme") ?? "system" : "system"), this.outlinePanel = this.buildOutline(), s.appendChild(this.outlinePanel), this.findDialog = this.buildFindDialog(), s.insertBefore(this.findDialog, d), this.buildHiddenImportInput();
+    const d = p("div", "ez-document-column");
+    d.append(c, this.noticeEl, this.errorPanel, this.legacyPanel, i), s.appendChild(d), r ? i.appendChild(r) : i.appendChild(p("div", "ez-editor")), e.append(a, this.sidebar, s), this.root.append(t, e, this.buildStatusbar()), this.applyTheme(this.state ? this.root.getAttribute("data-ez-theme") ?? "system" : "system"), this.outlinePanel = this.buildOutline(), s.appendChild(this.outlinePanel), this.findDialog = this.buildFindDialog(), s.insertBefore(this.findDialog, d), this.buildHiddenImportInput();
   }
   buildSidebarToggle() {
-    return this.sidebarToggle = E("ez-icon-btn ez-sidebar-toggle", b.panelLeft, "Toggle notes sidebar"), this.sidebarToggle.setAttribute("aria-expanded", String(!window.matchMedia("(max-width: 900px)").matches)), this.sidebarToggle.addEventListener("click", () => {
-      var t, e, s;
-      if (window.matchMedia("(max-width: 900px)").matches) {
-        this.root.classList.remove("ez-sidebar-collapsed");
-        const n = this.root.classList.toggle("ez-sidebar-open");
-        (t = this.sidebarToggle) == null || t.setAttribute("aria-expanded", String(n)), n && ((e = this.searchInput) == null || e.focus());
-      } else {
-        const n = this.root.classList.toggle("ez-sidebar-collapsed");
-        (s = this.sidebarToggle) == null || s.setAttribute("aria-expanded", String(!n));
-      }
+    return this.sidebarToggle = E("ez-icon-btn ez-sidebar-toggle", b.panelLeft, "Toggle notes sidebar"), this.sidebarToggle.setAttribute("aria-expanded", "true"), this.sidebarToggle.addEventListener("click", () => {
+      var t, e;
+      if (this.compactSidebar) {
+        const s = !this.root.classList.contains("ez-sidebar-open");
+        this.setDrawerOpen(s), s && ((t = this.searchInput) == null || t.focus());
+      } else
+        this.desktopSidebarCollapsed = this.root.classList.toggle("ez-sidebar-collapsed"), (e = this.sidebarToggle) == null || e.setAttribute("aria-expanded", String(!this.desktopSidebarCollapsed));
     }), this.sidebarToggle;
+  }
+  observeContainer() {
+    const t = (s = this.root.getBoundingClientRect().width || window.innerWidth) => {
+      var r, a;
+      this.root.classList.toggle("ez-workspace-narrow", s <= 600);
+      const n = s <= 900;
+      if (n === this.compactSidebar) return;
+      const i = n && ((r = this.sidebar) == null ? void 0 : r.contains(document.activeElement));
+      this.compactSidebar = n, this.root.classList.toggle("ez-workspace-compact", n), this.root.classList.toggle("ez-sidebar-collapsed", !n && this.desktopSidebarCollapsed), this.setDrawerOpen(!1), i && ((a = this.sidebarToggle) == null || a.focus());
+    };
+    if (t(), typeof ResizeObserver < "u") {
+      const s = new ResizeObserver((n) => {
+        const i = n.find((r) => r.target === this.root);
+        i && t(i.contentRect.width);
+      });
+      s.observe(this.root), this.disposers.push(() => s.disconnect());
+    }
+    const e = () => t();
+    window.addEventListener("resize", e), this.disposers.push(() => window.removeEventListener("resize", e));
+  }
+  setDrawerOpen(t) {
+    var e, s;
+    this.root.classList.toggle("ez-sidebar-open", t), (e = this.sidebarToggle) == null || e.setAttribute("aria-expanded", String(this.showSidebar && (this.compactSidebar ? t : !this.desktopSidebarCollapsed))), (s = this.sidebar) == null || s.setAttribute("aria-hidden", String(!this.showSidebar || this.compactSidebar && !t)), this.sidebar && (t ? (this.sidebar.setAttribute("role", "dialog"), this.sidebar.setAttribute("aria-modal", "true")) : (this.sidebar.removeAttribute("role"), this.sidebar.removeAttribute("aria-modal")));
+    for (const n of this.root.querySelectorAll(".ez-main, .ezy-suite-topbar, .ez-statusbar")) n.inert = t;
   }
   /** Suite-standard topbar: brand + document actions, shared with the shell. */
   buildTopbar() {
-    var z;
-    const t = f("header", "ez-topbar"), e = f("div", "ez-brand"), s = f("span", "ez-brand-mark");
-    s.innerHTML = Mr, e.append(s, f("span", "ez-brand-name", "Ezynota")), this.workspaceTitle = f("input", "ez-topbar-title"), this.workspaceTitle.type = "text", this.workspaceTitle.spellcheck = !1, this.workspaceTitle.placeholder = "Untitled workspace", this.workspaceTitle.setAttribute("aria-label", "Workspace name"), this.workspaceTitle.addEventListener("change", () => {
-      var A;
-      this.deps.renameWorkspace(((A = this.workspaceTitle) == null ? void 0 : A.value) ?? "");
-    }), this.workspaceTitle.addEventListener("keydown", (A) => {
-      var T;
-      A.key === "Enter" && ((T = this.workspaceTitle) == null || T.blur());
+    var $;
+    const t = p("header", "ez-topbar"), e = p("div", "ez-brand"), s = p("span", "ez-brand-mark");
+    s.innerHTML = Jr, e.append(s, p("span", "ez-brand-name", "Ezynota")), this.workspaceTitle = p("input", "ez-topbar-title"), this.workspaceTitle.type = "text", this.workspaceTitle.spellcheck = !1, this.workspaceTitle.placeholder = this.showSidebar ? "Untitled workspace" : "Untitled", this.workspaceTitle.setAttribute("aria-label", this.showSidebar ? "Workspace name" : "Document name");
+    const n = () => {
+      var C, B;
+      const S = ((C = this.workspaceTitle) == null ? void 0 : C.value) ?? "";
+      this.showSidebar ? this.state.getWorkspaceName() !== S && this.deps.renameWorkspace(S) : this.state.activeNoteId && ((B = this.state.getNote(this.state.activeNoteId)) == null ? void 0 : B.title) !== S && this.deps.renameNote(this.state.activeNoteId, S);
+    };
+    this.workspaceTitle.addEventListener("change", n), this.workspaceTitle.addEventListener("keydown", (S) => {
+      var C;
+      S.isComposing || S.keyCode === 229 || S.key === "Enter" && (S.preventDefault(), n(), (C = this.workspaceTitle) == null || C.blur());
     });
-    const n = f("div", "ez-topbar-group ez-history-actions");
-    n.setAttribute("role", "group"), n.setAttribute("aria-label", "Edit history"), n.setAttribute("data-ez-ui", "true"), this.undoButton = E("ez-icon-btn", b.undo, "Undo"), this.redoButton = E("ez-icon-btn", b.redo, "Redo");
-    for (const A of [this.undoButton, this.redoButton])
-      (z = A.querySelector("svg")) == null || z.setAttribute("aria-hidden", "true"), A.addEventListener("mousedown", (T) => T.preventDefault());
+    const i = p("div", "ez-topbar-group ez-history-actions");
+    i.setAttribute("role", "group"), i.setAttribute("aria-label", "Edit history"), i.setAttribute("data-ez-ui", "true"), this.undoButton = E("ez-icon-btn", b.undo, "Undo"), this.redoButton = E("ez-icon-btn", b.redo, "Redo");
+    for (const S of [this.undoButton, this.redoButton])
+      ($ = S.querySelector("svg")) == null || $.setAttribute("aria-hidden", "true"), S.addEventListener("mousedown", (C) => C.preventDefault());
     this.undoButton.addEventListener("click", () => {
       this.deps.undo(), this.refreshHistory();
     }), this.redoButton.addEventListener("click", () => {
       this.deps.redo(), this.refreshHistory();
-    }), n.append(this.undoButton, this.redoButton);
-    const i = f("div", "ez-topbar-group ez-document-actions"), o = E("ez-icon-btn", b.outline, "Toggle heading outline");
-    o.setAttribute("aria-expanded", "false");
-    const a = () => {
-      const A = this.root.classList.toggle("ez-outline-open");
-      o.setAttribute("aria-expanded", String(A));
+    }), i.append(this.undoButton, this.redoButton);
+    const r = p("div", "ez-topbar-group ez-document-actions"), a = E("ez-icon-btn", b.outline, "Toggle heading outline");
+    a.setAttribute("aria-expanded", "false");
+    const l = () => {
+      const S = this.root.classList.toggle("ez-outline-open");
+      a.setAttribute("aria-expanded", String(S));
     };
-    o.addEventListener("click", a);
-    const l = E("ez-icon-btn", b.search, "Find in document");
-    l.addEventListener("click", () => this.openFindDialog()), i.append(o, l), this.fullscreenBtn = E("ez-icon-btn", b.maximize, "Enter fullscreen"), this.fullscreenBtn.addEventListener("click", () => this.deps.toggleFullscreen()), this.docMenu = f("details", "ez-doc-menu");
-    const c = f("summary", "ez-icon-btn ez-doc-menu-btn");
-    c.appendChild(L(b.ellipsis)), c.setAttribute("aria-label", "Document menu");
-    const d = f("div", "ez-doc-menu-panel");
-    d.setAttribute("data-ez-ui", "true");
-    const h = (A, T, M = this.docMenu) => {
-      const j = S("ez-doc-menu-item", A);
-      return j.addEventListener("click", () => {
-        var Pe;
-        M.contains(document.activeElement) && ((Pe = M.querySelector("summary")) == null || Pe.focus()), M.open = !1, T();
-      }), j;
+    a.addEventListener("click", l);
+    const c = E("ez-icon-btn", b.search, "Find in document");
+    c.addEventListener("click", () => this.openFindDialog()), r.append(a, c), this.fullscreenBtn = E("ez-icon-btn", b.maximize, "Enter fullscreen"), this.fullscreenBtn.addEventListener("click", () => this.deps.toggleFullscreen()), this.docMenu = p("details", "ez-doc-menu");
+    const d = p("summary", "ez-icon-btn ez-doc-menu-btn");
+    d.appendChild(D(b.ellipsis)), d.setAttribute("aria-label", "Document menu");
+    const u = p("div", "ez-doc-menu-panel");
+    u.setAttribute("data-ez-ui", "true");
+    const h = (S, C, B = this.docMenu) => {
+      const qe = A("ez-doc-menu-item", S);
+      return qe.addEventListener("click", () => {
+        var We;
+        B.contains(document.activeElement) && ((We = B.querySelector("summary")) == null || We.focus()), B.open = !1, C();
+      }), qe;
     };
-    d.append(
+    u.append(
       h("Print document", () => this.deps.printActiveNote()),
       h("Restore workspace backup…", () => this.pickBackupFile())
-    ), this.docMenu.append(c, d), this.exportMenu = f("details", "ez-doc-menu ez-export-menu");
-    const u = f("summary", "ez-export-btn");
-    u.setAttribute("aria-label", "Export document"), u.append(L(b.download), f("span", "", "Export"), L(b.down));
-    const p = f("div", "ez-doc-menu-panel");
-    p.setAttribute("data-ez-ui", "true"), p.append(
+    ), this.docMenu.append(d, u), this.exportMenu = p("details", "ez-doc-menu ez-export-menu");
+    const f = p("summary", "ez-export-btn");
+    f.setAttribute("aria-label", "Export document"), f.append(D(b.download), p("span", "", "Export"), D(b.down));
+    const g = p("div", "ez-doc-menu-panel");
+    g.setAttribute("data-ez-ui", "true"), g.append(
       h("Download JSON", () => this.deps.exportActiveNote("json"), this.exportMenu),
       h("Export Markdown", () => this.deps.exportActiveNote("md"), this.exportMenu),
       h("Export HTML", () => this.deps.exportActiveNote("html"), this.exportMenu),
       h("Export plain text", () => this.deps.exportActiveNote("txt"), this.exportMenu)
-    ), this.exportMenu.append(u, p), this.themeMenu = f("details", "ez-theme-menu");
-    const g = f("summary", "ez-icon-btn");
-    g.appendChild(L(b.sun)), g.setAttribute("aria-label", "Theme");
-    const m = f("div", "ez-theme-panel");
-    m.setAttribute("data-ez-ui", "true");
-    for (const A of ["light", "dark", "system"]) {
-      const T = S("ez-theme-item", Nr[A]);
-      T.setAttribute("data-ez-theme-choice", A), T.addEventListener("click", () => {
-        var M;
-        (M = this.themeMenu) != null && M.contains(document.activeElement) && g.focus(), this.deps.setTheme(A), this.themeMenu && (this.themeMenu.open = !1);
-      }), m.appendChild(T);
+    ), this.exportMenu.append(f, g), this.themeMenu = p("details", "ez-theme-menu");
+    const m = p("summary", "ez-icon-btn");
+    m.appendChild(D(b.sun)), m.setAttribute("aria-label", "Theme");
+    const y = p("div", "ez-theme-panel");
+    y.setAttribute("data-ez-ui", "true");
+    for (const S of ["light", "dark", "system"]) {
+      const C = A("ez-theme-item", Gr[S]);
+      C.setAttribute("data-ez-theme-choice", S), C.addEventListener("click", () => {
+        var B;
+        (B = this.themeMenu) != null && B.contains(document.activeElement) && m.focus(), this.deps.setTheme(S), this.themeMenu && (this.themeMenu.open = !1);
+      }), y.appendChild(C);
     }
-    this.themeMenu.append(g, m);
-    const y = f("div");
-    y.setAttribute("aria-label", "View"), y.append(this.themeMenu, this.fullscreenBtn);
-    const v = f("div");
-    v.setAttribute("aria-label", "Files");
-    const w = E("ez-icon-btn", b.folderOpen, "Import file");
-    w.addEventListener("click", () => {
-      var A;
-      return (A = this.importInput) == null ? void 0 : A.click();
+    this.themeMenu.append(m, y);
+    const v = p("div");
+    v.setAttribute("aria-label", "View"), v.append(this.themeMenu, this.fullscreenBtn);
+    const w = p("div");
+    w.setAttribute("aria-label", "Files");
+    const I = E("ez-icon-btn", b.folderOpen, "Import file");
+    I.addEventListener("click", () => {
+      var S;
+      return (S = this.importInput) == null ? void 0 : S.click();
     });
-    const I = E("ez-icon-btn", b.save, "Download workspace backup");
-    return I.addEventListener("click", () => this.deps.createBackup()), v.append(w, I), i.setAttribute("aria-label", "Document tools"), this.disposers.push(Dr(this.root, t, {
+    const T = E("ez-icon-btn", b.save, "Download workspace backup");
+    return T.addEventListener("click", () => this.deps.createBackup()), w.append(I, T), r.setAttribute("aria-label", "Document tools"), this.disposers.push(Kr(this.root, t, {
       brand: e,
       title: this.workspaceTitle,
-      history: n,
-      specialist: i,
-      view: y,
-      files: v,
+      history: i,
+      specialist: r,
+      view: v,
+      files: w,
       exportControl: this.exportMenu,
       more: this.docMenu
-    })), this.disposers.push(Ie(this.themeMenu, m)), this.disposers.push(Ie(this.exportMenu, p)), t;
+    })), this.disposers.push(Le(this.themeMenu, y)), this.disposers.push(Le(this.exportMenu, g)), t;
   }
   buildSidebarContent() {
     if (!this.sidebar) return;
-    D(this.sidebar);
-    const t = f("div", "ez-sidebar-search-row"), e = f("div", "ez-sidebar-search");
-    this.searchInput = f("input", "ez-sidebar-search-input"), this.searchInput.type = "search", this.searchInput.placeholder = "Search notes…", this.searchInput.setAttribute("aria-label", "Search workspace");
+    N(this.sidebar);
+    const t = p("div", "ez-sidebar-search-row"), e = p("div", "ez-sidebar-search");
+    this.searchInput = p("input", "ez-sidebar-search-input"), this.searchInput.type = "search", this.searchInput.placeholder = "Search notes…", this.searchInput.setAttribute("aria-label", "Search workspace");
     let s = null;
     this.disposers.push(() => {
       s && clearTimeout(s);
     }), this.searchInput.addEventListener("input", () => {
       s && clearTimeout(s), s = setTimeout(() => {
-        var h;
-        return this.renderSearchResults(((h = this.searchInput) == null ? void 0 : h.value) ?? "");
+        var u;
+        return this.renderSearchResults(((u = this.searchInput) == null ? void 0 : u.value) ?? "");
       }, 200);
     });
-    const n = f("span", "ez-sidebar-search-icon");
+    const n = p("span", "ez-sidebar-search-icon");
     n.innerHTML = b.search, n.setAttribute("aria-hidden", "true"), e.append(n, this.searchInput);
     const i = E("ez-icon-btn ez-sidebar-close", b.x, "Close notes sidebar");
-    i.addEventListener("click", () => this.closeMobileSidebar()), t.append(e, i), this.searchResults = f("div", "ez-search-results"), this.searchResults.setAttribute("role", "listbox"), this.searchResults.setAttribute("aria-label", "Search results");
-    const o = f("div", "ez-sidebar-actions"), a = S("ez-sidebar-btn ez-new-note", "New note");
-    a.prepend(L(b.plus)), a.addEventListener("click", () => {
+    i.addEventListener("click", () => this.closeMobileSidebar()), t.append(e, i), this.searchResults = p("div", "ez-search-results"), this.searchResults.setAttribute("role", "listbox"), this.searchResults.setAttribute("aria-label", "Search results");
+    const r = p("div", "ez-sidebar-actions"), a = A("ez-sidebar-btn ez-new-note", "New note");
+    a.prepend(D(b.plus)), a.addEventListener("click", () => {
       this.deps.createNote(), this.closeMobileSidebar(!1);
     });
     const l = E("ez-sidebar-btn ez-new-folder", b.folderPlus, "New folder");
-    l.addEventListener("click", () => this.deps.createFolder()), o.append(a, l), this.notesTree = f("nav", "ez-notes-tree"), this.notesTree.setAttribute("aria-label", "Folders and notes");
-    const c = this.buildTrashSection(), d = f("div", "ez-sidebar-section-label");
-    this.noteCount = f("span", "ez-note-count", "0"), d.append(f("span", "", "Your notes"), this.noteCount), this.setupTreeDragAndDrop(this.notesTree, d), this.sidebar.append(t, this.searchResults, o, d, this.notesTree, c);
+    l.addEventListener("click", () => this.deps.createFolder()), r.append(a, l), this.notesTree = p("nav", "ez-notes-tree"), this.notesTree.setAttribute("aria-label", "Folders and notes");
+    const c = this.buildTrashSection(), d = p("div", "ez-sidebar-section-label");
+    this.noteCount = p("span", "ez-note-count", "0"), d.append(p("span", "", "Your notes"), this.noteCount), this.setupTreeDragAndDrop(this.notesTree, d), this.sidebar.append(t, this.searchResults, r, d, this.notesTree, c);
   }
   closeMobileSidebar(t = !0) {
-    var e, s;
-    this.root.classList.remove("ez-sidebar-open"), window.matchMedia("(max-width: 900px)").matches && ((e = this.sidebarToggle) == null || e.setAttribute("aria-expanded", "false"), t && ((s = this.sidebarToggle) == null || s.focus()));
+    var e;
+    this.setDrawerOpen(!1), this.compactSidebar && t && ((e = this.sidebarToggle) == null || e.focus());
   }
   /* ---------- sidebar rendering ---------- */
   renderSidebar() {
     if (!this.notesTree) return;
-    D(this.notesTree);
+    N(this.notesTree);
     const t = this.state.listFolders(), e = this.state.listNotes();
     this.noteCount && (this.noteCount.textContent = String(e.length));
     const s = t.filter((i) => !i.parentId);
@@ -6696,7 +6961,7 @@ class Fr {
     const n = e.filter((i) => !i.folderId);
     for (const i of n) this.renderNote(i, 0);
     if (t.length === 0 && e.length === 0) {
-      const i = f("div", "ez-notes-empty");
+      const i = p("div", "ez-notes-empty");
       i.textContent = "No notes yet — create one to start writing.", this.notesTree.appendChild(i);
     }
   }
@@ -6707,50 +6972,50 @@ class Fr {
    */
   setupTreeDragAndDrop(t, e) {
     const s = "text/x-ezynota-tree", n = () => {
-      var h;
-      (h = this.treeDropHighlight) == null || h.classList.remove("ez-drop-target"), this.treeDropHighlight = null;
+      var u;
+      (u = this.treeDropHighlight) == null || u.classList.remove("ez-drop-target"), this.treeDropHighlight = null;
     }, i = () => {
       this.treeDrag = null, n();
-    }, o = (h) => {
+    }, r = (u) => {
       var m;
-      const u = h, p = (m = u.target) == null ? void 0 : m.closest(".ez-tree-row");
-      if (!p || !u.dataTransfer) return;
-      const g = p.dataset.noteId ?? p.dataset.folderId;
-      g && (this.treeDrag = { kind: p.dataset.noteId ? "note" : "folder", id: g }, p.classList.add("ez-dragging"), u.dataTransfer.effectAllowed = "move", u.dataTransfer.setData(s, JSON.stringify(this.treeDrag)), u.dataTransfer.setData("text/plain", g));
-    }, a = (h) => {
-      var p, g, m;
-      (m = (g = (p = h.target) == null ? void 0 : p.closest) == null ? void 0 : g.call(p, ".ez-tree-row")) == null || m.classList.remove("ez-dragging"), i();
-    }, l = (h) => {
+      const h = u, f = (m = h.target) == null ? void 0 : m.closest(".ez-tree-row");
+      if (!f || !h.dataTransfer) return;
+      const g = f.dataset.noteId ?? f.dataset.folderId;
+      g && (this.treeDrag = { kind: f.dataset.noteId ? "note" : "folder", id: g }, f.classList.add("ez-dragging"), h.dataTransfer.effectAllowed = "move", h.dataTransfer.setData(s, JSON.stringify(this.treeDrag)), h.dataTransfer.setData("text/plain", g));
+    }, a = (u) => {
+      var f, g, m;
+      (m = (g = (f = u.target) == null ? void 0 : f.closest) == null ? void 0 : g.call(f, ".ez-tree-row")) == null || m.classList.remove("ez-dragging"), i();
+    }, l = (u) => {
       var g, m;
-      const u = h;
-      if (!this.treeDrag || !u.dataTransfer) return;
-      const p = (m = (g = u.target) == null ? void 0 : g.closest) == null ? void 0 : m.call(g, ".ez-tree-row");
-      if (!p)
-        e.contains(u.target) ? this.treeDropHighlight !== e && (n(), e.classList.add("ez-drop-target"), this.treeDropHighlight = e) : n();
-      else if (p.dataset.folderId) {
-        if (this.treeDrag.kind === "folder" && (p.dataset.folderId === this.treeDrag.id || this.isFolderDescendant(p.dataset.folderId, this.treeDrag.id)))
+      const h = u;
+      if (!this.treeDrag || !h.dataTransfer) return;
+      const f = (m = (g = h.target) == null ? void 0 : g.closest) == null ? void 0 : m.call(g, ".ez-tree-row");
+      if (!f)
+        e.contains(h.target) ? this.treeDropHighlight !== e && (n(), e.classList.add("ez-drop-target"), this.treeDropHighlight = e) : n();
+      else if (f.dataset.folderId) {
+        if (this.treeDrag.kind === "folder" && (f.dataset.folderId === this.treeDrag.id || this.isFolderDescendant(f.dataset.folderId, this.treeDrag.id)))
           return;
-        this.treeDropHighlight !== p && (n(), p.classList.add("ez-drop-target"), this.treeDropHighlight = p);
+        this.treeDropHighlight !== f && (n(), f.classList.add("ez-drop-target"), this.treeDropHighlight = f);
       } else return;
-      u.preventDefault(), u.dataTransfer.dropEffect = "move";
-    }, c = (h) => {
+      h.preventDefault(), h.dataTransfer.dropEffect = "move";
+    }, c = (u) => {
       var y, v;
-      const u = h;
+      const h = u;
       if (!this.treeDrag) return;
-      const p = this.treeDrag;
-      i(), u.preventDefault();
-      const g = (v = (y = u.target) == null ? void 0 : y.closest) == null ? void 0 : v.call(y, ".ez-tree-row");
+      const f = this.treeDrag;
+      i(), h.preventDefault();
+      const g = (v = (y = h.target) == null ? void 0 : y.closest) == null ? void 0 : v.call(y, ".ez-tree-row");
       if (g && !g.dataset.folderId) return;
       const m = (g == null ? void 0 : g.dataset.folderId) ?? null;
-      p.kind === "note" ? (this.deps.moveNote(p.id, m), m && this.expandedFolders.add(m)) : this.deps.moveFolder(p.id, m) && m && this.expandedFolders.add(m);
-    }, d = (h) => {
-      h.target === t && n();
+      f.kind === "note" ? (this.deps.moveNote(f.id, m), m && this.expandedFolders.add(m)) : this.deps.moveFolder(f.id, m) && m && this.expandedFolders.add(m);
+    }, d = (u) => {
+      u.target === t && n();
     };
-    for (const h of [t, e])
-      h.addEventListener("dragstart", o), h.addEventListener("dragend", a), h.addEventListener("dragover", l), h.addEventListener("drop", c), h.addEventListener("dragleave", d);
+    for (const u of [t, e])
+      u.addEventListener("dragstart", r), u.addEventListener("dragend", a), u.addEventListener("dragover", l), u.addEventListener("drop", c), u.addEventListener("dragleave", d);
     this.disposers.push(() => {
-      for (const h of [t, e])
-        h.removeEventListener("dragstart", o), h.removeEventListener("dragend", a), h.removeEventListener("dragover", l), h.removeEventListener("drop", c), h.removeEventListener("dragleave", d);
+      for (const u of [t, e])
+        u.removeEventListener("dragstart", r), u.removeEventListener("dragend", a), u.removeEventListener("dragover", l), u.removeEventListener("drop", c), u.removeEventListener("dragleave", d);
     });
   }
   /** True when `folderId` sits anywhere inside `ancestorId`'s subtree. */
@@ -6764,41 +7029,41 @@ class Fr {
   }
   renderFolder(t, e, s, n) {
     if (!this.notesTree) return;
-    const i = this.expandedFolders.has(t.id), o = f("div", "ez-tree-row ez-tree-folder");
-    o.style.paddingInlineStart = `${n * 14}px`, o.dataset.folderId = t.id, o.draggable = !0;
+    const i = this.expandedFolders.has(t.id), r = p("div", "ez-tree-row ez-tree-folder");
+    r.style.paddingInlineStart = `${n * 14}px`, r.dataset.folderId = t.id, r.draggable = !0;
     const a = E("ez-tree-caret", i ? b.caretDown : b.caretRight, `Expand ${t.name}`);
     a.setAttribute("aria-expanded", String(i)), a.addEventListener("click", (d) => {
       d.stopPropagation(), this.expandedFolders.has(t.id) ? this.expandedFolders.delete(t.id) : this.expandedFolders.add(t.id), this.renderSidebar();
     });
-    const l = S("ez-tree-label", t.name);
-    l.prepend(L(i ? b.folderOpen : b.folder)), l.setAttribute("data-folder-id", t.id), l.addEventListener("click", () => {
+    const l = A("ez-tree-label", t.name);
+    l.prepend(D(i ? b.folderOpen : b.folder)), l.setAttribute("data-folder-id", t.id), l.addEventListener("click", () => {
       this.expandedFolders.add(t.id), this.deps.openFolder(t.id), this.renderSidebar();
     });
     const c = E("ez-tree-action", b.ellipsis, `Folder actions for ${t.name}`);
     if (c.addEventListener("click", (d) => {
       d.stopPropagation(), this.folderActions(t, c);
-    }), o.append(a, l, c), this.state.activeFolderId === t.id && o.classList.add("ez-active"), this.notesTree.appendChild(o), !!i) {
-      for (const d of e.filter((h) => h.parentId === t.id))
+    }), r.append(a, l, c), this.state.activeFolderId === t.id && r.classList.add("ez-active"), this.notesTree.appendChild(r), !!i) {
+      for (const d of e.filter((u) => u.parentId === t.id))
         this.renderFolder(d, e, s, n + 1);
-      for (const d of s.filter((h) => h.folderId === t.id))
+      for (const d of s.filter((u) => u.folderId === t.id))
         this.renderNote(d, n + 1);
     }
   }
   renderNote(t, e) {
     if (!this.notesTree) return;
-    const s = f("div", "ez-tree-row ez-tree-note");
+    const s = p("div", "ez-tree-row ez-tree-note");
     s.style.paddingInlineStart = `${e * 14 + 4}px`, s.dataset.noteId = t.id, s.draggable = !0;
-    const n = S("ez-tree-label", t.title || "Untitled");
-    n.setAttribute("data-note-id", t.id), n.title = t.title || "Untitled", n.prepend(L(b.file)), this.state.activeNoteId === t.id && n.setAttribute("aria-current", "page"), n.addEventListener("click", () => {
+    const n = A("ez-tree-label", t.title || "Untitled");
+    n.setAttribute("data-note-id", t.id), n.title = t.title || "Untitled", n.prepend(D(b.file)), this.state.activeNoteId === t.id && n.setAttribute("aria-current", "page"), n.addEventListener("click", () => {
       this.deps.openNote(t.id), this.closeMobileSidebar(!1);
     });
     const i = E("ez-tree-action", b.ellipsis, `Note actions for ${t.title || "Untitled"}`);
-    i.addEventListener("click", (o) => {
-      o.stopPropagation(), this.noteActions(t, i);
+    i.addEventListener("click", (r) => {
+      r.stopPropagation(), this.noteActions(t, i);
     }), s.append(n, i), this.state.activeNoteId === t.id && s.classList.add("ez-active"), this.notesTree.appendChild(s);
   }
   noteActions(t, e) {
-    fs([
+    Ss([
       { label: "Rename…", run: () => {
         const s = prompt("Rename note", t.title || "Untitled");
         s !== null && this.deps.renameNote(t.id, s.trim());
@@ -6810,7 +7075,7 @@ class Fr {
     ], e);
   }
   folderActions(t, e) {
-    fs([
+    Ss([
       { label: "Rename…", run: () => {
         const s = prompt("Rename folder", t.name);
         s !== null && this.deps.renameFolder(t.id, s.trim());
@@ -6821,59 +7086,59 @@ class Fr {
   }
   renderSearchResults(t) {
     if (!this.searchResults) return;
-    D(this.searchResults);
+    N(this.searchResults);
     const e = t.trim();
     if (!e) return;
     const s = this.deps.searchWorkspace(e);
     if (s.length === 0) {
-      const n = f("div", "ez-search-empty");
+      const n = p("div", "ez-search-empty");
       n.textContent = "No matches", this.searchResults.appendChild(n);
       return;
     }
     for (const n of s.slice(0, 40)) {
-      const i = f("button", "ez-search-hit");
+      const i = p("button", "ez-search-hit");
       i.type = "button", i.setAttribute("role", "option");
-      const o = f("span", "ez-search-hit-title");
-      o.textContent = n.title || "Untitled";
-      const a = f("span", "ez-search-hit-excerpt");
-      a.textContent = n.excerpt, i.append(o, a), i.addEventListener("click", () => {
+      const r = p("span", "ez-search-hit-title");
+      r.textContent = n.title || "Untitled";
+      const a = p("span", "ez-search-hit-excerpt");
+      a.textContent = n.excerpt, i.append(r, a), i.addEventListener("click", () => {
         const l = this.deps.openNote(n.noteId);
         this.closeMobileSidebar(!1), Promise.resolve(l).then(() => {
           n.blockId && this.deps.goToBlock(n.blockId);
-        }), this.searchInput && (this.searchInput.value = ""), this.searchResults && D(this.searchResults);
+        }), this.searchInput && (this.searchInput.value = ""), this.searchResults && N(this.searchResults);
       }), this.searchResults.appendChild(i);
     }
   }
   buildTrashSection() {
-    const t = f("details", "ez-trash-section"), e = f("summary", "ez-trash-summary");
-    e.appendChild(L(b.trash));
-    const s = f("span");
+    const t = p("details", "ez-trash-section"), e = p("summary", "ez-trash-summary");
+    e.appendChild(D(b.trash));
+    const s = p("span");
     s.textContent = "Trash", e.appendChild(s);
-    const n = f("div", "ez-trash-list"), i = () => {
-      D(n);
-      const o = this.state.listTrashedNotes(), a = this.state.listTrashedFolders();
-      if (o.length === 0 && a.length === 0) {
-        n.appendChild(f("div", "ez-trash-empty", "Trash is empty"));
+    const n = p("div", "ez-trash-list"), i = () => {
+      N(n);
+      const r = this.state.listTrashedNotes(), a = this.state.listTrashedFolders();
+      if (r.length === 0 && a.length === 0) {
+        n.appendChild(p("div", "ez-trash-empty", "Trash is empty"));
         return;
       }
       for (const l of a) {
-        const c = f("div", "ez-trash-row"), d = f("span", "ez-trash-label");
+        const c = p("div", "ez-trash-row"), d = p("span", "ez-trash-label");
         d.textContent = `${l.name} (folder)`;
-        const h = E("ez-icon-btn", b.restore, `Restore ${l.name}`);
-        h.addEventListener("click", () => this.deps.restoreFolder(l.id));
-        const u = E("ez-icon-btn", b.x, `Delete ${l.name} forever`);
-        u.addEventListener("click", () => this.deps.deleteFolderForever(l.id)), c.append(d, h, u), n.appendChild(c);
+        const u = E("ez-icon-btn", b.restore, `Restore ${l.name}`);
+        u.addEventListener("click", () => this.deps.restoreFolder(l.id));
+        const h = E("ez-icon-btn", b.x, `Delete ${l.name} forever`);
+        h.addEventListener("click", () => this.deps.deleteFolderForever(l.id)), c.append(d, u, h), n.appendChild(c);
       }
-      for (const l of o) {
-        const c = f("div", "ez-trash-row"), d = f("span", "ez-trash-label");
+      for (const l of r) {
+        const c = p("div", "ez-trash-row"), d = p("span", "ez-trash-label");
         d.textContent = l.title || "Untitled";
-        const h = E("ez-icon-btn", b.restore, `Restore ${l.title}`);
-        h.addEventListener("click", () => this.deps.restoreNote(l.id));
-        const u = E("ez-icon-btn", b.x, `Delete ${l.title} forever`);
-        u.addEventListener("click", () => this.deps.deleteNoteForever(l.id)), c.append(d, h, u), n.appendChild(c);
+        const u = E("ez-icon-btn", b.restore, `Restore ${l.title}`);
+        u.addEventListener("click", () => this.deps.restoreNote(l.id));
+        const h = E("ez-icon-btn", b.x, `Delete ${l.title} forever`);
+        h.addEventListener("click", () => this.deps.deleteNoteForever(l.id)), c.append(d, u, h), n.appendChild(c);
       }
-      if (o.length + a.length > 1) {
-        const l = S("ez-trash-empty-btn", "Empty trash");
+      if (r.length + a.length > 1) {
+        const l = A("ez-trash-empty-btn", "Empty trash");
         l.addEventListener("click", () => {
           confirm("Permanently delete everything in the trash?") && this.deps.emptyTrash();
         }), n.appendChild(l);
@@ -6885,37 +7150,37 @@ class Fr {
   }
   /* ---------- header ---------- */
   buildHeader() {
-    const t = f("header", "ez-doc-header");
-    this.breadcrumbs = f("nav", "ez-breadcrumbs"), this.breadcrumbs.setAttribute("aria-label", "Folder path");
-    const e = f("div", "ez-title-row");
-    this.titleInput = f("input", "ez-doc-title"), this.titleInput.type = "text", this.titleInput.placeholder = "Untitled", this.titleInput.setAttribute("aria-label", "Note title"), this.titleInput.addEventListener("input", () => {
+    const t = p("header", "ez-doc-header");
+    this.breadcrumbs = p("nav", "ez-breadcrumbs"), this.breadcrumbs.setAttribute("aria-label", "Folder path");
+    const e = p("div", "ez-title-row");
+    this.titleInput = p("input", "ez-doc-title"), this.titleInput.type = "text", this.titleInput.placeholder = "Untitled", this.titleInput.setAttribute("aria-label", "Note title"), this.titleInput.addEventListener("input", () => {
       var i;
       const n = this.state.activeNoteId;
       n && this.deps.renameNote(n, ((i = this.titleInput) == null ? void 0 : i.value) ?? "");
     }), e.appendChild(this.titleInput);
-    const s = f("div", "ez-document-navigation");
+    const s = p("div", "ez-document-navigation");
     return s.append(this.breadcrumbs), t.append(s, e), t;
   }
   buildStatusbar() {
-    const t = f("footer", "ez-statusbar");
-    t.setAttribute("aria-label", "Document status"), this.saveStatusDot = f("span", "ez-status-dot"), this.saveStatusEl = f("span", "ez-status-text"), this.saveStatusEl.setAttribute("role", "status"), this.saveStatusEl.setAttribute("aria-live", "polite"), this.saveStatusEl.textContent = "Ready";
-    const e = f("button", "ez-save-state");
-    return e.type = "button", e.append(this.saveStatusDot, this.saveStatusEl), e.addEventListener("click", () => this.deps.retrySave()), this.wordCountEl = f("span", "ez-word-count"), this.wordCountEl.textContent = "0 words", t.append(e, this.wordCountEl), t;
+    const t = p("footer", "ez-statusbar");
+    t.setAttribute("aria-label", "Document status"), this.saveStatusDot = p("span", "ez-status-dot"), this.saveStatusEl = p("span", "ez-status-text"), this.saveStatusEl.setAttribute("role", "status"), this.saveStatusEl.setAttribute("aria-live", "polite"), this.saveStatusEl.textContent = "Ready";
+    const e = p("button", "ez-save-state");
+    return e.type = "button", e.append(this.saveStatusDot, this.saveStatusEl), e.addEventListener("click", () => this.deps.retrySave()), this.wordCountEl = p("span", "ez-word-count"), this.wordCountEl.textContent = "0 words", t.append(e, this.wordCountEl), t;
   }
   updateHeader() {
     const t = this.state.activeNoteId ? this.state.getNote(this.state.activeNoteId) : null;
-    if (this.workspaceTitle && document.activeElement !== this.workspaceTitle && (this.workspaceTitle.value = this.state.getWorkspaceName()), this.titleInput && (document.activeElement !== this.titleInput && (this.titleInput.value = (t == null ? void 0 : t.title) ?? ""), this.titleInput.disabled = !t), this.breadcrumbs) {
-      if (D(this.breadcrumbs), t) {
+    if (this.workspaceTitle && document.activeElement !== this.workspaceTitle && (this.workspaceTitle.value = this.showSidebar ? this.state.getWorkspaceName() : (t == null ? void 0 : t.title) ?? ""), this.titleInput && (document.activeElement !== this.titleInput && (this.titleInput.value = (t == null ? void 0 : t.title) ?? ""), this.titleInput.disabled = !t), this.breadcrumbs) {
+      if (N(this.breadcrumbs), t) {
         const s = this.state.folderPath(t.folderId);
         if (s.length > 0)
           for (const n of s) {
-            const i = f("span", "ez-crumb-sep", "/");
+            const i = p("span", "ez-crumb-sep", "/");
             i.setAttribute("aria-hidden", "true");
-            const o = S("ez-crumb", n.name);
-            o.addEventListener("click", () => this.deps.openFolder(n.id)), this.breadcrumbs.append(i, o);
+            const r = A("ez-crumb", n.name);
+            r.addEventListener("click", () => this.deps.openFolder(n.id)), this.breadcrumbs.append(i, r);
           }
       }
-      const e = S("ez-crumb ez-crumb-root", "Notes");
+      const e = A("ez-crumb ez-crumb-root", "Notes");
       e.addEventListener("click", () => this.deps.openFolder(null)), this.breadcrumbs.prepend(e);
     }
     if (this.wordCountEl) {
@@ -6927,40 +7192,49 @@ class Fr {
   refreshThemeIcons() {
     if (!this.themeMenu) return;
     const t = this.root.getAttribute("data-ez-theme"), e = t === "dark" ? b.moon : t === "light" ? b.sun : b.monitor, s = this.themeMenu.querySelector(".ez-icon-btn");
-    s && (D(s), s.appendChild(L(e)), s.appendChild(f("span", "ez-visually-hidden", "Theme")));
+    s && (N(s), s.appendChild(D(e)), s.appendChild(p("span", "ez-visually-hidden", "Theme")));
     for (const n of Array.from(this.themeMenu.querySelectorAll(".ez-theme-item")))
       n.setAttribute("aria-pressed", String(n.getAttribute("data-ez-theme-choice") === t));
   }
   updateSaveStatus(t, e) {
-    if (!this.saveStatusEl || !this.saveStatusDot) return;
-    this.saveStatusEl.textContent = Rr(t, e);
+    if (this.updateStorageNotice(), !this.saveStatusEl || !this.saveStatusDot) return;
+    this.saveStatusEl.textContent = Xr(t, e);
     const s = this.saveStatusEl.closest(".ez-save-state");
     s && s.setAttribute("data-ez-save-status", t);
+  }
+  updateStorageNotice() {
+    var t;
+    if (!this.storageNoticeEl) {
+      this.storageNoticeEl = p("div", "ez-workspace-storage-notice"), this.storageNoticeEl.setAttribute("role", "status");
+      const e = p("p", "", "Changes are stored only in this tab. Back up before closing or reloading."), s = A("ez-btn", "Download workspace backup");
+      s.addEventListener("click", () => this.deps.createBackup()), this.storageNoticeEl.append(e, s), (t = this.noticeEl) == null || t.before(this.storageNoticeEl);
+    }
+    this.storageNoticeEl.hidden = this.state.isPersistent();
   }
   applyTheme(t) {
     var s;
     this.root.setAttribute("data-ez-theme", t);
-    const e = Fs(t);
+    const e = Ks(t);
     this.root.setAttribute("data-ez-resolved-theme", e), (s = this.root.querySelector(".ez-editor")) == null || s.setAttribute("data-ez-theme", e), this.refreshThemeIcons();
   }
   setFullscreen(t) {
-    this.root.classList.toggle("ez-fullscreen", t), this.fullscreenBtn && (D(this.fullscreenBtn), this.fullscreenBtn.appendChild(L(t ? b.minimize : b.maximize)), this.fullscreenBtn.setAttribute("aria-label", t ? "Exit fullscreen" : "Enter fullscreen"));
+    this.root.classList.toggle("ez-fullscreen", t), this.fullscreenBtn && (N(this.fullscreenBtn), this.fullscreenBtn.appendChild(D(t ? b.minimize : b.maximize)), this.fullscreenBtn.setAttribute("aria-label", t ? "Exit fullscreen" : "Enter fullscreen"));
   }
   /* ---------- outline ---------- */
   buildOutline() {
-    const t = f("aside", "ez-outline");
+    const t = p("aside", "ez-outline");
     t.setAttribute("aria-label", "Heading outline");
-    const e = f("h2", "ez-outline-title", "Outline"), s = f("nav", "ez-outline-list");
-    s.id = `ez-outline-${++$r}`, t.append(e, s);
+    const e = p("h2", "ez-outline-title", "Outline"), s = p("nav", "ez-outline-list");
+    s.id = `ez-outline-${++to}`, t.append(e, s);
     const n = () => {
-      D(s);
-      const o = this.collectHeadings();
-      if (o.length === 0) {
-        s.appendChild(f("div", "ez-outline-empty", "No headings yet"));
+      N(s);
+      const r = this.collectHeadings();
+      if (r.length === 0) {
+        s.appendChild(p("div", "ez-outline-empty", "No headings yet"));
         return;
       }
-      for (const a of o) {
-        const l = S("ez-outline-item", a.text || "Empty heading");
+      for (const a of r) {
+        const l = A("ez-outline-item", a.text || "Empty heading");
         l.style.paddingInlineStart = `${(a.level - 1) * 12 + 8}px`, l.addEventListener("click", () => this.deps.goToBlock(a.blockId)), s.appendChild(l);
       }
     }, i = new MutationObserver(() => n());
@@ -6977,47 +7251,93 @@ class Fr {
   }
   /* ---------- find & replace ---------- */
   buildFindDialog() {
-    const t = f("div", "ez-find-bar");
-    t.setAttribute("role", "search"), t.setAttribute("aria-label", "Find and replace"), this.findInput = f("input", "ez-find-input"), this.findInput.type = "search", this.findInput.placeholder = "Find", this.findInput.setAttribute("aria-label", "Find"), this.replaceInput = f("input", "ez-find-input"), this.replaceInput.type = "text", this.replaceInput.placeholder = "Replace with", this.replaceInput.setAttribute("aria-label", "Replace with");
-    const e = S("ez-btn", "Replace");
-    e.addEventListener("click", () => this.runReplace(!1));
-    const s = S("ez-btn", "Replace all");
-    s.addEventListener("click", () => this.runReplace(!0));
-    const n = E("ez-icon-btn", b.x, "Close find and replace");
-    return n.addEventListener("click", () => this.closeFindDialog()), t.append(this.findInput, this.replaceInput, e, s, n), t.addEventListener("keydown", (i) => {
-      i.key === "Escape" && (i.stopPropagation(), this.closeFindDialog()), i.key === "Enter" && i.target === this.findInput && this.runReplace(!1), Xt(i, t);
-    }), t.hidden = !0, t;
+    const t = p("div", "ez-find-bar");
+    t.setAttribute("role", "search"), t.setAttribute("aria-label", "Find and replace"), this.findInput = p("input", "ez-find-input"), this.findInput.type = "search", this.findInput.placeholder = "Find", this.findInput.setAttribute("aria-label", "Find"), this.findInput.title = "Find exact text (case-sensitive)", this.findInput.addEventListener("input", () => {
+      this.findIndex = 0, this.refreshFindMatches(!0);
+    });
+    const e = E("ez-icon-btn", b.up, "Previous match"), s = E("ez-icon-btn", b.down, "Next match");
+    e.addEventListener("click", () => this.navigateFind(-1)), s.addEventListener("click", () => this.navigateFind(1)), this.findNavigation = [e, s], this.findCounter = p("span", "ez-find-counter"), this.findCounter.setAttribute("role", "status"), this.findCounter.setAttribute("aria-live", "polite"), this.replaceInput = p("input", "ez-find-input"), this.replaceInput.type = "text", this.replaceInput.placeholder = "Replace with", this.replaceInput.setAttribute("aria-label", "Replace with");
+    const n = A("ez-btn", "Replace");
+    n.addEventListener("click", () => this.runReplace(!1));
+    const i = A("ez-btn", "Replace all");
+    i.addEventListener("click", () => this.runReplace(!0));
+    const r = E("ez-icon-btn", b.x, "Close find and replace");
+    r.addEventListener("click", () => this.closeFindDialog()), this.replaceButtons = [n, i];
+    const a = p("style");
+    a.textContent = `::highlight(${this.findHighlightName}) { background-color: var(--ez-hover); color: var(--ez-text); }
+      ::highlight(${this.findHighlightName}-active) { background-color: var(--ez-selected); color: var(--ez-text); }`, t.append(this.findInput, e, s, this.findCounter, this.replaceInput, n, i, r, a), t.addEventListener("keydown", (c) => {
+      c.isComposing || c.keyCode === 229 || (c.key === "Escape" && (c.preventDefault(), c.stopPropagation(), this.closeFindDialog()), c.key === "Enter" && c.target === this.findInput ? (c.preventDefault(), this.navigateFind(c.shiftKey ? -1 : 1)) : c.key === "Enter" && c.target === this.replaceInput && (c.preventDefault(), this.runReplace(!1)), te(c, t));
+    });
+    const l = new MutationObserver(() => this.refreshFindMatches());
+    return l.observe(this.root.querySelector(".ez-editor") ?? this.root, { childList: !0, subtree: !0, characterData: !0, attributes: !0, attributeFilter: ["contenteditable"] }), this.disposers.push(() => l.disconnect()), t.hidden = !0, t;
   }
   openFindDialog() {
-    var t;
-    this.findDialog && (this.findDialog.hidden && (this.findReturnFocus = document.activeElement), this.findDialog.hidden = !1, (t = this.findInput) == null || t.focus());
+    var t, e;
+    if (this.findDialog) {
+      if (this.findDialog.hidden) {
+        this.findReturnFocus = document.activeElement;
+        const s = window.getSelection(), n = s != null && s.rangeCount ? s.getRangeAt(0) : null;
+        this.findReturnRange = n && ((t = this.root.querySelector(".ez-editor")) != null && t.contains(n.commonAncestorContainer)) ? n.cloneRange() : null;
+      }
+      this.findDialog.hidden = !1, this.refreshFindMatches(), (e = this.findInput) == null || e.focus();
+    }
   }
   closeFindDialog() {
-    var e, s;
+    var e, s, n;
     if (!this.findDialog) return;
     const t = this.findDialog.contains(document.activeElement);
-    if (this.findDialog.hidden = !0, t) {
-      const n = (e = this.findReturnFocus) != null && e.getClientRects().length ? this.findReturnFocus : (s = this.docMenu) == null ? void 0 : s.querySelector("summary");
-      n == null || n.focus();
+    if (this.findDialog.hidden = !0, this.clearFindHighlights(), this.findMatches = [], t) {
+      const i = (e = this.findReturnFocus) != null && e.getClientRects().length ? this.findReturnFocus : (s = this.docMenu) == null ? void 0 : s.querySelector("summary");
+      if (i == null || i.focus(), (n = this.findReturnRange) != null && n.startContainer.isConnected && (i != null && i.matches("[data-ez-editable]"))) {
+        const r = window.getSelection();
+        r == null || r.removeAllRanges(), r == null || r.addRange(this.findReturnRange);
+      }
     }
-    this.findReturnFocus = null, this.root.querySelectorAll(".ez-find-hit").forEach((n) => {
-      n.classList.remove("ez-find-hit"), n.removeAttribute("data-ez-find");
-    });
+    this.findReturnFocus = null, this.findReturnRange = null;
   }
   runReplace(t) {
-    var e, s;
-    this.deps.findInDocument(((e = this.findInput) == null ? void 0 : e.value) ?? "", ((s = this.replaceInput) == null ? void 0 : s.value) ?? "", t);
+    var e, s, n, i;
+    !this.findMatches.length || (e = this.replaceButtons[0]) != null && e.disabled || (this.deps.findInDocument(((s = this.findInput) == null ? void 0 : s.value) ?? "", ((n = this.replaceInput) == null ? void 0 : n.value) ?? "", t, this.findIndex), this.refreshFindMatches(!0), (i = this.replaceInput) == null || i.focus());
+  }
+  navigateFind(t) {
+    this.findMatches.length && (this.findIndex = (this.findIndex + t + this.findMatches.length) % this.findMatches.length, this.renderFindMatches(!0));
+  }
+  refreshFindMatches(t = !1) {
+    var s;
+    if (!this.findDialog || this.findDialog.hidden) return;
+    this.clearFindHighlights();
+    const e = this.root.querySelector(".ez-editor");
+    this.findMatches = e ? Zr(e, ((s = this.findInput) == null ? void 0 : s.value) ?? "") : [], this.findIndex = Math.min(this.findIndex, Math.max(0, this.findMatches.length - 1)), this.renderFindMatches(t);
+  }
+  clearFindHighlights() {
+    for (const t of this.root.querySelectorAll(".ez-find-hit")) t.classList.remove("ez-find-hit");
+    typeof CSS < "u" && CSS.highlights && (CSS.highlights.delete(this.findHighlightName), CSS.highlights.delete(`${this.findHighlightName}-active`));
+  }
+  renderFindMatches(t) {
+    var n;
+    this.clearFindHighlights();
+    const e = this.findMatches[this.findIndex];
+    this.findCounter && (this.findCounter.textContent = (n = this.findInput) != null && n.value ? e ? `${this.findIndex + 1} of ${this.findMatches.length}` : "No matches" : "Enter text to find");
+    for (const i of this.findNavigation) i.disabled = !e;
+    const s = !!this.root.querySelector(".ez-editor.ez-readonly");
+    for (const i of this.replaceButtons) i.disabled = !e || s;
+    if (typeof Highlight < "u" && typeof CSS < "u" && CSS.highlights) {
+      const i = new Highlight();
+      for (const r of this.findMatches) i.add(r.range);
+      CSS.highlights.set(this.findHighlightName, i), e && CSS.highlights.set(`${this.findHighlightName}-active`, new Highlight(e.range));
+    }
+    e && (e.editable.classList.add("ez-find-hit"), t && e.editable.scrollIntoView({ block: "nearest", inline: "nearest" }));
   }
   /* ---------- recovery & legacy draft ---------- */
   buildErrorPanel() {
-    const t = f("section", "ez-recovery-panel");
+    const t = p("section", "ez-recovery-panel");
     t.setAttribute("role", "alert");
-    const e = f("h2", "ez-recovery-title", "Your workspace needs attention"), s = f("p", "ez-recovery-message");
+    const e = p("h2", "ez-recovery-title", "Your workspace needs attention"), s = p("p", "ez-recovery-message");
     s.textContent = "Notes could not be loaded from this browser. Your content stays safe — retry loading or download the stored data.";
-    const n = f("div", "ez-recovery-actions"), i = S("ez-btn ez-btn-primary", "Retry loading");
+    const n = p("div", "ez-recovery-actions"), i = A("ez-btn ez-btn-primary", "Retry loading");
     i.addEventListener("click", () => this.deps.retryLoad());
-    const o = S("ez-btn", "Download stored data");
-    return o.addEventListener("click", () => this.deps.downloadOriginal()), n.append(i, o), t.append(e, s, n), t.hidden = !0, t;
+    const r = A("ez-btn", "Download stored data");
+    return r.addEventListener("click", () => this.deps.downloadOriginal()), n.append(i, r), t.append(e, s, n), t.hidden = !0, t;
   }
   showErrorPanel() {
     this.errorPanel && (this.errorPanel.hidden = !1);
@@ -7036,25 +7356,25 @@ class Fr {
     this.errorPanel && (this.errorPanel.hidden = !0);
   }
   buildLegacyPanel() {
-    const t = f("section", "ez-legacy-panel"), e = f("p", "ez-legacy-text");
+    const t = p("section", "ez-legacy-panel"), e = p("p", "ez-legacy-text");
     e.textContent = "A draft saved by an older version of Ezynota was found in this browser. Import it as a new note?";
-    const s = S("ez-btn ez-btn-primary", "Import draft");
+    const s = A("ez-btn ez-btn-primary", "Import draft");
     s.addEventListener("click", () => {
-      const o = this.deps.getLegacyDraft();
-      o && this.deps.importLegacyDraft(o), this.deps.dismissLegacyDraft(), this.legacyPanel && (this.legacyPanel.hidden = !0);
+      const r = this.deps.getLegacyDraft();
+      r && this.deps.importLegacyDraft(r), this.deps.dismissLegacyDraft(), this.legacyPanel && (this.legacyPanel.hidden = !0);
     });
-    const n = S("ez-btn", "Not now");
+    const n = A("ez-btn", "Not now");
     n.addEventListener("click", () => {
       this.deps.dismissLegacyDraft(), this.legacyPanel && (this.legacyPanel.hidden = !0);
     });
-    const i = f("div", "ez-legacy-actions");
+    const i = p("div", "ez-legacy-actions");
     return i.append(s, n), t.append(e, i), t.hidden = !0, t;
   }
   maybeShowLegacyDraft() {
     this.deps.getLegacyDraft() && this.legacyPanel && (this.legacyPanel.hidden = !1);
   }
   buildHiddenImportInput() {
-    this.importInput = f("input", "ez-visually-hidden"), this.importInput.type = "file", this.importInput.accept = ".json,.md,.markdown,.html,.htm,.txt,text/*,application/json", this.importInput.setAttribute("aria-hidden", "true"), this.importInput.tabIndex = -1, this.importInput.addEventListener("change", () => {
+    this.importInput = p("input", "ez-visually-hidden"), this.importInput.type = "file", this.importInput.accept = ".json,.md,.markdown,.html,.htm,.txt,text/*,application/json", this.importInput.setAttribute("aria-hidden", "true"), this.importInput.tabIndex = -1, this.importInput.addEventListener("change", () => {
       var e;
       const t = Array.from(((e = this.importInput) == null ? void 0 : e.files) ?? []);
       t.length > 0 && this.deps.importFiles(t), this.importInput && (this.importInput.value = "");
@@ -7064,54 +7384,54 @@ class Fr {
     this.importInput && (this.importInput.accept = ".json,application/json", this.importInput.dataset.eznPurpose = "backup", this.importInput.click(), this.importInput.accept = ".json,.md,.markdown,.html,.htm,.txt,text/*,application/json", delete this.importInput.dataset.eznPurpose);
   }
 }
-let $r = 0;
-function Fs(r) {
-  if (r === "system")
+let to = 0, eo = 0;
+function Ks(o) {
+  if (o === "system")
     try {
       return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     } catch {
       return "light";
     }
-  return r;
+  return o;
 }
 let vt = null;
-function fs(r, t) {
+function Ss(o, t) {
   var a;
   vt == null || vt();
-  const e = f("div", "ez-popover ez-sidebar-menu");
+  const e = p("div", "ez-popover ez-sidebar-menu");
   e.setAttribute("role", "menu"), e.setAttribute("data-ez-ui", "true");
-  for (const l of r) {
-    const c = S("ez-menu-item", l.label);
+  for (const l of o) {
+    const c = A("ez-menu-item", l.label);
     c.setAttribute("role", "menuitem"), l.danger && c.classList.add("ez-danger"), c.addEventListener("click", () => {
       n(), l.run();
     }), e.appendChild(c);
   }
   const s = t == null ? void 0 : t.closest(".ez-workspace-root");
-  (s ?? document.body).appendChild(e), t == null || t.setAttribute("aria-expanded", "true"), t == null || t.setAttribute("aria-haspopup", "menu"), t && P(e, t.getBoundingClientRect());
+  (s ?? document.body).appendChild(e), t == null || t.setAttribute("aria-expanded", "true"), t == null || t.setAttribute("aria-haspopup", "menu"), t && _(e, t.getBoundingClientRect());
   const n = () => {
-    e.contains(document.activeElement) && (t == null || t.focus()), e.remove(), document.removeEventListener("keydown", i, !0), document.removeEventListener("mousedown", o, !0), s == null || s.removeEventListener("ez-close-popovers", n), window.removeEventListener("resize", n), t == null || t.setAttribute("aria-expanded", "false"), vt = null;
+    e.contains(document.activeElement) && (t == null || t.focus()), e.remove(), document.removeEventListener("keydown", i, !0), document.removeEventListener("mousedown", r, !0), s == null || s.removeEventListener("ez-close-popovers", n), window.removeEventListener("resize", n), t == null || t.setAttribute("aria-expanded", "false"), vt = null;
   }, i = (l) => {
     if (l.key === "Escape") {
       l.preventDefault(), l.stopImmediatePropagation(), n(), t == null || t.focus();
       return;
     }
-    l.key === "Tab" && n(), Xt(l, e);
-  }, o = (l) => {
+    l.key === "Tab" && n(), te(l, e);
+  }, r = (l) => {
     e.contains(l.target) || n();
   };
-  document.addEventListener("keydown", i, !0), document.addEventListener("mousedown", o, !0), s == null || s.addEventListener("ez-close-popovers", n), window.addEventListener("resize", n), vt = n, (a = e.querySelector("button")) == null || a.focus();
+  document.addEventListener("keydown", i, !0), document.addEventListener("mousedown", r, !0), s == null || s.addEventListener("ez-close-popovers", n), window.addEventListener("resize", n), vt = n, (a = e.querySelector("button")) == null || a.focus();
 }
-function Tt(r) {
-  return r.replace(/([\\`*_[\]])/g, "\\$1");
+function Lt(o) {
+  return o.replace(/([\\`*_[\]])/g, "\\$1");
 }
-function Vt(r) {
-  return /[\s()<>]/.test(r) ? r.replace(/%/g, "%25").replace(/[\s()<>]/g, (t) => `%${t.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`) : r;
+function Jt(o) {
+  return /[\s()<>]/.test(o) ? o.replace(/%/g, "%25").replace(/[\s()<>]/g, (t) => `%${t.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`) : o;
 }
-const Pr = /* @__PURE__ */ new Set(["info", "warning", "success", "danger"]);
-function _r(r, t) {
+const so = /* @__PURE__ */ new Set(["info", "warning", "success", "danger"]);
+function no(o, t) {
   var s, n;
-  let e = Tt(t);
-  for (const i of r)
+  let e = Lt(t);
+  for (const i of o)
     switch (i.type) {
       case "bold":
         e = `**${e}**`;
@@ -7129,8 +7449,8 @@ function _r(r, t) {
         e = `==${e}==`;
         break;
       case "link": {
-        const o = String(((s = i.attrs) == null ? void 0 : s.href) ?? "");
-        e = `[${e}](${Vt(o)})`;
+        const r = String(((s = i.attrs) == null ? void 0 : s.href) ?? "");
+        e = `[${e}](${Jt(r)})`;
         break;
       }
       case "color": {
@@ -7140,74 +7460,74 @@ function _r(r, t) {
     }
   return e;
 }
-function X(r, t) {
-  if (!r) return "";
+function X(o, t) {
+  if (!o) return "";
   let e = "";
-  for (const s of r)
-    if (_(s))
+  for (const s of o)
+    if (H(s))
       e += s.text.split(`
-`).map((n) => _r(s.marks ?? [], n)).join(`
+`).map((n) => no(s.marks ?? [], n)).join(`
 `);
-    else if (Lt(s)) {
-      const n = s.href, i = s.content.map((o) => o.text).join("");
+    else if (Dt(s)) {
+      const n = s.href, i = s.content.map((r) => r.text).join("");
       if (n.startsWith("note:")) {
-        const o = n.slice(5), a = (t == null ? void 0 : t.get(o)) ?? i;
-        e += `[${a}](${Vt(`note:${o}`)})`;
-      } else G(n) ? e += `[${Tt(i)}](${Vt(n)})` : e += Tt(i);
+        const r = n.slice(5), a = (t == null ? void 0 : t.get(r)) ?? i;
+        e += `[${a}](${Jt(`note:${r}`)})`;
+      } else G(n) ? e += `[${Lt(i)}](${Jt(n)})` : e += Lt(i);
     }
   return e;
 }
-function Me(r, t) {
+function $e(o, t) {
   const e = (t == null ? void 0 : t.indent) ?? "", s = [];
-  for (const n of r) {
+  for (const n of o) {
     const i = n.data;
     switch (n.type) {
       case "heading": {
-        const o = Math.min(6, Math.max(1, Number(i.level) || 1));
-        s.push(`${e}${"#".repeat(o)} ${X(i.content, t == null ? void 0 : t.noteLinkTitles)}`);
+        const r = Math.min(6, Math.max(1, Number(i.level) || 1));
+        s.push(`${e}${"#".repeat(r)} ${X(i.content, t == null ? void 0 : t.noteLinkTitles)}`);
         break;
       }
       case "paragraph":
         s.push(...X(i.content, t == null ? void 0 : t.noteLinkTitles).split(`
-`).map((o) => `${e}${o}`));
+`).map((r) => `${e}${r}`));
         break;
       case "quote":
-        for (const o of X(i.content, t == null ? void 0 : t.noteLinkTitles).split(`
+        for (const r of X(i.content, t == null ? void 0 : t.noteLinkTitles).split(`
 `))
-          s.push(`${e}> ${o}`);
+          s.push(`${e}> ${r}`);
         break;
       case "code":
         s.push(`${e}\`\`\``);
-        for (const o of String(i.code ?? "").split(`
-`)) s.push(`${e}${o}`);
+        for (const r of String(i.code ?? "").split(`
+`)) s.push(`${e}${r}`);
         s.push(`${e}\`\`\``);
         break;
       case "delimiter":
         s.push(`${e}---`);
         break;
       case "list": {
-        const o = i.style === "ordered" ? "ordered" : i.style === "task" ? "task" : "unordered", a = i.items;
+        const r = i.style === "ordered" ? "ordered" : i.style === "task" ? "task" : "unordered", a = i.items;
         (Array.isArray(a) ? a : []).forEach((c, d) => {
-          const h = o === "ordered" ? `${d + 1}. ` : o === "task" ? c.checked ? "- [x] " : "- [ ] " : "- ";
-          s.push(`${e}${h}${X(c.content, t == null ? void 0 : t.noteLinkTitles)}`);
+          const u = r === "ordered" ? `${d + 1}. ` : r === "task" ? c.checked ? "- [x] " : "- [ ] " : "- ";
+          s.push(`${e}${u}${X(c.content, t == null ? void 0 : t.noteLinkTitles)}`);
         });
         break;
       }
       case "table": {
-        const o = i, a = o.rows, l = Array.isArray(a) ? a : [];
+        const r = i, a = r.rows, l = Array.isArray(a) ? a : [];
         l.length > 0 && l.forEach((c, d) => {
-          const h = c.map((u) => X(u.content, t == null ? void 0 : t.noteLinkTitles));
-          s.push(`${e}| ${h.join(" | ")} |`), d === 0 && o.header !== !1 && s.push(`${e}|${h.map(() => " --- ").join("|")}|`);
+          const u = c.map((h) => X(h.content, t == null ? void 0 : t.noteLinkTitles));
+          s.push(`${e}| ${u.join(" | ")} |`), d === 0 && r.header !== !1 && s.push(`${e}|${u.map(() => " --- ").join("|")}|`);
         });
         break;
       }
       case "image": {
-        const o = String(i.src ?? ""), a = String(i.alt ?? "");
-        (Z(o) || o.startsWith("asset:")) && s.push(`${e}![${Tt(a)}](${Vt(o)})`), typeof i.caption == "string" && i.caption !== "" && s.push(`${e}*${Tt(i.caption)}*`);
+        const r = String(i.src ?? ""), a = String(i.alt ?? "");
+        (Z(r) || r.startsWith("asset:")) && s.push(`${e}![${Lt(a)}](${Jt(r)})`), typeof i.caption == "string" && i.caption !== "" && s.push(`${e}*${Lt(i.caption)}*`);
         break;
       }
       case "callout": {
-        const o = String(i.variant ?? "info"), a = Pr.has(o) ? o : "info";
+        const r = String(i.variant ?? "info"), a = so.has(r) ? r : "info";
         s.push(`${e}> [!${a.toUpperCase()}]`);
         for (const l of X(i.content, t == null ? void 0 : t.noteLinkTitles).split(`
 `))
@@ -7216,8 +7536,8 @@ function Me(r, t) {
       }
       case "toggle": {
         if (s.push(`${e}### ${X(i.heading, t == null ? void 0 : t.noteLinkTitles)}`), Array.isArray(n.children)) {
-          const o = Me(n.children, { ...t, indent: `${e}  ` });
-          o !== "" && s.push(o);
+          const r = $e(n.children, { ...t, indent: `${e}  ` });
+          r !== "" && s.push(r);
         }
         break;
       }
@@ -7228,100 +7548,100 @@ function Me(r, t) {
 
 `).trim();
 }
-function K(r, t) {
+function K(o, t) {
   var n;
-  const e = Hr(r), s = [];
+  const e = io(o), s = [];
   for (const i of e)
-    if (i.marks.some((o) => o.type === "link")) {
-      const o = i.marks.find((d) => d.type === "link"), a = String(((n = o.attrs) == null ? void 0 : n.href) ?? ""), l = i.marks.filter((d) => d !== o), c = { type: "text", text: i.text };
-      l.length > 0 && (c.marks = l), G(gs(a, t)) ? s.push({ type: "link", href: gs(a, t), content: [c] }) : s.push(st(i.text, l.length > 0 ? l : void 0));
+    if (i.marks.some((r) => r.type === "link")) {
+      const r = i.marks.find((d) => d.type === "link"), a = String(((n = r.attrs) == null ? void 0 : n.href) ?? ""), l = i.marks.filter((d) => d !== r), c = { type: "text", text: i.text };
+      l.length > 0 && (c.marks = l), G(xs(a, t)) ? s.push({ type: "link", href: xs(a, t), content: [c] }) : s.push(st(i.text, l.length > 0 ? l : void 0));
     } else
       s.push(st(i.text, i.marks.length > 0 ? i.marks : void 0));
   return s;
 }
-function gs(r, t) {
-  if (r.startsWith("note:") || !t) return r;
+function xs(o, t) {
+  if (o.startsWith("note:") || !t) return o;
   try {
-    return new URL(r, t).toString();
+    return new URL(o, t).toString();
   } catch {
-    return r;
+    return o;
   }
 }
-function Hr(r) {
+function io(o) {
   const t = [];
   let e = "", s = [];
   const n = () => {
     e !== "" && (t.push({ text: e, marks: s }), e = "", s = []);
   };
   let i = 0;
-  for (; i < r.length; ) {
-    const o = r.slice(i);
-    if (o.startsWith("**")) {
-      const a = r.indexOf("**", i + 2);
+  for (; i < o.length; ) {
+    const r = o.slice(i);
+    if (r.startsWith("**")) {
+      const a = o.indexOf("**", i + 2);
       if (a > i) {
-        n(), t.push({ text: r.slice(i + 2, a), marks: [{ type: "bold" }] }), i = a + 2;
+        n(), t.push({ text: o.slice(i + 2, a), marks: [{ type: "bold" }] }), i = a + 2;
         continue;
       }
     }
-    if (r[i] === "*" && !o.startsWith("* ")) {
-      const a = r.indexOf("*", i + 1);
+    if (o[i] === "*" && !r.startsWith("* ")) {
+      const a = o.indexOf("*", i + 1);
       if (a > i) {
-        n(), t.push({ text: r.slice(i + 1, a), marks: [{ type: "italic" }] }), i = a + 1;
+        n(), t.push({ text: o.slice(i + 1, a), marks: [{ type: "italic" }] }), i = a + 1;
         continue;
       }
     }
-    if (o.startsWith("~~")) {
-      const a = r.indexOf("~~", i + 2);
+    if (r.startsWith("~~")) {
+      const a = o.indexOf("~~", i + 2);
       if (a > i) {
-        n(), t.push({ text: r.slice(i + 2, a), marks: [{ type: "strike" }] }), i = a + 2;
+        n(), t.push({ text: o.slice(i + 2, a), marks: [{ type: "strike" }] }), i = a + 2;
         continue;
       }
     }
-    if (o.startsWith("==")) {
-      const a = r.indexOf("==", i + 2);
+    if (r.startsWith("==")) {
+      const a = o.indexOf("==", i + 2);
       if (a > i) {
-        n(), t.push({ text: r.slice(i + 2, a), marks: [{ type: "mark" }] }), i = a + 2;
+        n(), t.push({ text: o.slice(i + 2, a), marks: [{ type: "mark" }] }), i = a + 2;
         continue;
       }
     }
-    if (r[i] === "`") {
-      const a = r.indexOf("`", i + 1);
+    if (o[i] === "`") {
+      const a = o.indexOf("`", i + 1);
       if (a > i) {
-        n(), t.push({ text: r.slice(i + 1, a), marks: [{ type: "code" }] }), i = a + 1;
+        n(), t.push({ text: o.slice(i + 1, a), marks: [{ type: "code" }] }), i = a + 1;
         continue;
       }
     }
-    if (o.startsWith("[!")) {
-      e += r[i], i++;
+    if (r.startsWith("[!")) {
+      e += o[i], i++;
       continue;
     }
-    if (r[i] === "[") {
-      const a = r.indexOf("]", i + 1);
-      if (a > i && r[a + 1] === "(") {
-        const l = r.indexOf(")", a + 2);
+    if (o[i] === "[") {
+      const a = o.indexOf("]", i + 1);
+      if (a > i && o[a + 1] === "(") {
+        const l = o.indexOf(")", a + 2);
         if (l > a) {
-          const c = r.slice(i + 1, a), d = r.slice(a + 2, l);
+          const c = o.slice(i + 1, a), d = o.slice(a + 2, l);
           c.startsWith("!") ? (n(), t.push({ text: c.slice(1), marks: [] })) : (n(), t.push({ text: c, marks: [{ type: "link", attrs: { href: d } }] })), i = l + 1;
           continue;
         }
       }
     }
-    if (o.startsWith("\\[")) {
+    if (r.startsWith("\\[")) {
       e += "[", i += 2;
       continue;
     }
-    e += r[i], i++;
+    e += o[i], i++;
   }
   return n(), t;
 }
-function jr(r, t) {
-  const e = r.replace(/\r\n?/g, `
+function ro(o, t) {
+  const e = o.replace(/\r\n?/g, `
 `).split(`
 `), s = [];
   let n = 0;
   for (; n < e.length; ) {
-    const i = e[n], o = i.trim();
-    if (o.startsWith("```")) {
+    const i = e[n], r = i.trim();
+    if (r.startsWith("```")) {
       const d = [];
       for (n++; n < e.length && !e[n].trim().startsWith("```"); )
         d.push(e[n]), n++;
@@ -7329,117 +7649,117 @@ function jr(r, t) {
 `) } });
       continue;
     }
-    const a = /^(#{1,6})\s+(.*)$/.exec(o);
+    const a = /^(#{1,6})\s+(.*)$/.exec(r);
     if (a) {
       s.push({ type: "heading", data: { level: a[1].length, content: K(a[2], t) } }), n++;
       continue;
     }
-    if (/^(-{3,}|\*{3,}|_{3,})$/.test(o)) {
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(r)) {
       s.push({ type: "delimiter", data: {} }), n++;
       continue;
     }
-    if (o.startsWith(">")) {
-      const d = /^>\s*\[!(\w+)\]/.exec(o), h = [];
+    if (r.startsWith(">")) {
+      const d = /^>\s*\[!(\w+)\]/.exec(r), u = [];
       if (d) {
         for (n++; n < e.length && e[n].trim().startsWith(">"); )
-          h.push(e[n].trim().replace(/^>\s?/, "")), n++;
-        s.push({ type: "callout", data: { variant: d[1].toLowerCase(), content: h.flatMap((u) => K(u, t)) } });
+          u.push(e[n].trim().replace(/^>\s?/, "")), n++;
+        s.push({ type: "callout", data: { variant: d[1].toLowerCase(), content: u.flatMap((h) => K(h, t)) } });
         continue;
       }
       for (; n < e.length && e[n].trim().startsWith(">"); )
-        h.push(e[n].trim().replace(/^>\s?/, "")), n++;
-      s.push({ type: "quote", data: { content: K(h.join(" "), t) } });
+        u.push(e[n].trim().replace(/^>\s?/, "")), n++;
+      s.push({ type: "quote", data: { content: K(u.join(" "), t) } });
       continue;
     }
-    if (o.startsWith("|") && o.endsWith("|")) {
+    if (r.startsWith("|") && r.endsWith("|")) {
       const d = [];
       for (; n < e.length && e[n].trim().startsWith("|"); )
         d.push(e[n].trim()), n++;
-      const h = Ur(d, t);
-      h && s.push(h);
+      const u = oo(d, t);
+      u && s.push(u);
       continue;
     }
     if (/^\s*([-*+]|\d+[.)])\s+/.test(i) || /^\s*[-*+]\s+\[[ xX]\]\s+/.test(i)) {
-      const d = (m) => m.length - m.trimStart().length, h = d(i), u = [];
-      let p = !1, g = !1;
-      for (; n < e.length && /^\s*([-*+]|\d+[.)])\s+/.test(e[n]) && d(e[n]) >= h; ) {
+      const d = (m) => m.length - m.trimStart().length, u = d(i), h = [];
+      let f = !1, g = !1;
+      for (; n < e.length && /^\s*([-*+]|\d+[.)])\s+/.test(e[n]) && d(e[n]) >= u; ) {
         const m = e[n], y = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(m);
         if (y) {
-          g = !0, u.push({ content: K(y[2], t), checked: y[1] !== " " }), n++;
+          g = !0, h.push({ content: K(y[2], t), checked: y[1] !== " " }), n++;
           continue;
         }
         const v = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(m);
-        /\d/.test(v[1]) && (p = !0), u.push({ content: K(v[2], t) }), n++;
+        /\d/.test(v[1]) && (f = !0), h.push({ content: K(v[2], t) }), n++;
       }
-      u.length > 0 && s.push({ type: "list", data: { style: g ? "task" : p ? "ordered" : "unordered", items: u } });
+      h.length > 0 && s.push({ type: "list", data: { style: g ? "task" : f ? "ordered" : "unordered", items: h } });
       continue;
     }
-    const l = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(o);
+    const l = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(r);
     if (l) {
       s.push({ type: "image", data: { alt: l[1], src: l[2] } }), n++;
       continue;
     }
-    if (o === "") {
+    if (r === "") {
       n++;
       continue;
     }
     const c = [];
     for (; n < e.length && e[n].trim() !== "" && !/^\s*([-*+]|\d+[.)]|>|#{1,6}\s|```|\|)/.test(e[n]); )
       c.push(e[n].trim()), n++;
-    c.length === 0 && (c.push(o), n++), c.length > 0 && s.push({ type: "paragraph", data: { content: K(c.join(" "), t) } });
+    c.length === 0 && (c.push(r), n++), c.length > 0 && s.push({ type: "paragraph", data: { content: K(c.join(" "), t) } });
   }
   return s;
 }
-function Ur(r, t) {
-  if (r.length === 0) return null;
-  const e = (l) => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()), s = e(r[0]), n = r.length > 1 && /^[\s|:-]+$/.test(r[1] ?? ""), i = n ? r.slice(2) : r.slice(1), o = [], a = s.map((l) => ({ content: K(l, t) }));
-  o.push(a);
+function oo(o, t) {
+  if (o.length === 0) return null;
+  const e = (l) => l.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()), s = e(o[0]), n = o.length > 1 && /^[\s|:-]+$/.test(o[1] ?? ""), i = n ? o.slice(2) : o.slice(1), r = [], a = s.map((l) => ({ content: K(l, t) }));
+  r.push(a);
   for (const l of i)
-    o.push(e(l).map((c) => ({ content: K(c, t) })));
-  return { type: "table", data: { header: n, rows: o } };
+    r.push(e(l).map((c) => ({ content: K(c, t) })));
+  return { type: "table", data: { header: n, rows: r } };
 }
-const qr = /* @__PURE__ */ new Set(["info", "warning", "success", "danger"]);
-async function $s(r, t) {
-  const e = /* @__PURE__ */ new Map(), s = r.blocks.map((l) => Ps(l, t, e)), n = await Promise.all(s), i = await Promise.all(
+const ao = /* @__PURE__ */ new Set(["info", "warning", "success", "danger"]);
+async function Js(o, t) {
+  const e = /* @__PURE__ */ new Map(), s = o.blocks.map((l) => Zs(l, t, e)), n = await Promise.all(s), i = await Promise.all(
     Array.from(e.keys()).map(async (l) => ({ id: l, asset: await t(l) }))
-  ), o = { ...r, blocks: n }, a = i.filter((l) => !!l.asset);
-  return a.length > 0 && (o.assets = a.map(({ id: l, asset: c }) => ({
+  ), r = { ...o, blocks: n }, a = i.filter((l) => !!l.asset);
+  return a.length > 0 && (r.assets = a.map(({ id: l, asset: c }) => ({
     id: l,
     mime: c.mime,
-    dataUrl: _s(c)
-  }))), o;
+    dataUrl: Gs(c)
+  }))), r;
 }
-async function Ps(r, t, e) {
-  const s = { ...r, data: r.data };
-  if (r.type === "image" && typeof r.data.src == "string") {
-    const n = String(r.data.src);
+async function Zs(o, t, e) {
+  const s = { ...o, data: o.data };
+  if (o.type === "image" && typeof o.data.src == "string") {
+    const n = String(o.data.src);
     if (n.startsWith("asset:")) {
-      const i = n.slice(6), o = await t(i);
-      if (o) {
-        const a = _s(o);
-        e.set(i, a), s.data = { ...r.data, src: a };
+      const i = n.slice(6), r = await t(i);
+      if (r) {
+        const a = Gs(r);
+        e.set(i, a), s.data = { ...o.data, src: a };
       }
     }
   }
-  return Array.isArray(r.children) && (s.children = await Promise.all(r.children.map((n) => Ps(n, t, e)))), s;
+  return Array.isArray(o.children) && (s.children = await Promise.all(o.children.map((n) => Zs(n, t, e)))), s;
 }
-function _s(r) {
-  const t = Wr(r.bytes);
-  return `data:${r.mime};base64,${t}`;
+function Gs(o) {
+  const t = lo(o.bytes);
+  return `data:${o.mime};base64,${t}`;
 }
-function Wr(r) {
+function lo(o) {
   let t = "";
-  for (let s = 0; s < r.length; s += 32768)
-    t += String.fromCharCode(...r.subarray(s, s + 32768));
+  for (let s = 0; s < o.length; s += 32768)
+    t += String.fromCharCode(...o.subarray(s, s + 32768));
   return btoa(t);
 }
-function Ne(r) {
+function Pe(o) {
   const t = [];
-  return Hs(r, t), t.join(`
+  return Ys(o, t), t.join(`
 `);
 }
-function Hs(r, t) {
-  for (const e of r) {
+function Ys(o, t) {
+  for (const e of o) {
     const s = e.data;
     switch (e.type) {
       case "heading": {
@@ -7462,7 +7782,7 @@ function Hs(r, t) {
         t.push("<hr>");
         break;
       case "list": {
-        const n = s.style === "ordered" ? "ordered" : s.style === "task" ? "task" : "unordered", i = s.items, o = Array.isArray(i) ? i : [], a = n === "ordered" ? "ol" : "ul", l = o.map((c) => {
+        const n = s.style === "ordered" ? "ordered" : s.style === "task" ? "task" : "unordered", i = s.items, r = Array.isArray(i) ? i : [], a = n === "ordered" ? "ol" : "ul", l = r.map((c) => {
           const d = V(c.content);
           return n === "task" ? `<li class="ez-md-task${c.checked ? " checked" : ""}"><input type="checkbox" disabled${c.checked ? " checked" : ""}/> ${d}</li>` : `<li>${d}</li>`;
         }).join(`
@@ -7471,45 +7791,45 @@ function Hs(r, t) {
         break;
       }
       case "table": {
-        const n = s.rows, i = Array.isArray(n) ? n : [], o = s.header !== !1, a = i.map((l, c) => {
-          const d = o && c === 0 ? "th" : "td";
-          return `<tr>${l.map((h) => `<${d}>${V(h.content)}</${d}>`).join("")}</tr>`;
+        const n = s.rows, i = Array.isArray(n) ? n : [], r = s.header !== !1, a = i.map((l, c) => {
+          const d = r && c === 0 ? "th" : "td";
+          return `<tr>${l.map((u) => `<${d}>${V(u.content)}</${d}>`).join("")}</tr>`;
         }).join(`
 `);
         t.push(`<table class="ez-md-table">${a}</table>`);
         break;
       }
       case "image": {
-        const n = String(s.src ?? ""), i = String(s.alt ?? ""), o = document.createElement("img");
-        o.alt = i, (Z(n) || n.startsWith("asset:")) && o.setAttribute("src", n), t.push(o.outerHTML), typeof s.caption == "string" && s.caption !== "" && t.push(`<figcaption>${W(s.caption)}</figcaption>`);
+        const n = String(s.src ?? ""), i = String(s.alt ?? ""), r = document.createElement("img");
+        r.alt = i, (Z(n) || n.startsWith("asset:")) && r.setAttribute("src", n), t.push(r.outerHTML), typeof s.caption == "string" && s.caption !== "" && t.push(`<figcaption>${W(s.caption)}</figcaption>`);
         break;
       }
       case "callout": {
-        const n = String(s.variant ?? "info"), i = qr.has(n) ? n : "info";
+        const n = String(s.variant ?? "info"), i = ao.has(n) ? n : "info";
         t.push(`<div class="ez-md-callout" data-ezn-variant="${W(i)}">${V(s.content)}</div>`);
         break;
       }
       case "toggle": {
         const n = V(s.heading), i = [];
-        Array.isArray(e.children) && Hs(e.children, i), t.push(`<details class="ez-md-toggle"${s.open !== !1 ? " open" : ""}><summary>${n}</summary>${i.join(`
+        Array.isArray(e.children) && Ys(e.children, i), t.push(`<details class="ez-md-toggle"${s.open !== !1 ? " open" : ""}><summary>${n}</summary>${i.join(`
 `)}</details>`);
         break;
       }
     }
   }
 }
-function V(r) {
-  if (!Array.isArray(r)) return "";
+function V(o) {
+  if (!Array.isArray(o)) return "";
   let t = "";
-  for (const e of r)
-    e.type === "text" ? t += Vr(e.text ?? "", e.marks ?? []) : e.type === "link" && (t += `<a href="${W(e.href ?? "")}" rel="noopener noreferrer">${V(e.content)}</a>`);
+  for (const e of o)
+    e.type === "text" ? t += co(e.text ?? "", e.marks ?? []) : e.type === "link" && (t += `<a href="${W(e.href ?? "")}" rel="noopener noreferrer">${V(e.content)}</a>`);
   return t;
 }
-function Vr(r, t) {
+function co(o, t) {
   var s, n, i;
-  let e = W(r);
-  for (const o of t)
-    switch (o.type) {
+  let e = W(o);
+  for (const r of t)
+    switch (r.type) {
       case "bold":
         e = `<strong>${e}</strong>`;
         break;
@@ -7529,34 +7849,34 @@ function Vr(r, t) {
         e = `<s>${e}</s>`;
         break;
       case "link":
-        e = `<a href="${W(((s = o.attrs) == null ? void 0 : s.href) ?? "")}" rel="noopener noreferrer">${e}</a>`;
+        e = `<a href="${W(((s = r.attrs) == null ? void 0 : s.href) ?? "")}" rel="noopener noreferrer">${e}</a>`;
         break;
       case "color":
-        e = `<span style="color:${W(((n = o.attrs) == null ? void 0 : n.color) ?? "")}">${e}</span>`;
+        e = `<span style="color:${W(((n = r.attrs) == null ? void 0 : n.color) ?? "")}">${e}</span>`;
         break;
       case "background":
-        e = `<span style="background:${W(((i = o.attrs) == null ? void 0 : i.color) ?? "")}">${e}</span>`;
+        e = `<span style="background:${W(((i = r.attrs) == null ? void 0 : i.color) ?? "")}">${e}</span>`;
         break;
     }
   return e;
 }
-function W(r) {
-  return r.replace(/[&<>"']/g, (t) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[t] ?? t);
+function W(o) {
+  return o.replace(/[&<>"']/g, (t) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[t] ?? t);
 }
-function Kr(r) {
-  return Me(r).replace(/([*_~`=]{1,3}|==)/g, "");
+function ho(o) {
+  return $e(o).replace(/([*_~`=]{1,3}|==)/g, "");
 }
-async function Jr(r, t, e) {
+async function uo(o, t, e) {
   var s;
   switch (t) {
     case "json": {
-      const n = await $s(r, e);
+      const n = await Js(o, e);
       return JSON.stringify(n, null, 2);
     }
     case "md":
-      return Me(r.blocks);
+      return $e(o.blocks);
     case "html": {
-      const n = String(((s = r.meta) == null ? void 0 : s.title) ?? "Document"), i = Ne(r.blocks);
+      const n = String(((s = o.meta) == null ? void 0 : s.title) ?? "Document"), i = Pe(o.blocks);
       return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7570,29 +7890,29 @@ ${i}
 </html>`;
     }
     case "txt":
-      return Kr(r.blocks);
+      return ho(o.blocks);
   }
 }
-function Ot(r, t, e) {
+function Ot(o, t, e) {
   const s = new Blob([t], { type: e }), n = URL.createObjectURL(s), i = document.createElement("a");
-  i.href = n, i.download = r, document.body.appendChild(i), i.click(), i.remove(), setTimeout(() => URL.revokeObjectURL(n), 1e3);
+  i.href = n, i.download = o, document.body.appendChild(i), i.click(), i.remove(), setTimeout(() => URL.revokeObjectURL(n), 1e3);
 }
-function Zr(r, t) {
-  return r.trim().replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80) || t;
+function fo(o, t) {
+  return o.trim().replace(/[\\/:*?"<>|]+/g, "-").slice(0, 80) || t;
 }
-const ms = 10 * 1024 * 1024;
-function Gr(r, t) {
-  const e = r.toLowerCase();
+const Is = 10 * 1024 * 1024;
+function po(o, t) {
+  const e = o.toLowerCase();
   return e.endsWith(".json") || t === "application/json" ? "json" : e.endsWith(".md") || e.endsWith(".markdown") ? "md" : e.endsWith(".html") || e.endsWith(".htm") || t === "text/html" ? "html" : "txt";
 }
-async function Yr(r) {
-  if (r.size > ms)
+async function go(o) {
+  if (o.size > Is)
     throw new k(
       "EZ_IMPORT_FAILED",
-      `File is larger than the ${ms / (1024 * 1024)} MB import limit`,
-      { size: r.size }
+      `File is larger than the ${Is / (1024 * 1024)} MB import limit`,
+      { size: o.size }
     );
-  const t = Gr(r.name, r.type), e = await r.text();
+  const t = po(o.name, o.type), e = await o.text();
   switch (t) {
     case "json": {
       let s;
@@ -7601,53 +7921,53 @@ async function Yr(r) {
       } catch {
         throw new k("EZ_IMPORT_FAILED", "File is not valid JSON", { original: e });
       }
-      if (Qr(s)) {
+      if (bo(s)) {
         const n = s;
         if (typeof n.workspaceSchemaVersion != "string")
           throw new k("EZ_IMPORT_FAILED", "Backup is missing workspaceSchemaVersion", { original: s });
         return { format: t, result: { kind: "backup", backup: n } };
       }
-      if (to(s)) {
+      if (yo(s)) {
         const n = s;
-        if (n.schemaVersion !== $)
+        if (n.schemaVersion !== P)
           throw new k("EZ_IMPORT_FAILED", `Document schema "${n.schemaVersion}" is not supported`, { original: s });
-        const i = _t(n, Yt());
+        const i = jt(n, Qt());
         return { format: t, result: { kind: "document", document: i } };
       }
       throw new k("EZ_IMPORT_FAILED", "JSON is not an Ezynota document or workspace backup", { original: s });
     }
     case "md":
-      return { format: t, result: { kind: "blocks", blocks: jr(e), suggestedTitle: ie(r.name) } };
+      return { format: t, result: { kind: "blocks", blocks: ro(e), suggestedTitle: oe(o.name) } };
     case "html":
-      return { format: t, result: { kind: "blocks", blocks: Ds(e), suggestedTitle: ie(r.name) } };
+      return { format: t, result: { kind: "blocks", blocks: js(e), suggestedTitle: oe(o.name) } };
     case "txt":
-      return { format: t, result: { kind: "blocks", blocks: Ms(e), suggestedTitle: ie(r.name) } };
+      return { format: t, result: { kind: "blocks", blocks: Us(e), suggestedTitle: oe(o.name) } };
   }
 }
-function Xr(r, t) {
+function mo(o, t) {
   const e = Date.now();
   return {
-    schemaVersion: $,
-    blocks: r.map((s) => ({ ...s, id: Yt()() })),
+    schemaVersion: P,
+    blocks: o.map((s) => ({ ...s, id: Qt()() })),
     createdAt: e,
     updatedAt: e,
     meta: t ? { title: t } : void 0
   };
 }
-function ie(r) {
-  return r.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+function oe(o) {
+  return o.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
 }
-function Qr(r) {
-  return typeof r == "object" && r !== null && !Array.isArray(r) && "workspaceSchemaVersion" in r && Array.isArray(r.notes);
+function bo(o) {
+  return typeof o == "object" && o !== null && !Array.isArray(o) && "workspaceSchemaVersion" in o && Array.isArray(o.notes);
 }
-function to(r) {
-  return typeof r == "object" && r !== null && !Array.isArray(r) && typeof r.schemaVersion == "string" && Array.isArray(r.blocks);
+function yo(o) {
+  return typeof o == "object" && o !== null && !Array.isArray(o) && typeof o.schemaVersion == "string" && Array.isArray(o.blocks);
 }
-function eo(r) {
+function ko(o) {
   var a;
   const t = window.open("", "_blank");
   if (!t) return;
-  const e = t.document, s = String(((a = r.meta) == null ? void 0 : a.title) ?? "Ezynota document");
+  const e = t.document, s = String(((a = o.meta) == null ? void 0 : a.title) ?? "Ezynota document");
   e.title = s;
   const n = e.createElement("style");
   n.textContent = `
@@ -7663,10 +7983,10 @@ function eo(r) {
   `, e.head.appendChild(n);
   const i = e.createElement("h1");
   i.textContent = s, e.body.appendChild(i);
-  const o = e.createElement("div");
-  so(o, Ne(r.blocks)), e.body.appendChild(o), t.focus(), t.print();
+  const r = e.createElement("div");
+  vo(r, Pe(o.blocks)), e.body.appendChild(r), t.focus(), t.print();
 }
-function so(r, t) {
+function vo(o, t) {
   const e = new DOMParser().parseFromString(t, "text/html");
   for (const s of Array.from(e.body.querySelectorAll("*"))) {
     const n = s.tagName;
@@ -7686,8 +8006,8 @@ function so(r, t) {
       !G(i) && !i.startsWith("note:") && s.removeAttribute("href");
     }
     for (const i of Array.from(s.attributes)) {
-      const o = i.name.toLowerCase();
-      if (/^on/i.test(o) || o === "style" || o === "formaction" || o === "xlink:href") {
+      const r = i.name.toLowerCase();
+      if (/^on/i.test(r) || r === "style" || r === "formaction" || r === "xlink:href") {
         s.removeAttribute(i.name);
         continue;
       }
@@ -7695,24 +8015,24 @@ function so(r, t) {
     }
   }
   for (const s of Array.from(e.body.childNodes))
-    r.appendChild(r.ownerDocument.importNode(s, !0));
+    o.appendChild(o.ownerDocument.importNode(s, !0));
 }
-class no {
+class wo {
   constructor(t, e) {
     this.popover = null, this.query = "", this.range = null, this.blockId = "", this.disposers = [], this.items = [], this.focusedIndex = 0, this.surface = t, this.deps = e;
-    const s = (o) => {
-      const a = o;
+    const s = (r) => {
+      const a = r;
       a.isComposing || this.popover && this.handleKey(a);
-    }, n = (o) => {
-      o.isComposing || this.checkCaret();
+    }, n = (r) => {
+      r.isComposing || this.checkCaret();
     };
     this.surface.addEventListener("keydown", s, !0), this.surface.addEventListener("input", n, !0);
-    const i = (o) => {
-      var c, d, h;
-      const a = (d = (c = o.target) == null ? void 0 : c.closest) == null ? void 0 : d.call(c, "a[href^='note:']");
+    const i = (r) => {
+      var c, d, u;
+      const a = (d = (c = r.target) == null ? void 0 : c.closest) == null ? void 0 : d.call(c, "a[href^='note:']");
       if (!a) return;
-      const l = a.getAttribute("data-ezn-note") ?? ((h = a.getAttribute("href")) == null ? void 0 : h.slice(5));
-      !l || !this.deps.openNote || (o.preventDefault(), this.deps.openNote(l));
+      const l = a.getAttribute("data-ezn-note") ?? ((u = a.getAttribute("href")) == null ? void 0 : u.slice(5));
+      !l || !this.deps.openNote || (r.preventDefault(), this.deps.openNote(l));
     };
     this.surface.addEventListener("click", i, !0), this.disposers.push(
       () => this.surface.removeEventListener("keydown", s, !0),
@@ -7744,12 +8064,12 @@ class no {
       this.closePopover();
       return;
     }
-    const i = n.toString(), o = /\[\[([^\][]*)$/.exec(i);
-    if (!o) {
+    const i = n.toString(), r = /\[\[([^\][]*)$/.exec(i);
+    if (!r) {
       this.closePopover();
       return;
     }
-    this.query = o[1] ?? "", this.range = e.cloneRange(), this.blockId = ((c = s.closest("[data-ez-block-id]")) == null ? void 0 : c.getAttribute("data-ez-block-id")) ?? "", this.openPopover();
+    this.query = r[1] ?? "", this.range = e.cloneRange(), this.blockId = ((c = s.closest("[data-ez-block-id]")) == null ? void 0 : c.getAttribute("data-ez-block-id")) ?? "", this.openPopover();
   }
   handleKey(t) {
     if (this.popover)
@@ -7770,27 +8090,27 @@ class no {
   }
   openPopover() {
     var n, i;
-    const t = ((i = (n = this.deps).getActiveNoteId) == null ? void 0 : i.call(n)) ?? this.blockId, e = this.deps.listNotes().filter((o) => o.id !== t), s = this.query.toLowerCase();
-    if (this.items = (s ? e.filter((o) => o.title.toLowerCase().includes(s)) : e).slice(0, 8), this.focusedIndex = 0, !this.popover) {
-      this.popover = f("div", "ez-popover ez-note-suggest"), this.popover.setAttribute("role", "listbox"), this.popover.setAttribute("aria-label", "Link to note"), this.popover.setAttribute("data-ez-ui", "true");
-      const o = (l) => {
+    const t = ((i = (n = this.deps).getActiveNoteId) == null ? void 0 : i.call(n)) ?? this.blockId, e = this.deps.listNotes().filter((r) => r.id !== t), s = this.query.toLowerCase();
+    if (this.items = (s ? e.filter((r) => r.title.toLowerCase().includes(s)) : e).slice(0, 8), this.focusedIndex = 0, !this.popover) {
+      this.popover = p("div", "ez-popover ez-note-suggest"), this.popover.setAttribute("role", "listbox"), this.popover.setAttribute("aria-label", "Link to note"), this.popover.setAttribute("data-ez-ui", "true");
+      const r = (l) => {
         this.popover && !this.popover.contains(l.target) && this.closePopover();
       };
-      document.addEventListener("mousedown", o, !0), this.disposers.push(() => document.removeEventListener("mousedown", o, !0));
+      document.addEventListener("mousedown", r, !0), this.disposers.push(() => document.removeEventListener("mousedown", r, !0));
       const a = () => this.closePopover();
       this.surface.addEventListener("ez-close-popovers", a), this.disposers.push(() => this.surface.removeEventListener("ez-close-popovers", a)), this.surface.appendChild(this.popover);
     }
-    for (const o of Array.from(this.popover.childNodes))
-      this.popover.removeChild(o);
+    for (const r of Array.from(this.popover.childNodes))
+      this.popover.removeChild(r);
     if (this.items.length === 0) {
-      this.popover.appendChild(f("div", "ez-menu-empty", "No notes to link"));
+      this.popover.appendChild(p("div", "ez-menu-empty", "No notes to link"));
       return;
     }
-    this.items.forEach((o) => {
+    this.items.forEach((r) => {
       var l;
-      const a = f("button", "ez-menu-item");
-      a.type = "button", a.setAttribute("role", "option"), a.textContent = o.title || "Untitled", a.addEventListener("click", () => this.accept(o)), (l = this.popover) == null || l.appendChild(a);
-    }), this.highlightFocused(), this.range && P(this.popover, this.range.getBoundingClientRect());
+      const a = p("button", "ez-menu-item");
+      a.type = "button", a.setAttribute("role", "option"), a.textContent = r.title || "Untitled", a.addEventListener("click", () => this.accept(r)), (l = this.popover) == null || l.appendChild(a);
+    }), this.highlightFocused(), this.range && _(this.popover, this.range.getBoundingClientRect());
   }
   highlightFocused() {
     if (!this.popover) return;
@@ -7814,10 +8134,10 @@ class no {
       }
     const i = ((s == null ? void 0 : s.ownerDocument) ?? document).createElement("a");
     i.setAttribute("href", `note:${t.id}`), i.setAttribute("data-ezn-note", t.id), i.setAttribute("rel", "noopener noreferrer"), i.textContent = t.title || "Untitled", e.insertNode(i);
-    const o = window.getSelection();
-    if (o) {
+    const r = window.getSelection();
+    if (r) {
       const l = (i.ownerDocument ?? document).createRange();
-      l.setStartAfter(i), l.collapse(!0), o.removeAllRanges(), o.addRange(l);
+      l.setStartAfter(i), l.collapse(!0), r.removeAllRanges(), r.addRange(l);
     }
     s == null || s.dispatchEvent(new Event("input", { bubbles: !0 }));
   }
@@ -7828,52 +8148,54 @@ class no {
     return i >= 0 ? i : -1;
   }
 }
-class io {
+class Eo {
   constructor(t, e, s) {
     this.ui = null, this.suggester = null, this.histories = /* @__PURE__ */ new Map(), this.disposers = [], this.destroyed = !1, this.themeMedia = null, this.fullscreenOn = !1, this.fullscreenPending = !1, this.lastFocus = null, this.switching = !1, this.depsBridge = null, this.loadGeneration = 0, this.onFullscreenChange = () => {
-      var l, c, d, h;
+      var c, d, u, h;
       if (this.destroyed) return;
-      const a = this.surface.ownerDocument.fullscreenElement === this.surface;
-      a !== this.fullscreenOn && (this.fullscreenOn = a, (l = this.ui) == null || l.setFullscreen(a), a ? this.host.announce("Fullscreen enabled. Press Escape to exit.") : (this.surface.ownerDocument.fullscreenElement || (c = this.lastFocus) == null || c.focus(), this.lastFocus = null), (h = (d = this.options).onEvent) == null || h.call(d, { type: "fullscreen", on: a }));
+      const l = this.surface.ownerDocument.fullscreenElement === this.surface;
+      l !== this.fullscreenOn && (this.fullscreenOn = l, (c = this.ui) == null || c.setFullscreen(l), l ? this.host.announce("Fullscreen enabled. Press Escape to exit.") : (this.surface.ownerDocument.fullscreenElement || (d = this.lastFocus) == null || d.focus(), this.lastFocus = null), (h = (u = this.options).onEvent) == null || h.call(u, { type: "fullscreen", on: l }));
     }, this.findEngine = null, this.host = t, this.surface = e, this.options = s, this.theme = s.theme ?? "system";
-    const n = s.storage ? typeof s.storage == "function" ? s.storage() : s.storage : new yr(), i = s.explicitWorkspaceId ?? wr(s.targetId);
-    this.state = new Er({ workspaceId: i, storage: n, generateId: bs }), this.disposers.push(
-      t.on("change", (a) => {
-        var l;
-        (l = this.ui) == null || l.refreshHistory(), !this.switching && (a.origin === "history" || a.origin === "migration" || this.persistActiveNote());
+    const n = s.storage ? typeof s.storage == "function" ? s.storage() : s.storage : new Nr(), i = s.explicitWorkspaceId ?? Or(s.targetId);
+    this.state = new Fr({ workspaceId: i, storage: n, generateId: Cs }), this.disposers.push(
+      t.on("change", (l) => {
+        var c;
+        (c = this.ui) == null || c.refreshHistory(), !this.switching && l.origin !== "migration" && this.persistActiveNote();
       }),
       t.on("history:changed", () => {
-        var a;
-        return (a = this.ui) == null ? void 0 : a.refreshHistory();
+        var l;
+        return (l = this.ui) == null ? void 0 : l.refreshHistory();
       }),
       t.on("readOnly:changed", () => {
-        var a;
-        return (a = this.ui) == null ? void 0 : a.refreshHistory();
+        var l;
+        return (l = this.ui) == null ? void 0 : l.refreshHistory();
       }),
       t.on("ready", () => {
-        var a;
-        return (a = this.ui) == null ? void 0 : a.refreshHistory();
+        var l;
+        return (l = this.ui) == null ? void 0 : l.refreshHistory();
       })
     );
-    const o = this.buildDeps();
-    this.depsBridge = o, this.ui = new Fr(e, this.state, o, s.showSidebar !== !1), e.ownerDocument.addEventListener("fullscreenchange", this.onFullscreenChange), this.suggester = new no(e, {
-      listNotes: () => this.state.listNotes().map((a) => ({ id: a.id, title: a.title })),
-      openNote: (a) => {
-        var l;
-        return ((l = this.depsBridge) == null ? void 0 : l.openNote(a)) ?? void this.loadNoteIntoEditor(a);
+    const r = this.buildDeps();
+    this.depsBridge = r, this.ui = new Qr(e, this.state, r, s.showSidebar !== !1), e.ownerDocument.addEventListener("fullscreenchange", this.onFullscreenChange), this.suggester = new wo(e, {
+      listNotes: () => this.state.listNotes().map((l) => ({ id: l.id, title: l.title })),
+      openNote: (l) => {
+        var c;
+        return ((c = this.depsBridge) == null ? void 0 : c.openNote(l)) ?? void this.loadNoteIntoEditor(l);
       },
       getActiveNoteId: () => this.state.activeNoteId
-    }), this.disposers.push(ur(this.storeFile.bind(this))), this.disposers.push(pr((a) => this.state.loadAsset(a))), this.disposers.push(
-      this.state.on((a) => {
-        var l;
-        (l = s.onEvent) == null || l.call(s, a);
+    });
+    const a = t.target ?? e;
+    this.disposers.push(Cr(this.storeFile.bind(this), a)), this.disposers.push(zr((l) => this.state.loadAsset(l), a)), this.disposers.push(
+      this.state.on((l) => {
+        var c;
+        (c = s.onEvent) == null || c.call(s, l);
       })
     );
   }
   /** Store a file as a workspace asset; resolves to `asset:<id>`. */
   async storeFile(t) {
     try {
-      const e = new Uint8Array(await t.arrayBuffer()), s = { id: bs(), mime: t.type, name: t.name, bytes: e, createdAt: Date.now() };
+      const e = new Uint8Array(await t.arrayBuffer()), s = { id: Cs(), mime: t.type, name: t.name, bytes: e, createdAt: Date.now() };
       return await this.state.saveAsset(s) ? `asset:${s.id}` : null;
     } catch {
       return null;
@@ -7884,8 +8206,8 @@ class io {
     var s, n, i;
     try {
       await this.state.load();
-    } catch (o) {
-      throw (s = this.ui) == null || s.mount(), (n = this.ui) == null || n.showLoadError(), o;
+    } catch (r) {
+      throw (s = this.ui) == null || s.mount(), (n = this.ui) == null || n.showLoadError(), r;
     }
     if (this.destroyed) return;
     (i = this.ui) == null || i.mount();
@@ -7894,8 +8216,8 @@ class io {
     if (t)
       e = this.state.createNote(this.noteTitleOf(t) || "Imported note", null, rt(t)).id;
     else if (e === null) {
-      const o = this.state.listNotes()[0];
-      o ? e = o.id : e = this.state.createNote("Untitled", null).id;
+      const r = this.state.listNotes()[0];
+      r ? e = r.id : e = this.state.createNote("Untitled", null).id;
     }
     e && await this.loadNoteIntoEditor(e, !1);
   }
@@ -7917,7 +8239,7 @@ class io {
     this.persistActiveNote(), await this.state.flush();
   }
   async loadNoteIntoEditor(t, e = !0) {
-    var i, o;
+    var i, r;
     const s = this.state.getNote(t);
     if (!s) return;
     const n = ++this.loadGeneration;
@@ -7928,7 +8250,7 @@ class io {
       const l = this.histories.get(t);
       l && this.host.importHistoryState(l), this.state.activeNoteId = t, s.folderId && (this.state.activeFolderId = s.folderId), e && this.host.focus({ at: "start" }), this.emit({ type: "activeNote:changed", noteId: t });
     } finally {
-      n === this.loadGeneration && (this.switching = !1, (o = this.ui) == null || o.refreshHistory());
+      n === this.loadGeneration && (this.switching = !1, (r = this.ui) == null || r.refreshHistory());
     }
   }
   noteTitleOf(t) {
@@ -7936,8 +8258,8 @@ class io {
     if (s) return s;
     const n = t.blocks.find((i) => i.type === "heading");
     if (n) {
-      const o = (n.data.content ?? []).map((a) => a.text ?? "").join("").trim();
-      if (o) return o;
+      const r = (n.data.content ?? []).map((a) => a.text ?? "").join("").trim();
+      if (r) return r;
     }
     return "";
   }
@@ -7948,7 +8270,7 @@ class io {
   }
   /* =================== fullscreen =================== */
   async toggleFullscreen(t) {
-    var i, o;
+    var i, r;
     if (this.destroyed || this.fullscreenPending) return;
     const e = this.surface.ownerDocument, s = e.fullscreenElement === this.surface, n = t ?? !s;
     if (n !== s) {
@@ -7967,7 +8289,7 @@ class io {
           await e.exitFullscreen();
         this.onFullscreenChange();
       } catch {
-        this.destroyed || (o = this.ui) == null || o.showNotice("Unable to change fullscreen. Check your browser's fullscreen permissions and try again.");
+        this.destroyed || (r = this.ui) == null || r.showNotice("Unable to change fullscreen. Check your browser's fullscreen permissions and try again.");
       } finally {
         this.fullscreenPending = !1;
       }
@@ -8004,7 +8326,7 @@ class io {
     return this.theme;
   }
   resolvedTheme() {
-    return Fs(this.theme);
+    return Ks(this.theme);
   }
   /* =================== deps for the UI =================== */
   buildDeps() {
@@ -8069,7 +8391,7 @@ class io {
       },
       printActiveNote: () => {
         const t = this.host.getSnapshot();
-        eo(rt(t));
+        ko(rt(t));
       },
       importFiles: (t) => {
         this.importFiles(t);
@@ -8086,8 +8408,8 @@ class io {
         this.retryLoad();
       },
       downloadOriginal: () => this.downloadStoredData(),
-      findInDocument: (t, e, s) => {
-        t && this.findInDocument(t, e, s);
+      findInDocument: (t, e, s, n) => {
+        t && this.findInDocument(t, e, s, n);
       },
       goToBlock: (t) => {
         this.host.focusBlock(t, "start");
@@ -8113,27 +8435,27 @@ class io {
     await this.loadNoteIntoEditor(t);
   }
   async exportActiveNote(t) {
-    const e = this.state.activeNoteId ? this.state.getNote(this.state.activeNoteId) : null, s = this.host.getSnapshot(), n = (e == null ? void 0 : e.title) || this.noteTitleOf(s) || "note", i = await Jr(
+    const e = this.state.activeNoteId ? this.state.getNote(this.state.activeNoteId) : null, s = this.host.getSnapshot(), n = (e == null ? void 0 : e.title) || this.noteTitleOf(s) || "note", i = await uo(
       rt(s),
       t,
       (l) => this.state.loadAsset(l)
-    ), o = t === "json" ? "application/json" : t === "md" ? "text/markdown" : t === "html" ? "text/html" : "text/plain", a = t === "json" ? "json" : t === "md" ? "md" : t === "html" ? "html" : "txt";
-    Ot(`${Zr(n, "note")}.${a}`, i, o);
+    ), r = t === "json" ? "application/json" : t === "md" ? "text/markdown" : t === "html" ? "text/html" : "text/plain", a = t === "json" ? "json" : t === "md" ? "md" : t === "html" ? "html" : "txt";
+    Ot(`${fo(n, "note")}.${a}`, i, r);
   }
   async importFiles(t) {
     for (const e of t)
       try {
-        const s = await Yr(e);
+        const s = await go(e);
         if (s.result.kind === "backup") {
           await this.restoreBackup(s.result.backup);
           continue;
         }
         if (s.result.kind === "document") {
-          const o = s.result.document, a = this.state.createNote(this.noteTitleOf(o) || "Imported note", this.state.activeFolderId, o);
+          const r = s.result.document, a = this.state.createNote(this.noteTitleOf(r) || "Imported note", this.state.activeFolderId, r);
           await this.loadNoteIntoEditor(a.id);
           continue;
         }
-        const n = Xr(s.result.blocks, s.result.suggestedTitle), i = this.state.createNote(s.result.suggestedTitle ?? "Imported note", this.state.activeFolderId, n);
+        const n = mo(s.result.blocks, s.result.suggestedTitle), i = this.state.createNote(s.result.suggestedTitle ?? "Imported note", this.state.activeFolderId, n);
         await this.loadNoteIntoEditor(i.id);
       } catch (s) {
         this.reportImportError(s);
@@ -8145,14 +8467,14 @@ class io {
   }
   /** Report a runtime failure to the UI banner and the host event listener. */
   reportRuntimeError(t, e) {
-    var n, i, o;
+    var n, i, r;
     const s = { type: "importError", message: t, cause: e };
-    (n = this.ui) == null || n.notifyEvent(s), (o = (i = this.options).onEvent) == null || o.call(i, s);
+    (n = this.ui) == null || n.notifyEvent(s), (r = (i = this.options).onEvent) == null || r.call(i, s);
   }
   async createBackup() {
     try {
       await this.saveActiveNote();
-      const t = await this.state.createBackup(), e = Cr(t);
+      const t = await this.state.createBackup(), e = jr(t);
       Ot(`ezynota-backup-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`, JSON.stringify(e, null, 2), "application/json");
     } catch (t) {
       this.reportRuntimeError("Could not create the workspace backup.", t);
@@ -8193,12 +8515,12 @@ class io {
     const t = this.state.getUnsavedSnapshot();
     t && Ot("ezynota-stored-workspace.json", JSON.stringify(t, null, 2), "application/json");
   }
-  async findInDocument(t, e, s) {
-    var n;
-    (n = this.findEngine) == null || n.call(this, t, e, s);
+  async findInDocument(t, e, s, n = 0) {
+    var i;
+    (i = this.findEngine) == null || i.call(this, t, e, s, n);
   }
   wordCount() {
-    const t = ro(this.host.getSnapshot().blocks);
+    const t = Ao(this.host.getSnapshot().blocks);
     return t ? t.split(/\s+/).filter(Boolean).length : 0;
   }
   legacyDraft() {
@@ -8234,154 +8556,154 @@ class io {
   }
   /** Resolve the active note document into a portable HTML string. */
   async activeNoteHtml() {
-    return Ne(this.host.getSnapshot().blocks);
+    return Pe(this.host.getSnapshot().blocks);
   }
   /** Resolve assets to data URLs for external consumers. */
   async portableSnapshot() {
     await this.saveActiveNote();
     const t = this.host.getSnapshot();
-    return $s(rt(t), (e) => this.state.loadAsset(e));
+    return Js(rt(t), (e) => this.state.loadAsset(e));
   }
   get generatorVersion() {
-    return Gt;
+    return Xt;
   }
 }
-function ro(r) {
+function Ao(o) {
   let t = "";
   const e = (s) => {
     for (const n of s) {
       const i = n.data.content;
-      Array.isArray(i) && (t += `${i.map((o) => o.text ?? "").join("")}
+      Array.isArray(i) && (t += `${i.map((r) => r.text ?? "").join("")}
 `), n.type === "code" && (t += `${String(n.data.code ?? "")}
 `), Array.isArray(n.children) && e(n.children);
     }
   };
-  return e(r), t;
+  return e(o), t;
 }
-function rt(r) {
-  return JSON.parse(JSON.stringify(r));
+function rt(o) {
+  return JSON.parse(JSON.stringify(o));
 }
-function bs() {
-  return Yt()();
+function Cs() {
+  return Qt()();
 }
-const Oe = /* @__PURE__ */ new Set();
-function oo(r) {
-  Oe.add(r);
+const _e = /* @__PURE__ */ new Set();
+function So(o) {
+  _e.add(o);
 }
-function ao(r) {
-  Oe.delete(r);
+function xo(o) {
+  _e.delete(o);
 }
-function Kt() {
-  return Array.from(Oe);
+function Zt() {
+  return Array.from(_e);
 }
-const Jt = "data-ezn-mounted", Re = "data-ezn-destroyed", lo = /* @__PURE__ */ new Set(["workspace", "document", "embedded", "headless"]), co = /* @__PURE__ */ new Set(["light", "dark", "system"]);
-let Rt = null, ys = !1, re = null;
-function ho(r) {
-  const t = { target: r }, e = r.getAttribute("data-ezn-mode");
-  e && lo.has(e) && (t.mode = e);
-  const s = r.getAttribute("data-ezn-workspace");
+const Gt = "data-ezn-mounted", He = "data-ezn-destroyed", Io = /* @__PURE__ */ new Set(["workspace", "document", "embedded", "headless"]), Co = /* @__PURE__ */ new Set(["light", "dark", "system"]);
+let Ft = null, zs = !1, ae = null;
+function zo(o) {
+  const t = { target: o }, e = o.getAttribute("data-ezn-mode");
+  e && Io.has(e) && (t.mode = e);
+  const s = o.getAttribute("data-ezn-workspace");
   s && s.trim() !== "" && (t.workspace = s.trim());
-  const n = r.getAttribute("data-ezn-theme");
-  n && co.has(n) && (t.theme = n);
-  const i = r.getAttribute("data-ezn-readonly");
+  const n = o.getAttribute("data-ezn-theme");
+  n && Co.has(n) && (t.theme = n);
+  const i = o.getAttribute("data-ezn-readonly");
   i === "true" ? t.readOnly = !0 : i === "false" && (t.readOnly = !1);
-  const o = r.getAttribute("data-ezn-placeholder");
-  return o && o.trim() !== "" && (t.placeholder = o), r.getAttribute("data-ezn-autofocus") === "true" && (t.autofocus = !0), t;
+  const r = o.getAttribute("data-ezn-placeholder");
+  return r && r.trim() !== "" && (t.placeholder = r), o.getAttribute("data-ezn-autofocus") === "true" && (t.autofocus = !0), t;
 }
-function uo(r) {
-  if (r.hasAttribute(Jt) || r.hasAttribute(Re)) return;
-  const t = Kt().find((n) => n.targetEl === r);
+function Bo(o) {
+  if (o.hasAttribute(Gt) || o.hasAttribute(He)) return;
+  const t = Zt().find((n) => n.targetEl === o);
   if (t) return t;
-  const e = ho(r), s = new bo(e);
-  return s.declarative = !0, r.setAttribute(Jt, ""), s;
+  const e = zo(o), s = new Mo(e);
+  return s.declarative = !0, o.setAttribute(Gt, ""), s;
 }
-function js(r) {
+function Xs(o) {
   try {
-    return uo(r);
+    return Bo(o);
   } catch (t) {
-    po(r, t);
+    To(o, t);
     return;
   }
 }
-function po(r, t) {
+function To(o, t) {
   const e = t instanceof Error ? t.message : String(t);
   console.error(`[ezynota] Failed to mount [data-ezn-editor] element: ${e}`, t);
   try {
     const s = { payload: { message: e } };
-    r.dispatchEvent(new CustomEvent("ezn:error", { bubbles: !0, composed: !0, detail: s }));
+    o.dispatchEvent(new CustomEvent("ezn:error", { bubbles: !0, composed: !0, detail: s }));
   } catch {
   }
 }
-function Fe(r) {
-  go();
-  const t = r ?? document, e = [];
+function je(o) {
+  Do();
+  const t = o ?? document, e = [];
   for (const s of Array.from(t.querySelectorAll("[data-ezn-editor]"))) {
-    const n = js(s);
+    const n = Xs(s);
     n && e.push(n);
   }
   return e;
 }
-function Ao() {
-  Fe();
+function _o() {
+  typeof document > "u" || je();
 }
-function fo(r) {
-  const t = typeof r == "string" ? document.querySelector(r) : r;
+function Lo(o) {
+  const t = typeof o == "string" ? document.querySelector(o) : o;
   if (!t) return;
-  const e = Kt().find((s) => s.targetEl === t);
+  const e = Zt().find((s) => s.targetEl === t);
   if (e) return e;
   if (t instanceof Element) {
-    for (const s of Kt())
+    for (const s of Zt())
       if (s.target.contains(t)) return s;
   }
 }
-function go() {
-  if (!(ys || typeof MutationObserver > "u") && (ys = !0, Rt = new MutationObserver((r) => {
+function Do() {
+  if (!(zs || typeof MutationObserver > "u") && (zs = !0, Ft = new MutationObserver((o) => {
     const t = [];
-    for (const e of r)
+    for (const e of o)
       for (const s of Array.from(e.addedNodes))
         if (s instanceof HTMLElement) {
           s.matches("[data-ezn-editor]") && t.push(s);
           for (const n of Array.from(s.querySelectorAll("[data-ezn-editor]"))) t.push(n);
         }
     for (const e of t)
-      !e.hasAttribute(Jt) && !e.hasAttribute(Re) && js(e);
-    mo();
+      !e.hasAttribute(Gt) && !e.hasAttribute(He) && Xs(e);
+    No();
   }), !(typeof document > "u"))) {
     if (document.readyState === "loading" || !document.body) {
       document.addEventListener("DOMContentLoaded", () => {
-        Rt && document.body && Rt.observe(document.body, { childList: !0, subtree: !0 }), Fe();
+        Ft && document.body && Ft.observe(document.body, { childList: !0, subtree: !0 }), je();
       });
       return;
     }
-    Rt.observe(document.body, { childList: !0, subtree: !0 });
+    Ft.observe(document.body, { childList: !0, subtree: !0 });
   }
 }
-function mo() {
-  re === null && (re = setTimeout(() => {
-    re = null;
-    for (const r of Array.from(Kt())) {
-      if (!r.declarative || r.isDestroyed()) continue;
-      const t = r.targetEl;
+function No() {
+  ae === null && (ae = setTimeout(() => {
+    ae = null;
+    for (const o of Array.from(Zt())) {
+      if (!o.declarative || o.isDestroyed()) continue;
+      const t = o.targetEl;
       t.isConnected || setTimeout(() => {
-        t.isConnected || r.isDestroyed() || (r.destroy(), t.removeAttribute(Jt), t.removeAttribute(Re));
+        t.isConnected || o.isDestroyed() || (o.destroy(), t.removeAttribute(Gt), t.removeAttribute(He));
       }, 100);
     }
   }, 200));
 }
-class bo {
+class Mo {
   constructor(t) {
     var s;
-    if (this.ready = Promise.resolve(), this.bus = new qs(), this.commands = new on(), this.registry = new an(), this.migrations = new un(), this.dragManager = null, this.blockToolbar = null, this.inlineToolbar = null, this.documentToolbar = null, this.slashMenu = null, this.announcerEl = null, this.destroyed = !1, this.disposers = [], this.recoveryMode = !1, this.originalDocument = null, this.recoveryLocked = !1, this.preRecoveryReadOnly = !1, this.blockSaveVersions = /* @__PURE__ */ new Map(), this.workspaceController = null, this.editingLocked = !1, this.themeListenerDisposer = null, this.declarative = !1, this.findReplaceEngine = null, typeof document > "u")
+    if (this.ready = Promise.resolve(), this.bus = new tn(), this.commands = new In(), this.registry = new Cn(), this.migrations = new Dn(), this.dragManager = null, this.blockToolbar = null, this.inlineToolbar = null, this.documentToolbar = null, this.slashMenu = null, this.announcerEl = null, this.destroyed = !1, this.disposers = [], this.recoveryMode = !1, this.originalDocument = null, this.recoveryLocked = !1, this.preRecoveryReadOnly = !1, this.blockSaveVersions = /* @__PURE__ */ new Map(), this.workspaceController = null, this.editingLocked = !1, this.themeListenerDisposer = null, this.declarative = !1, this.findReplaceEngine = null, typeof document > "u")
       throw new k("EZ_RENDER_FAILED", "Ezynota requires a DOM environment (SSR-safe: construct inside useEffect/onMounted)");
-    if (this.config = t, this.mode = vo(t), this.targetEl = this.resolveTarget(t.target), this.i18nInstance = new fn(t.locale ?? "en", ((s = t.i18n) == null ? void 0 : s.messages) ?? {}), this.defaultBlockName = t.defaultBlock ?? "paragraph", this.registerBuiltinTools(), this.registerUserTools(t), !this.registry.has(this.defaultBlockName))
+    if (this.config = t, this.mode = Fo(t), this.targetEl = this.resolveTarget(t.target), this.i18nInstance = new Mn(t.locale ?? "en", ((s = t.i18n) == null ? void 0 : s.messages) ?? {}), this.defaultBlockName = t.defaultBlock ?? "paragraph", this.registerBuiltinTools(), this.registerUserTools(t), !this.registry.has(this.defaultBlockName))
       throw tt(this.defaultBlockName);
     const e = this.mode === "workspace" || this.mode === "document" ? null : t.data;
-    this.state = this.createState(this.migrateInitialData(e)), this.recoveryMode && this.latchRecoveryReadOnly(), this.tm = new Ys(this.state, (n) => this.handleCommit(n)), this.blockManager = new tn(this.tm, N(t.idGenerator), { onBatch: () => {
-    } }), this.history = new nn(this.tm, {
+    this.state = this.createState(this.migrateInitialData(e)), this.recoveryMode && this.latchRecoveryReadOnly(), this.tm = new yn(this.state, (n) => this.handleCommit(n)), this.blockManager = new wn(this.tm, M(t.idGenerator), { onBatch: () => {
+    } }), this.history = new Sn(this.tm, {
       onRestoreSelection: (n) => this.restoreHistorySelection(n)
-    }), this.registerBuiltinCommands(), this.setupDom(), this.renderer = new Ri(this, this.surfaceEl), this.renderer.renderAll(this.state.get().blocks), this.config.readOnly && this.renderer.setReadOnly(!0), this.wireFindReplace(), this.setupMarkdownShortcuts(), this.selectionManager = new $i(this, this.surfaceEl), this.selectionManager.start(), this.inputManager = new Wi(this, this.surfaceEl), this.inputManager.start(), this.keyboardManager = new Zi(this, this.surfaceEl), this.keyboardManager.start(), this.clipboardManager = new ir(this, this.surfaceEl), this.clipboardManager.start(), this.uiEnabled() && !t.readOnly && (this.dragManager = new ns(this, this.surfaceEl), this.dragManager.start()), this.setupDefaultUi(), this.wireEvents(), this.renderer.startObserver((n) => {
+    }), this.registerBuiltinCommands(), this.setupDom(), this.renderer = new sr(this, this.surfaceEl), this.renderer.renderAll(this.state.get().blocks), this.config.readOnly && this.renderer.setReadOnly(!0), this.wireFindReplace(), this.setupMarkdownShortcuts(), this.selectionManager = new ir(this, this.surfaceEl), this.selectionManager.start(), this.inputManager = new or(this, this.surfaceEl), this.inputManager.start(), this.keyboardManager = new dr(this, this.surfaceEl), this.keyboardManager.start(), this.clipboardManager = new kr(this, this.surfaceEl), this.clipboardManager.start(), this.uiEnabled() && !t.readOnly && (this.dragManager = new fs(this, this.surfaceEl), this.dragManager.start()), this.setupDefaultUi(), this.wireEvents(), this.renderer.startObserver((n) => {
       this.inputManager.wasInputRecently(n) || this.requestSaveBlock(n, "user");
-    }), oo(this), this.mode === "workspace" || this.mode === "document" ? (this.editingLocked = !0, this.targetEl.classList.add("ez-loading"), this.initializeWorkspace()) : (this.ready = new Promise((n) => {
+    }), So(this), this.mode === "workspace" || this.mode === "document" ? (this.editingLocked = !0, this.targetEl.classList.add("ez-loading"), this.initializeWorkspace()) : (this.ready = new Promise((n) => {
       this.resolveReady = n;
     }), this.resolveReady(), this.bus.emit("ready"), this.emitDomEvent("ezn:ready"), this.fireReady(), t.autofocus && !t.readOnly && queueMicrotask(() => this.focus({ at: "end" })));
   }
@@ -8436,7 +8758,7 @@ class bo {
   /** Async workspace boot: load notes, then unlock editing and fire ready. */
   initializeWorkspace() {
     const t = this.targetEl.id || null;
-    this.workspaceController = new io(
+    this.workspaceController = new Eo(
       this,
       this.targetEl,
       {
@@ -8448,7 +8770,10 @@ class bo {
         showSidebar: this.mode === "workspace",
         onEvent: (e) => this.onWorkspaceEvent(e)
       }
-    ), this.workspaceController.findEngine = (e, s, n) => this.findReplace(e, s, n), this.ready = new Promise((e) => {
+    ), this.workspaceController.findEngine = (e, s, n, i) => {
+      var r;
+      return (r = this.findReplaceEngine) == null ? void 0 : r.call(this, e, s, n, i);
+    }, this.ready = new Promise((e) => {
       this.resolveReady = e;
     }), this.workspaceController.start().catch((e) => {
       this.bus.emit(
@@ -8480,21 +8805,21 @@ class bo {
     let e = 0;
     for (const n of this.state.get().blocks) {
       const i = this.renderer.getTool(n.id);
-      let o = n.data;
+      let r = n.data;
       if (i)
         try {
-          if (o = await i.save(this.toolElement(n.id)), i.validate && !await i.validate(o)) {
+          if (r = await i.save(this.toolElement(n.id)), i.validate && !await i.validate(r)) {
             e++, this.bus.emit("error", new k("EZ_INVALID_DATA", `Block "${n.id}" produced invalid data`, { blockId: n.id, tool: n.type }));
             continue;
           }
         } catch (a) {
           throw new k("EZ_SAVE_FAILED", `Failed to save block "${n.id}"`, { blockId: n.id }, a);
         }
-      t.push({ ...n, data: o });
+      t.push({ ...n, data: r });
     }
     if (e > 0)
       throw new k("EZ_INVALID_DATA", `Save rejected: ${e} block(s) produced invalid data`, { count: e });
-    return { ...this.state.get(), blocks: t, updatedAt: Date.now(), schemaVersion: $, generator: { name: "ezynota", version: Gt } };
+    return { ...this.state.get(), blocks: t, updatedAt: Date.now(), schemaVersion: P, generator: { name: "ezynota", version: Xt } };
   }
   getSnapshot() {
     return this.state.snapshot();
@@ -8543,12 +8868,12 @@ class bo {
   }
   setReadOnly(t) {
     var e;
-    this.config.readOnly !== t && (this.config = { ...this.config, readOnly: t }, this.surfaceEl.classList.toggle("ez-readonly", t), this.renderer.setReadOnly(t), t && this.closeMenus(), !t && this.uiEnabled() && !this.dragManager && (this.dragManager = new ns(this, this.surfaceEl), this.dragManager.start()), (e = this.documentToolbar) == null || e.refresh(), this.bus.emit("readOnly:changed", t));
+    this.config.readOnly !== t && (this.config = { ...this.config, readOnly: t }, this.surfaceEl.classList.toggle("ez-readonly", t), this.renderer.setReadOnly(t), t && this.closeMenus(), !t && this.uiEnabled() && !this.dragManager && (this.dragManager = new fs(this, this.surfaceEl), this.dragManager.start()), (e = this.documentToolbar) == null || e.refresh(), this.bus.emit("readOnly:changed", t));
   }
   insertBlock(t, e, s) {
     if (this.destroyed) throw new k("EZ_DESTROYED", "Editor is destroyed");
     if (this.assertEditable(), !this.registry.has(t)) throw tt(t);
-    const n = (s == null ? void 0 : s.index) !== void 0 ? s.index : (s == null ? void 0 : s.before) !== void 0 ? Math.max(0, this.blockManager.getIndex(s.before)) : (s == null ? void 0 : s.after) !== void 0 ? this.blockManager.getIndex(s.after) + 1 : -1, i = this.blockManager.insert(t, e ?? ks(t), "api", n);
+    const n = (s == null ? void 0 : s.index) !== void 0 ? s.index : (s == null ? void 0 : s.before) !== void 0 ? Math.max(0, this.blockManager.getIndex(s.before)) : (s == null ? void 0 : s.after) !== void 0 ? this.blockManager.getIndex(s.after) + 1 : -1, i = this.blockManager.insert(t, e ?? Bs(t), "api", n);
     return (s == null ? void 0 : s.focus) !== !1 && !this.readOnly && queueMicrotask(() => this.focusBlock(i, "start")), i;
   }
   updateBlock(t, e) {
@@ -8574,8 +8899,8 @@ class bo {
     const s = this.blockManager.getById(t);
     if (!s) return;
     if (!this.registry.has(e)) throw tt(e);
-    const n = this.registry.get(e), i = (l = (a = n == null ? void 0 : n.toolClass.conversion) == null ? void 0 : a.from) == null ? void 0 : l[s.type], o = i ? i(s.data) : Vi(e, s.data);
-    this.blockManager.convert(t, e, o, "api");
+    const n = this.registry.get(e), i = (l = (a = n == null ? void 0 : n.toolClass.conversion) == null ? void 0 : a.from) == null ? void 0 : l[s.type], r = i ? i(s.data) : ar(e, s.data);
+    this.blockManager.convert(t, e, r, "api");
   }
   getBlockById(t) {
     return this.blockRef(t);
@@ -8669,7 +8994,7 @@ class bo {
       return (s = this.themeListenerDisposer) == null ? void 0 : s.call(this);
     }), this.themeListenerDisposer = null;
     for (const s of this.disposers) s();
-    this.disposers.length = 0, this.blockSaveVersions.clear(), ao(this), this.declarative && this.targetEl.setAttribute("data-ezn-destroyed", ""), this.bus.emit("destroyed"), this.bus.destroy(), this.targetEl.classList.remove("ez-editor-mount", "ez-editor", "ez-readonly", "ez-has-block-toolbar", "ez-loading"), this.targetEl.removeAttribute("data-ez-mode"), this.targetEl.removeAttribute("data-ez-theme"), this.targetEl.innerHTML = "";
+    this.disposers.length = 0, this.blockSaveVersions.clear(), xo(this), this.declarative && this.targetEl.setAttribute("data-ezn-destroyed", ""), this.bus.emit("destroyed"), this.bus.destroy(), this.targetEl.classList.remove("ez-editor-mount", "ez-editor", "ez-readonly", "ez-has-block-toolbar", "ez-loading"), this.targetEl.removeAttribute("data-ezynota-root"), this.targetEl.removeAttribute("data-ez-mode"), this.targetEl.removeAttribute("data-ez-theme"), this.targetEl.innerHTML = "";
   }
   /* ===================== Host implementation ===================== */
   get target() {
@@ -8734,10 +9059,10 @@ class bo {
   mergeBlocks(t, e, s = "user") {
     this.assertEditable();
     const n = this.blockManager.getById(t), i = this.blockManager.getById(e);
-    if (!n || !i || !ke(n.type, i.type)) return;
-    const o = JSON.parse(JSON.stringify(n.data)), a = Ji(n.type, n.data, i.type, i.data), l = this.blockManager.getIndex(e), c = JSON.parse(JSON.stringify(i));
+    if (!n || !i || !Se(n.type, i.type)) return;
+    const r = JSON.parse(JSON.stringify(n.data)), a = cr(n.type, n.data, i.type, i.data), l = this.blockManager.getIndex(e), c = JSON.parse(JSON.stringify(i));
     this.tm.commit(s, [
-      { type: "block:update", id: t, previous: o, current: a },
+      { type: "block:update", id: t, previous: r, current: a },
       { type: "block:remove", id: e, index: l, block: c }
     ]);
     const d = this.blockManager.getById(t);
@@ -8753,10 +9078,10 @@ class bo {
     this.assertEditable();
     const n = this.blockManager.getById(t);
     if (!n) return "";
-    const i = x(n.data), o = this.blockManager.getIndex(t), a = N(this.config.idGenerator)(), l = { id: a, type: n.type, data: x(s) };
+    const i = x(n.data), r = this.blockManager.getIndex(t), a = M(this.config.idGenerator)(), l = { id: a, type: n.type, data: x(s) };
     this.tm.commit("user", [
       { type: "block:update", id: t, previous: i, current: x(e) },
-      { type: "block:insert", block: l, index: o + 1 }
+      { type: "block:insert", block: l, index: r + 1 }
     ]);
     const c = this.blockManager.getById(t);
     return c && this.renderer.convert(t, c), a;
@@ -8771,27 +9096,27 @@ class bo {
   pasteBlocks(t, e, s = "paste") {
     if (this.destroyed) throw new k("EZ_DESTROYED", "Editor is destroyed");
     this.assertEditable();
-    const n = t.filter((u) => this.registry.has(u.type));
+    const n = t.filter((h) => this.registry.has(h.type));
     if (n.length === 0) return;
-    const i = [], o = () => {
-      const u = i.find((p) => p.type === "block:insert");
-      return u ? u.block.id : "";
+    const i = [], r = () => {
+      const h = i.find((f) => f.type === "block:insert");
+      return h ? h.block.id : "";
     }, a = () => {
-      for (let u = i.length - 1; u >= 0; u--) {
-        const p = i[u];
-        if (p && p.type === "block:insert") return p.block.id;
+      for (let h = i.length - 1; h >= 0; h--) {
+        const f = i[h];
+        if (f && f.type === "block:insert") return f.block.id;
       }
       return "";
     }, l = this.state.get().blocks, c = this.blockManager.getById(e);
     let d = null;
     if (c)
       if (yt(c.type, c.data)) {
-        const u = this.blockManager.getIndex(c.id), p = x(c);
-        i.push({ type: "block:remove", id: c.id, index: u, block: p }), n.forEach((g, m) => {
-          i.push({ type: "block:insert", block: this.shapedBlock(g).block, index: u + m });
-        }), d = { id: o(), at: "start" };
+        const h = this.blockManager.getIndex(c.id), f = x(c);
+        i.push({ type: "block:remove", id: c.id, index: h, block: f }), n.forEach((g, m) => {
+          i.push({ type: "block:insert", block: this.shapedBlock(g).block, index: h + m });
+        }), d = { id: r(), at: "start" };
       } else {
-        const u = this.renderer.getTool(c.id), p = this.getSelectionInfo(), g = u, m = (p == null ? void 0 : p.blockId) === c.id;
+        const h = this.renderer.getTool(c.id), f = this.getSelectionInfo(), g = h, m = (f == null ? void 0 : f.blockId) === c.id;
         let y = null;
         if (m && typeof g.splitAtRange == "function") {
           const w = this.getRange();
@@ -8804,63 +9129,63 @@ class bo {
         }
         const v = this.blockManager.getIndex(c.id);
         if (y) {
-          const [w, I] = y, z = x(c.data), A = yt(c.type, w), T = yt(c.type, I);
-          if (A)
-            n.forEach((M, j) => {
-              i.push({ type: "block:insert", block: this.shapedBlock(M).block, index: v + j });
-            }), i.push({ type: "block:update", id: c.id, previous: z, current: x(I) }), d = { id: o(), at: "start" };
+          const [w, I] = y, T = x(c.data), $ = yt(c.type, w), S = yt(c.type, I);
+          if ($)
+            n.forEach((C, B) => {
+              i.push({ type: "block:insert", block: this.shapedBlock(C).block, index: v + B });
+            }), i.push({ type: "block:update", id: c.id, previous: T, current: x(I) }), d = { id: r(), at: "start" };
           else {
-            i.push({ type: "block:update", id: c.id, previous: z, current: x(w) });
-            let M = v + 1;
-            for (const j of n)
-              i.push({ type: "block:insert", block: this.shapedBlock(j).block, index: M }), M++;
-            if (T)
+            i.push({ type: "block:update", id: c.id, previous: T, current: x(w) });
+            let C = v + 1;
+            for (const B of n)
+              i.push({ type: "block:insert", block: this.shapedBlock(B).block, index: C }), C++;
+            if (S)
               d = { id: a(), at: "end" };
             else {
-              const j = N(this.config.idGenerator)();
+              const B = M(this.config.idGenerator)();
               i.push({
                 type: "block:insert",
-                block: { id: j, type: c.type, data: x(I) },
-                index: M
-              }), d = { id: j, at: "start" };
+                block: { id: B, type: c.type, data: x(I) },
+                index: C
+              }), d = { id: B, at: "start" };
             }
           }
         } else {
           let w = x(c.data);
-          if (m && p && !p.collapsed) {
-            const z = this.getRange();
-            if (z) {
-              z.deleteContents();
+          if (m && f && !f.collapsed) {
+            const T = this.getRange();
+            if (T) {
+              T.deleteContents();
               try {
-                const A = u == null ? void 0 : u.save(this.toolElement(c.id));
-                A && !(A instanceof Promise) && (w = A);
+                const $ = h == null ? void 0 : h.save(this.toolElement(c.id));
+                $ && !($ instanceof Promise) && (w = $);
               } catch {
               }
             }
           }
           i.push({ type: "block:update", id: c.id, previous: x(c.data), current: w });
           let I = v + 1;
-          for (const z of n)
-            i.push({ type: "block:insert", block: this.shapedBlock(z).block, index: I }), I++;
+          for (const T of n)
+            i.push({ type: "block:insert", block: this.shapedBlock(T).block, index: I }), I++;
         }
       }
     else {
-      let u = l.length;
-      for (const p of n)
-        i.push({ type: "block:insert", block: this.shapedBlock(p).block, index: u }), u++;
-      d = { id: o(), at: "start" };
+      let h = l.length;
+      for (const f of n)
+        i.push({ type: "block:insert", block: this.shapedBlock(f).block, index: h }), h++;
+      d = { id: r(), at: "start" };
     }
     this.tm.commit(s, i);
-    const h = i.find((u) => u.type === "block:update");
-    if (h && h.type === "block:update") {
-      const u = this.blockManager.getById(h.id);
-      u && this.renderer.convert(h.id, u);
+    const u = i.find((h) => h.type === "block:update");
+    if (u && u.type === "block:update") {
+      const h = this.blockManager.getById(u.id);
+      h && this.renderer.convert(u.id, h);
     }
     d != null && d.id && this.focusBlock(d.id, d.at), this.announce("Pasted content inserted");
   }
   shapedBlock(t) {
     return {
-      block: { id: N(this.config.idGenerator)(), type: t.type, data: x(t.data) }
+      block: { id: M(this.config.idGenerator)(), type: t.type, data: x(t.data) }
     };
   }
   focusBlock(t, e) {
@@ -8887,7 +9212,7 @@ class bo {
     if (!s || !n) return;
     const i = this.invalidatePendingSave(t);
     try {
-      const o = this.toolElement(t), a = n.save(o);
+      const r = this.toolElement(t), a = n.save(r);
       if (a instanceof Promise) {
         a.then(
           (l) => this.applySavedBlock(t, l, n, e, i),
@@ -8898,8 +9223,8 @@ class bo {
         return;
       }
       this.applySavedBlock(t, a, n, e, i);
-    } catch (o) {
-      this.bus.emit("error", new k("EZ_SAVE_FAILED", `Save failed for block "${t}"`, { blockId: t }, o));
+    } catch (r) {
+      this.bus.emit("error", new k("EZ_SAVE_FAILED", `Save failed for block "${t}"`, { blockId: t }, r));
     }
   }
   /** Bump the save epoch for a block; returns the new epoch. */
@@ -8966,7 +9291,7 @@ class bo {
     const s = this.blockManager.getById(t);
     if (!s) {
       for (const i of this.blockManager.blocks) {
-        const o = x(i.children ?? []), a = (l) => {
+        const r = x(i.children ?? []), a = (l) => {
           for (const c of l) {
             if (c.id === t)
               return c.children = e, !0;
@@ -8974,8 +9299,8 @@ class bo {
           }
           return !1;
         };
-        if (a(o)) {
-          this.commitChildren(i.id, o);
+        if (a(r)) {
+          this.commitChildren(i.id, r);
           return;
         }
       }
@@ -8987,25 +9312,25 @@ class bo {
   insertNestedBlock(t, e, s, n) {
     var l;
     if (!this.registry.has(e)) throw tt(e);
-    const i = x(((l = this.blockManager.getByIdRecursive(t)) == null ? void 0 : l.children) ?? []), o = { id: N(this.config.idGenerator)(), type: e, data: s ?? ks(e) }, a = n === void 0 ? i.length : Math.max(0, Math.min(n, i.length));
-    return i.splice(a, 0, o), this.commitChildren(t, i), o.id;
+    const i = x(((l = this.blockManager.getByIdRecursive(t)) == null ? void 0 : l.children) ?? []), r = { id: M(this.config.idGenerator)(), type: e, data: s ?? Bs(e) }, a = n === void 0 ? i.length : Math.max(0, Math.min(n, i.length));
+    return i.splice(a, 0, r), this.commitChildren(t, i), r.id;
   }
   updateNestedBlock(t, e, s) {
-    var o;
-    const n = x(((o = this.blockManager.getByIdRecursive(t)) == null ? void 0 : o.children) ?? []), i = n.find((a) => a.id === e);
+    var r;
+    const n = x(((r = this.blockManager.getByIdRecursive(t)) == null ? void 0 : r.children) ?? []), i = n.find((a) => a.id === e);
     i && (i.data = s, this.commitChildren(t, n));
   }
   removeNestedBlock(t, e) {
     var i;
-    const s = x(((i = this.blockManager.getByIdRecursive(t)) == null ? void 0 : i.children) ?? []), n = s.findIndex((o) => o.id === e);
+    const s = x(((i = this.blockManager.getByIdRecursive(t)) == null ? void 0 : i.children) ?? []), n = s.findIndex((r) => r.id === e);
     n < 0 || (s.splice(n, 1), this.commitChildren(t, s));
   }
   moveNestedBlock(t, e, s) {
     var a;
     const n = x(((a = this.blockManager.getByIdRecursive(t)) == null ? void 0 : a.children) ?? []), i = n.findIndex((l) => l.id === e);
     if (i < 0) return;
-    const [o] = n.splice(i, 1);
-    o && (n.splice(Math.max(0, Math.min(s, n.length)), 0, o), this.commitChildren(t, n));
+    const [r] = n.splice(i, 1);
+    r && (n.splice(Math.max(0, Math.min(s, n.length)), 0, r), this.commitChildren(t, n));
   }
   getRange() {
     return this.selectionManager.getRange();
@@ -9021,7 +9346,7 @@ class bo {
   }
   closeMenus() {
     var t, e, s;
-    (t = this.slashMenu) == null || t.close(), this.blockToolbar && this.blockToolbar.hide(), (e = this.inlineToolbar) == null || e.hide(), (s = this.documentToolbar) == null || s.hide(), this.targetEl.dispatchEvent(new Event("ez-close-popovers"));
+    (t = this.slashMenu) == null || t.close(), this.blockToolbar && this.blockToolbar.hide(), (e = this.inlineToolbar) == null || e.hide(), (s = this.documentToolbar) == null || s.hide(), this.surfaceEl.dispatchEvent(new Event("ez-close-popovers")), this.targetEl !== this.surfaceEl && this.targetEl.dispatchEvent(new Event("ez-close-popovers"));
   }
   undoInternal() {
     this.undo();
@@ -9031,7 +9356,7 @@ class bo {
   }
   dispatchInlineTool(t) {
     var e, s;
-    Ns(this, t), (e = this.inlineToolbar) == null || e.refresh(), (s = this.documentToolbar) == null || s.refresh();
+    qs(this, t), (e = this.inlineToolbar) == null || e.refresh(), (s = this.documentToolbar) == null || s.refresh();
   }
   /* ===================== Workspace host bridge ===================== */
   /** Title changes route through an undoable transaction (document metadata). */
@@ -9058,17 +9383,13 @@ class bo {
   }
   /** Register the find/replace engine once loaded (called during setup). */
   wireFindReplace() {
-    import("./find-replace-BLaUbXne.js").then(({ createFindReplace: t }) => {
-      this.findReplaceEngine = t(this, this.surfaceEl);
-    });
+    this.findReplaceEngine = dn(this, this.surfaceEl);
   }
   /** Markdown typing shortcuts (headings, lists, quotes, inline marks). */
   setupMarkdownShortcuts() {
-    this.mode === "headless" || this.config.readOnly || import("./markdown-shortcuts-Du4C2zMP.js").then(({ MarkdownShortcuts: t }) => {
-      if (this.destroyed) return;
-      const e = new t(this, this.surfaceEl);
-      e.start(), this.disposers.push(() => e.stop());
-    });
+    if (this.mode === "headless" || this.config.readOnly) return;
+    const t = new ln(this, this.surfaceEl);
+    t.start(), this.disposers.push(() => t.stop());
   }
   /* ===================== Internals ===================== */
   toolElement(t) {
@@ -9089,8 +9410,8 @@ class bo {
         const n = window.matchMedia("(prefers-color-scheme: dark)");
         e = n.matches ? "dark" : "light";
         const i = () => {
-          const o = n.matches ? "dark" : "light";
-          this.targetEl.setAttribute("data-ez-resolved-theme", o);
+          const r = n.matches ? "dark" : "light";
+          this.targetEl.setAttribute("data-ez-resolved-theme", r);
         };
         n.addEventListener("change", i), (s = this.themeListenerDisposer) == null || s.call(this), this.themeListenerDisposer = () => n.removeEventListener("change", i);
       }
@@ -9105,56 +9426,56 @@ class bo {
     return e;
   }
   registerBuiltinTools() {
-    this.registry.registerBlockTool("paragraph", de, !0), this.registry.registerBlockTool("heading", he), this.registry.registerBlockTool("list", ge), this.registry.registerBlockTool("quote", ue), this.registry.registerBlockTool("code", pe), this.registry.registerBlockTool("delimiter", fe), this.registry.registerBlockTool("table", ve), this.registry.registerBlockTool("image", we), this.registry.registerBlockTool("callout", Ee), this.registry.registerBlockTool("toggle", Ae);
+    this.registry.registerBlockTool("paragraph", ge, !0), this.registry.registerBlockTool("heading", me), this.registry.registerBlockTool("list", ve), this.registry.registerBlockTool("quote", be), this.registry.registerBlockTool("code", ye), this.registry.registerBlockTool("delimiter", ke), this.registry.registerBlockTool("table", xe), this.registry.registerBlockTool("image", Ie), this.registry.registerBlockTool("callout", Ce), this.registry.registerBlockTool("toggle", ze);
   }
   registerUserTools(t) {
     for (const [e, s] of Object.entries(t.tools ?? {}))
       this.registry.registerBlockTool(e, s, e === t.defaultBlock);
     for (const e of t.inlineTools ?? []) {
-      const s = yo(e);
+      const s = Ro(e);
       this.registry.registerInlineTool(s, e);
     }
     if ((t.inlineTools ?? []).length === 0 && this.uiEnabled())
-      for (const [e, s] of Object.entries(Ts))
+      for (const [e, s] of Object.entries(_s))
         this.registry.registerInlineTool(e, s);
     for (const e of t.tunes ?? []) {
-      const s = ko(e);
+      const s = Oo(e);
       this.registry.registerTune(s, e);
     }
-    (t.tunes ?? []).length === 0 && this.registry.registerTune("alignment", zt);
+    (t.tunes ?? []).length === 0 && this.registry.registerTune("alignment", Bt);
   }
   registerBuiltinCommands() {
     const t = [
-      [R.INSERT_BLOCK, (e) => {
+      [O.INSERT_BLOCK, (e) => {
         const { type: s, data: n, index: i } = e;
         this.insertBlock(s, n, { index: i, focus: !0 });
       }],
-      [R.DELETE_BLOCK, (e) => this.removeBlock(e.id)],
-      [R.MOVE_BLOCK, (e) => {
+      [O.DELETE_BLOCK, (e) => this.removeBlock(e.id)],
+      [O.MOVE_BLOCK, (e) => {
         const { id: s, to: n } = e;
         this.moveBlock(s, n);
       }],
-      [R.DUPLICATE_BLOCK, (e) => this.duplicateBlock(e.id)],
-      [R.CONVERT_BLOCK, (e) => {
+      [O.DUPLICATE_BLOCK, (e) => this.duplicateBlock(e.id)],
+      [O.CONVERT_BLOCK, (e) => {
         const { id: s, type: n } = e;
         this.convertBlock(s, n);
       }],
-      [R.UPDATE_BLOCK, (e) => {
+      [O.UPDATE_BLOCK, (e) => {
         const { id: s, data: n } = e;
         this.updateBlock(s, n);
       }],
-      [R.FOCUS_BLOCK, (e) => {
+      [O.FOCUS_BLOCK, (e) => {
         const { id: s, at: n } = e;
         this.focusBlock(s, n);
       }],
-      [R.UNDO, () => this.undo()],
-      [R.REDO, () => this.redo()],
-      [R.OPEN_SLASH_MENU, (e) => {
-        var i, o;
+      [O.UNDO, () => this.undo()],
+      [O.REDO, () => this.redo()],
+      [O.OPEN_SLASH_MENU, (e) => {
+        var i, r;
         const s = e.blockId, n = this.getSelectionInfo();
-        s ? (i = this.slashMenu) == null || i.open(s) : n && ((o = this.slashMenu) == null || o.open(n.blockId));
+        s ? (i = this.slashMenu) == null || i.open(s) : n && ((r = this.slashMenu) == null || r.open(n.blockId));
       }],
-      [R.SET_READ_ONLY, (e) => this.setReadOnly(e.value)]
+      [O.SET_READ_ONLY, (e) => this.setReadOnly(e.value)]
     ];
     for (const [e, s] of t)
       this.commands.register({ name: e, run: (n) => s(n) });
@@ -9170,52 +9491,52 @@ class bo {
    */
   createState(t) {
     try {
-      return new te(t, N(this.config.idGenerator));
+      return new se(t, M(this.config.idGenerator));
     } catch (e) {
-      const s = ae(t, N(this.config.idGenerator));
+      const s = he(t, M(this.config.idGenerator));
       return s.document ? (this.bus.emit(
         "error",
         new k("EZ_INVALID_DOCUMENT", "Malformed blocks were converted to read-only placeholders", { dropped: s.dropped }, e)
-      ), new te(s.document, N(this.config.idGenerator))) : (this.bus.emit("error", new k("EZ_INVALID_DOCUMENT", "The document payload is unusable; the editor started empty", void 0, e)), new te(null, N(this.config.idGenerator)));
+      ), new se(s.document, M(this.config.idGenerator))) : (this.bus.emit("error", new k("EZ_INVALID_DOCUMENT", "The document payload is unusable; the editor started empty", void 0, e)), new se(null, M(this.config.idGenerator)));
     }
   }
   migrateDocument(t) {
     const e = t == null ? void 0 : t.schemaVersion;
-    return !e || e === $ ? (this.recoveryMode = !1, this.originalDocument = null, t) : Q(e, $) < 0 && this.migrations.canMigrate(e, $) ? (this.recoveryMode = !1, this.originalDocument = null, this.migrations.migrate(t, $)) : (this.recoveryMode = !0, this.originalDocument = x(t), this.bus.emit(
+    return !e || e === P ? (this.recoveryMode = !1, this.originalDocument = null, t) : Q(e, P) < 0 && this.migrations.canMigrate(e, P) ? (this.recoveryMode = !1, this.originalDocument = null, this.migrations.migrate(t, P)) : (this.recoveryMode = !0, this.originalDocument = x(t), this.bus.emit(
       "error",
       new k("EZ_MIGRATION_FAILED", `Document schema "${e}" is not supported; opened in read-only recovery mode`, { schemaVersion: e })
     ), t);
   }
   setupDom() {
-    this.targetEl.classList.add("ez-editor-mount"), this.mode === "workspace" || this.mode === "document" ? (this.targetEl.setAttribute("data-ez-mode", this.mode), this.surfaceEl = document.createElement("div"), this.surfaceEl.className = "ez-editor", this.targetEl.appendChild(this.surfaceEl)) : (this.targetEl.classList.add("ez-editor"), this.targetEl.setAttribute("data-ez-mode", this.mode), this.surfaceEl = this.targetEl), this.config.readOnly && this.surfaceEl.classList.add("ez-readonly"), this.config.minHeight && (this.surfaceEl.style.minHeight = `${this.config.minHeight}px`), this.surfaceEl.setAttribute("dir", document.body.getAttribute("dir") ?? (this.config.locale === "he" || this.config.locale === "ar" || this.config.locale === "fa" || this.config.locale === "ur" ? "rtl" : "ltr")), this.announcerEl = document.createElement("div"), this.announcerEl.className = "ez-visually-hidden", this.announcerEl.setAttribute("aria-live", "polite"), this.announcerEl.setAttribute("role", "status"), this.surfaceEl.appendChild(this.announcerEl);
+    this.targetEl.classList.add("ez-editor-mount"), this.targetEl.setAttribute("data-ezynota-root", ""), this.mode === "workspace" || this.mode === "document" ? (this.targetEl.setAttribute("data-ez-mode", this.mode), this.surfaceEl = document.createElement("div"), this.surfaceEl.className = "ez-editor", this.surfaceEl.setAttribute("data-ezynota-root", ""), this.targetEl.appendChild(this.surfaceEl)) : (this.targetEl.classList.add("ez-editor"), this.targetEl.setAttribute("data-ez-mode", this.mode), this.surfaceEl = this.targetEl), this.config.readOnly && this.surfaceEl.classList.add("ez-readonly"), this.config.minHeight && (this.surfaceEl.style.minHeight = `${this.config.minHeight}px`), this.surfaceEl.setAttribute("dir", document.body.getAttribute("dir") ?? (this.config.locale === "he" || this.config.locale === "ar" || this.config.locale === "fa" || this.config.locale === "ur" ? "rtl" : "ltr")), this.announcerEl = document.createElement("div"), this.announcerEl.className = "ez-visually-hidden", this.announcerEl.setAttribute("aria-live", "polite"), this.announcerEl.setAttribute("role", "status"), this.surfaceEl.appendChild(this.announcerEl);
   }
   setupDefaultUi() {
     if (!this.uiEnabled()) return;
     const t = this.config.ui, e = typeof t == "object" ? t : {};
-    e.blockToolbar !== !1 && (this.blockToolbar = new cr(this), this.surfaceEl.appendChild(this.blockToolbar.getElement()), this.surfaceEl.classList.add("ez-has-block-toolbar")), e.inlineToolbar !== !1 && (this.inlineToolbar = new ts(this), this.inlineToolbar.getElement().style.display = "none", this.surfaceEl.appendChild(this.inlineToolbar.getElement())), e.slashMenu !== !1 && (this.slashMenu = new dr(this), this.surfaceEl.appendChild(this.slashMenu.getElement())), e.documentToolbar === !0 && (this.documentToolbar = new ts(this, !0), this.surfaceEl.prepend(this.documentToolbar.getElement()));
+    e.blockToolbar !== !1 && (this.blockToolbar = new Sr(this), this.surfaceEl.appendChild(this.blockToolbar.getElement()), this.surfaceEl.classList.add("ez-has-block-toolbar")), e.inlineToolbar !== !1 && (this.inlineToolbar = new ds(this), this.inlineToolbar.getElement().style.display = "none", this.surfaceEl.appendChild(this.inlineToolbar.getElement())), e.slashMenu !== !1 && (this.slashMenu = new xr(this), this.surfaceEl.appendChild(this.slashMenu.getElement())), e.documentToolbar === !0 && (this.documentToolbar = new ds(this, !0), this.surfaceEl.prepend(this.documentToolbar.getElement()));
   }
   uiEnabled() {
     return this.config.ui !== !1;
   }
   wireEvents() {
-    const t = this.bus.on("error", (o) => {
-      this.emitDomEvent("ezn:error", { message: o.message, code: o.code });
-    }), e = this.selectionManager.on("selection", (o) => {
-      var a, l, c;
-      (a = this.inlineToolbar) == null || a.updateSelection(o), (l = this.documentToolbar) == null || l.updateSelection(o), this.bus.emit("selection:changed", o), o && !o.collapsed ? this.blockToolbar && this.blockToolbar.hide() : o && ((c = this.blockToolbar) == null || c.showFor(o.blockId));
+    const t = this.bus.on("error", (r) => {
+      this.emitDomEvent("ezn:error", { message: r.message, code: r.code });
+    }), e = this.selectionManager.on("selection", (r) => {
+      var a, l, c, d;
+      r && this.slashMenu && this.getBlockType(r.blockId) === "paragraph" && ((a = this.getEditableElement(r.blockId)) == null || a.setAttribute("data-ez-writing-hint", this.i18n.t("core.blockHint"))), (l = this.inlineToolbar) == null || l.updateSelection(r), (c = this.documentToolbar) == null || c.updateSelection(r), this.bus.emit("selection:changed", r), r && !r.collapsed ? this.blockToolbar && this.blockToolbar.hide() : r && ((d = this.blockToolbar) == null || d.showFor(r.blockId));
     }), s = this.selectionManager.on("focus", () => this.bus.emit("focus")), n = this.selectionManager.on("blur", () => {
       this.closeMenus(), this.bus.emit("blur");
-    }), i = this.inputManager.onBlockInput((o) => {
+    }), i = this.inputManager.onBlockInput((r) => {
       var l;
       if (!this.slashMenu) return;
-      const a = (((l = this.getEditableElement(o)) == null ? void 0 : l.textContent) ?? "").trim();
-      a === "/" ? this.slashMenu.open(o) : this.slashMenu.isOpenMenu() && (a === "" || a.startsWith("/") ? this.slashMenu.setQuery(a.replace(/^\//, "")) : this.slashMenu.close());
+      const a = (((l = this.getEditableElement(r)) == null ? void 0 : l.textContent) ?? "").trim();
+      a === "/" ? this.slashMenu.open(r, !1, !0) : this.slashMenu.isOpenMenu() && (a === "" || a.startsWith("/") ? this.slashMenu.setQuery(a.replace(/^\//, "")) : this.slashMenu.close());
     });
     this.disposers.push(t, e, s, n, i);
   }
   /** Single post-commit path: history + DOM sync + events. */
   handleCommit(t) {
-    var n, i, o, a, l;
+    var n, i, r, a, l;
     if (t.origin === "history")
       for (const c of t.changes)
         (c.type === "block:update" || c.type === "block:remove" || c.type === "children:update") && this.invalidatePendingSave(c.id);
@@ -9255,7 +9576,7 @@ class bo {
           break;
       }
     try {
-      (o = (i = this.config).onChange) == null || o.call(i, this, t);
+      (r = (i = this.config).onChange) == null || r.call(i, this, t);
     } catch (c) {
       this.bus.emit("error", new k("EZ_UNKNOWN_ERROR", "An onChange handler threw", void 0, c));
     }
@@ -9297,14 +9618,14 @@ class bo {
   /** Full document replace. The caller owns history reset (undoable or not). */
   blockManagerReplaceAll(t) {
     try {
-      this.state.replace(t, N(this.config.idGenerator));
+      this.state.replace(t, M(this.config.idGenerator));
     } catch (e) {
-      const s = ae(t, N(this.config.idGenerator));
+      const s = he(t, M(this.config.idGenerator));
       if (!s.document) throw e;
       this.bus.emit(
         "error",
         new k("EZ_INVALID_DOCUMENT", "Malformed blocks were converted to read-only placeholders", { dropped: s.dropped }, e)
-      ), this.state.replace(s.document, N(this.config.idGenerator));
+      ), this.state.replace(s.document, M(this.config.idGenerator));
     }
     this.tm.commit("api", [{ type: "document:replace" }]), this.renderer.renderAll(this.state.get().blocks), this.blockSaveVersions.clear();
   }
@@ -9312,23 +9633,23 @@ class bo {
   restoreHistorySelection(t) {
     if (!t || this.readOnly) return;
     const e = this.getEditableElement(t.blockId);
-    e && (e.focus(), Pi(e, t.focusOffset > t.anchorOffset ? t.focusOffset : t.anchorOffset));
+    e && (e.focus(), rr(e, t.focusOffset > t.anchorOffset ? t.focusOffset : t.anchorOffset));
   }
   /* ===================== Declarative initialization ===================== */
   /** Initialize every `[data-ezn-editor]` under `root` (default: document). */
   static initAll(t) {
-    return Fe(t);
+    return je(t);
   }
   /** Look up the instance for an element or selector. */
   static getInstance(t) {
-    return fo(t);
+    return Lo(t);
   }
   blockRef(t) {
     const e = this.blockManager.getById(t);
     if (this.blockManager.getIndex(t) < 0 || !e) return;
     const s = () => {
-      var o;
-      return ((o = this.blockManager.getById(t)) == null ? void 0 : o.type) ?? "";
+      var r;
+      return ((r = this.blockManager.getById(t)) == null ? void 0 : r.type) ?? "";
     }, n = () => this.blockManager.getIndex(t);
     return {
       id: t,
@@ -9339,26 +9660,26 @@ class bo {
         return n();
       },
       getData: () => {
-        const o = this.blockManager.getById(t) ?? e;
-        return JSON.parse(JSON.stringify(o.data));
+        const r = this.blockManager.getById(t) ?? e;
+        return JSON.parse(JSON.stringify(r.data));
       },
-      update: (o) => this.updateBlock(t, o),
-      patch: (o) => {
+      update: (r) => this.updateBlock(t, r),
+      patch: (r) => {
         const a = this.getBlockData(t) ?? {};
-        this.updateBlock(t, { ...a, ...o });
+        this.updateBlock(t, { ...a, ...r });
       },
       remove: () => this.removeBlock(t),
-      move: (o) => this.moveBlock(t, o),
+      move: (r) => this.moveBlock(t, r),
       duplicate: () => this.duplicateBlock(t),
-      convert: (o) => this.convertBlock(t, o)
+      convert: (r) => this.convertBlock(t, r)
     };
   }
 }
-function x(r) {
-  return JSON.parse(JSON.stringify(r));
+function x(o) {
+  return JSON.parse(JSON.stringify(o));
 }
-function ks(r) {
-  switch (r) {
+function Bs(o) {
+  switch (o) {
     case "paragraph":
     case "quote":
       return { content: [] };
@@ -9374,86 +9695,85 @@ function ks(r) {
       return {};
   }
 }
-function yo(r) {
+function Ro(o) {
   var n;
-  const t = r.class ?? r, e = Object.entries(Ts).find(([, i]) => i === t);
+  const t = o.class ?? o, e = Object.entries(_s).find(([, i]) => i === t);
   if (e) return e[0];
-  const s = r;
+  const s = o;
   return (((n = s.class) == null ? void 0 : n.name) ?? s.name ?? `inline-${Math.random().toString(36).slice(2, 8)}`).toLowerCase();
 }
-function ko(r) {
+function Oo(o) {
   var e;
-  if (r === zt || r.class === zt) return "alignment";
-  const t = r;
+  if (o === Bt || o.class === Bt) return "alignment";
+  const t = o;
   return ((e = t.class) == null ? void 0 : e.name) ?? t.name ?? `tune-${Math.random().toString(36).slice(2, 8)}`;
 }
-function vo(r) {
-  return r.mode ? r.mode : r.ui === !1 ? "headless" : "workspace";
+function Fo(o) {
+  return o.mode ? o.mode : o.ui === !1 ? "headless" : "workspace";
 }
 export {
-  _t as $,
-  zt as A,
-  Ts as B,
-  Ee as C,
-  fe as D,
-  R as E,
-  C as F,
-  Gt as G,
-  he as H,
-  fn as I,
-  Ot as J,
-  Rs as K,
-  Di as L,
+  R as $,
+  Bt as A,
+  _s as B,
+  Ce as C,
+  ke as D,
+  O as E,
+  Ot as F,
+  Xt as G,
+  me as H,
+  Mn as I,
+  Vs as J,
+  uo as K,
+  Xi as L,
   U as M,
-  Jr as N,
-  Ds as O,
-  de as P,
-  ue as Q,
-  F as R,
-  $ as S,
-  ve as T,
-  Si as U,
-  Eo as V,
-  De as W,
-  Z as X,
-  G as Y,
-  jr as Z,
-  Ce as _,
-  Li as a,
-  O as a0,
-  Yr as a1,
-  K as a2,
-  eo as a3,
-  $s as a4,
-  ae as a5,
-  wo as a6,
-  yn as a7,
-  st as a8,
-  Ms as a9,
-  Ei as b,
-  xi as c,
-  pe as d,
-  Ti as e,
-  qs as f,
-  bo as g,
+  js as N,
+  F as O,
+  ge as P,
+  be as Q,
+  Po as R,
+  P as S,
+  xe as T,
+  qi as U,
+  Z as V,
+  Fe as W,
+  G as X,
+  ro as Y,
+  De as Z,
+  jt as _,
+  Yi as a,
+  go as a0,
+  K as a1,
+  ko as a2,
+  Js as a3,
+  he as a4,
+  $o as a5,
+  $n as a6,
+  st as a7,
+  Us as a8,
+  ji as b,
+  Wi as c,
+  ye as d,
+  Gi as e,
+  tn as f,
+  Mo as g,
   k as h,
-  qi as i,
-  we as j,
-  yr as k,
-  Ai as l,
-  ge as m,
-  Ii as n,
-  hs as o,
-  un as p,
-  Ci as q,
-  Mt as r,
-  Ao as s,
-  Ae as t,
-  an as u,
-  Er as v,
-  Xr as w,
-  Ne as x,
-  Me as y,
-  Gr as z
+  Ie as i,
+  Nr as j,
+  Ui as k,
+  ve as l,
+  Vi as m,
+  ws as n,
+  Dn as o,
+  Ki as p,
+  Mt as q,
+  ze as r,
+  _o as s,
+  Cn as t,
+  Fr as u,
+  mo as v,
+  Pe as w,
+  $e as x,
+  po as y,
+  z
 };
-//# sourceMappingURL=core-entry-BeXf_jHg.js.map
+//# sourceMappingURL=core-entry-a3M6h9FE.js.map

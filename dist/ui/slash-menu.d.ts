@@ -23,10 +23,11 @@ export declare class SlashMenu {
     private blockId;
     private unsubOutside;
     private insertMode;
+    private typedSlash;
     private prefix;
     constructor(host: Host);
     getElement(): HTMLElement;
-    open(blockId: string, insert?: boolean): void;
+    open(blockId: string, insert?: boolean, typedSlash?: boolean): void;
     isOpenMenu(): boolean;
     /** Update the query while the user keeps typing after "/". */
     setQuery(query: string): void;

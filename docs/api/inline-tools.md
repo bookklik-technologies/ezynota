@@ -19,7 +19,7 @@ Inline tools apply formatting to the current selection. They populate the floati
 All of them are exported both individually and as a map:
 
 ```ts
-import { BUILTIN_INLINE_TOOLS, BoldTool, LinkTool } from "ezynota";
+import { BUILTIN_INLINE_TOOLS, BoldTool, LinkTool } from "@bookklik/ezynota";
 
 BUILTIN_INLINE_TOOLS.bold === BoldTool; // true
 ```
